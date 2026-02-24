@@ -1,9 +1,9 @@
 # gb — GitBucket CLI
 
-`gb` は GitBucket をコマンドラインから操作するための CLI ツールです。  
-[GitHub CLI (`gh`)](https://cli.github.com/) の設計思想を参考に、Rust で実装されています。
+`gb` is a command-line interface for GitBucket.
+It is inspired by [GitHub CLI (`gh`)](https://cli.github.com/) and implemented in Rust.
 
-```
+```bash
 $ gb issue list
 #    STATE   TITLE                          AUTHOR   LABELS
 #1   OPEN    Fix login page bug             alice    bug
@@ -13,9 +13,9 @@ $ gb pr create -t "Add feature X" -H feature/x -B main
 ✓ Created pull request #5: Add feature X
 ```
 
-## インストール
+## Installation
 
-### ソースからビルド
+### Build from source
 
 ```bash
 git clone https://github.com/your-org/gitbucket-cli-rs.git
@@ -24,11 +24,11 @@ cargo build --release
 cp target/release/gb ~/.local/bin/
 ```
 
-**前提条件:** Rust 1.70 以上、`git` コマンド
+**Requirements:** Rust 1.70+ and `git`
 
-## クイックスタート
+## Quick start
 
-### 1. 認証
+### 1) Authenticate
 
 ```bash
 gb auth login
@@ -37,108 +37,114 @@ gb auth login
 # ✓ Logged in to gitbucket.example.com as alice
 ```
 
-GitBucket の **Account Settings → Personal access tokens** からトークンを発行してください。
+Create a token in **GitBucket → Account Settings → Personal access tokens**.
 
-### 2. リポジトリ操作
-
-```bash
-gb repo list                        # リポジトリ一覧
-gb repo view alice/my-app           # 詳細表示
-gb repo create my-new-repo          # 新規作成
-gb repo clone alice/my-app          # クローン
-gb repo fork alice/my-app           # フォーク
-```
-
-### 3. Issue 操作
+### 2) Repository operations
 
 ```bash
-gb issue list                       # Issue 一覧
-gb issue create -t "Bug report"     # 作成
-gb issue view 1                     # 詳細表示
-gb issue close 1                    # クローズ
-gb issue comment 1 -b "Fixed!"     # コメント追加
+gb repo list
+gb repo view alice/my-app
+gb repo create my-new-repo
+gb repo clone alice/my-app
+gb repo fork alice/my-app
 ```
 
-### 4. プルリクエスト操作
+### 3) Issue operations
 
 ```bash
-gb pr list                          # PR 一覧
-gb pr create                        # 作成 (現在のブランチから)
-gb pr view 5                        # 詳細表示
-gb pr merge 5                       # マージ
-gb pr checkout 5                    # ブランチをチェックアウト
-gb pr diff 5                        # 差分表示
+gb issue list
+gb issue create -t "Bug report"
+gb issue view 1
+gb issue close 1
+gb issue comment 1 -b "Fixed!"
 ```
 
-## コマンド一覧
-
-| コマンド | 説明 |
-|---------|------|
-| `gb auth login` | GitBucket インスタンスへ認証 |
-| `gb auth logout` | ログアウト |
-| `gb auth status` | 認証状態の確認 |
-| `gb auth token` | アクセストークンを表示 |
-| `gb repo list [OWNER]` | リポジトリ一覧 |
-| `gb repo view [OWNER/REPO]` | リポジトリ詳細 |
-| `gb repo create [NAME]` | リポジトリ作成 |
-| `gb repo clone <REPO>` | リポジトリのクローン |
-| `gb repo delete [OWNER/REPO]` | リポジトリ削除 |
-| `gb repo fork [OWNER/REPO]` | リポジトリのフォーク |
-| `gb issue list` | Issue 一覧 |
-| `gb issue view <NUMBER>` | Issue 詳細 |
-| `gb issue create` | Issue 作成 |
-| `gb issue close <NUMBER>` | Issue クローズ |
-| `gb issue reopen <NUMBER>` | Issue 再オープン |
-| `gb issue comment <NUMBER>` | Issue にコメント追加 |
-| `gb pr list` | PR 一覧 |
-| `gb pr view <NUMBER>` | PR 詳細 |
-| `gb pr create` | PR 作成 |
-| `gb pr close <NUMBER>` | PR クローズ |
-| `gb pr merge <NUMBER>` | PR マージ |
-| `gb pr checkout <NUMBER>` | PR ブランチをチェックアウト |
-| `gb pr diff <NUMBER>` | PR 差分表示 |
-| `gb pr comment <NUMBER>` | PR にコメント追加 |
-| `gb browse` | リポジトリをブラウザで開く |
-
-## グローバルオプション
-
-```
--H, --hostname <HOST>    GitBucket ホスト名
--R, --repo <OWNER/REPO>  操作対象リポジトリ
--h, --help               ヘルプ表示
--V, --version            バージョン表示
-```
-
-## リポジトリの自動推定
-
-`-R` オプションを省略した場合、カレントディレクトリの git remote (`origin`) から自動的にオーナー/リポジトリ名を推定します。
+### 4) Pull request operations
 
 ```bash
-cd ~/projects/my-app    # git remote = https://gitbucket.example.com/alice/my-app.git
-gb issue list           # → alice/my-app の Issue を表示
+gb pr list
+gb pr create
+gb pr view 5
+gb pr merge 5
+gb pr checkout 5
+gb pr diff 5
 ```
 
-## 出力形式
+## Command reference
+
+| Command | Description |
+| --- | --- |
+| `gb auth login` | Authenticate to a GitBucket instance |
+| `gb auth logout` | Remove auth for a host |
+| `gb auth status` | Show current auth status |
+| `gb auth token` | Print access token |
+| `gb repo list [OWNER]` | List repositories |
+| `gb repo view [OWNER/REPO]` | Show repository details |
+| `gb repo create [NAME]` | Create a repository |
+| `gb repo clone <REPO>` | Clone a repository |
+| `gb repo delete [OWNER/REPO]` | Delete a repository |
+| `gb repo fork [OWNER/REPO]` | Fork a repository |
+| `gb issue list` | List issues |
+| `gb issue view <NUMBER>` | Show issue details |
+| `gb issue create` | Create an issue |
+| `gb issue close <NUMBER>` | Close an issue |
+| `gb issue reopen <NUMBER>` | Reopen an issue |
+| `gb issue comment <NUMBER>` | Add an issue comment |
+| `gb pr list` | List pull requests |
+| `gb pr view <NUMBER>` | Show PR details |
+| `gb pr create` | Create a pull request |
+| `gb pr close <NUMBER>` | Close a pull request |
+| `gb pr merge <NUMBER>` | Merge a pull request |
+| `gb pr checkout <NUMBER>` | Checkout a PR branch |
+| `gb pr diff <NUMBER>` | Show PR diff |
+| `gb pr comment <NUMBER>` | Add a PR comment |
+| `gb browse` | Open repository in browser |
+
+## Global options
+
+```text
+-H, --hostname <HOST>    GitBucket hostname
+-R, --repo <OWNER/REPO>  Target repository
+-h, --help               Show help
+-V, --version            Show version
+```
+
+## Repository auto-resolution
+
+If `-R/--repo` is omitted, `gb` tries to detect `OWNER/REPO` from `git remote get-url origin`.
 
 ```bash
-gb issue list              # テーブル形式 (デフォルト)
-gb issue list --json       # JSON 形式
-gb issue view 1 --web      # ブラウザで開く
+cd ~/projects/my-app
+gb issue list
 ```
 
-## 環境変数
+Supported remote URL formats include:
 
-| 変数名 | 説明 |
-|-------|------|
-| `GB_TOKEN` | アクセストークン (設定ファイルより優先) |
-| `GB_HOST` | デフォルトの GitBucket ホスト名 |
-| `GB_REPO` | デフォルトのリポジトリ (`OWNER/REPO`) |
-| `GB_CONFIG_DIR` | 設定ディレクトリのパス (デフォルト: `~/.config/gb/`) |
-| `NO_COLOR` | カラー出力の無効化 |
+- `https://gitbucket.example.com/alice/my-app.git`
+- `https://gitbucket.example.com/git/alice/my-app.git`
+- `git@gitbucket.example.com:alice/my-app.git`
 
-## 設定ファイル
+## Output formats
 
-認証情報は `~/.config/gb/config.toml` に保存されます。
+```bash
+gb issue list
+gb issue list --json
+gb issue view 1 --web
+```
+
+## Environment variables
+
+| Variable | Description |
+| --- | --- |
+| `GB_TOKEN` | Access token (takes precedence over file config for auth) |
+| `GB_HOST` | Default host |
+| `GB_REPO` | Default repository (`OWNER/REPO`) |
+| `GB_CONFIG_DIR` | Config directory path (default: `~/.config/gb/`) |
+| `NO_COLOR` | Disable colored output |
+
+## Configuration file
+
+Credentials are stored in `~/.config/gb/config.toml` (or under `GB_CONFIG_DIR`).
 
 ```toml
 [hosts."gitbucket.example.com"]
@@ -147,6 +153,6 @@ user = "alice"
 protocol = "https"
 ```
 
-## ライセンス
+## License
 
 MIT
