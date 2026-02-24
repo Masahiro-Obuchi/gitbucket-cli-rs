@@ -1,0 +1,13 @@
+/target
+
+# Editor settings
+.vscode/
+.idea/
+
+# Environment files (may contain credentials)
+.env
+.env.*
+
+# OS files
+.DS_Store
+

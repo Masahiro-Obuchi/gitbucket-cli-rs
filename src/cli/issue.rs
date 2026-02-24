@@ -1,0 +1,331 @@
+use clap::{Args, Subcommand};
+use colored::Colorize;
+use dialoguer::Input;
+
+use crate::cli::common::{create_client, resolve_hostname, resolve_repo};
+use crate::error::Result;
+use crate::models::comment::CreateComment;
+use crate::models::issue::{CreateIssue, UpdateIssue};
+use crate::output::table::print_table;
+use crate::output::{format_state, truncate};
+
+#[derive(Args)]
+pub struct IssueArgs {
+    #[command(subcommand)]
+    pub command: IssueCommand,
+}
+
+#[derive(Subcommand)]
+pub enum IssueCommand {
+    /// List issues
+    List {
+        /// Filter by state (open, closed, all)
+        #[arg(long, short, default_value = "open")]
+        state: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// View an issue
+    View {
+        /// Issue number
+        number: u64,
+        /// Show comments
+        #[arg(long, short)]
+        comments: bool,
+        /// Open in browser
+        #[arg(long, short)]
+        web: bool,
+    },
+    /// Create a new issue
+    Create {
+        /// Issue title
+        #[arg(long, short)]
+        title: Option<String>,
+        /// Issue body
+        #[arg(long, short)]
+        body: Option<String>,
+        /// Labels (comma-separated)
+        #[arg(long, short)]
+        label: Vec<String>,
+        /// Assignees (comma-separated)
+        #[arg(long, short)]
+        assignee: Vec<String>,
+    },
+    /// Close an issue
+    Close {
+        /// Issue number
+        number: u64,
+    },
+    /// Reopen an issue
+    Reopen {
+        /// Issue number
+        number: u64,
+    },
+    /// Add a comment to an issue
+    Comment {
+        /// Issue number
+        number: u64,
+        /// Comment body
+        #[arg(long, short)]
+        body: Option<String>,
+    },
+}
+
+pub async fn run(
+    args: IssueArgs,
+    cli_hostname: &Option<String>,
+    cli_repo: &Option<String>,
+) -> Result<()> {
+    match args.command {
+        IssueCommand::List { state, json } => list(cli_hostname, cli_repo, &state, json).await,
+        IssueCommand::View {
+            number,
+            comments,
+            web,
+        } => view(cli_hostname, cli_repo, number, comments, web).await,
+        IssueCommand::Create {
+            title,
+            body,
+            label,
+            assignee,
+        } => create(cli_hostname, cli_repo, title, body, label, assignee).await,
+        IssueCommand::Close { number } => close(cli_hostname, cli_repo, number).await,
+        IssueCommand::Reopen { number } => reopen(cli_hostname, cli_repo, number).await,
+        IssueCommand::Comment { number, body } => {
+            comment(cli_hostname, cli_repo, number, body).await
+        }
+    }
+}
+
+async fn list(
+    hostname: &Option<String>,
+    cli_repo: &Option<String>,
+    _state: &str,
+    json: bool,
+) -> Result<()> {
+    let hostname = resolve_hostname(hostname)?;
+    let (owner, repo) = resolve_repo(cli_repo)?;
+    let client = create_client(&hostname)?;
+
+    let issues = client.list_issues(&owner, &repo).await?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&issues)?);
+        return Ok(());
+    }
+
+    let rows: Vec<Vec<String>> = issues
+        .iter()
+        .map(|i| {
+            let labels = i
+                .labels
+                .iter()
+                .map(|l| l.name.clone())
+                .collect::<Vec<_>>()
+                .join(", ");
+            vec![
+                format!("#{}", i.number),
+                format_state(&i.state),
+                truncate(&i.title, 60),
+                i.user
+                    .as_ref()
+                    .map(|u| u.login.clone())
+                    .unwrap_or_default(),
+                labels,
+            ]
+        })
+        .collect();
+
+    print_table(&["#", "STATE", "TITLE", "AUTHOR", "LABELS"], &rows);
+    Ok(())
+}
+
+async fn view(
+    hostname: &Option<String>,
+    cli_repo: &Option<String>,
+    number: u64,
+    show_comments: bool,
+    web: bool,
+) -> Result<()> {
+    let hostname = resolve_hostname(hostname)?;
+    let (owner, repo) = resolve_repo(cli_repo)?;
+    let client = create_client(&hostname)?;
+
+    if web {
+        let url = client.web_url(&format!("/{}/{}/issues/{}", owner, repo, number));
+        open::that(&url)
+            .map_err(|e| crate::error::GbError::Other(format!("Failed to open browser: {}", e)))?;
+        println!("Opening {} in your browser.", url);
+        return Ok(());
+    }
+
+    let issue = client.get_issue(&owner, &repo, number).await?;
+
+    println!(
+        "{} {}",
+        issue.title.bold(),
+        format!("#{}", issue.number).dimmed()
+    );
+    println!("{}", format_state(&issue.state));
+    println!();
+
+    if let Some(user) = &issue.user {
+        print!("Author: {}  ", user.login);
+    }
+    if let Some(created) = &issue.created_at {
+        print!("Created: {}", created);
+    }
+    println!();
+
+    if !issue.labels.is_empty() {
+        let labels: Vec<&str> = issue.labels.iter().map(|l| l.name.as_str()).collect();
+        println!("Labels: {}", labels.join(", "));
+    }
+
+    if let Some(body) = &issue.body {
+        if !body.is_empty() {
+            println!("\n{}", body);
+        }
+    }
+
+    if show_comments {
+        let comments = client.list_issue_comments(&owner, &repo, number).await?;
+        if !comments.is_empty() {
+            println!("\n{}", "--- Comments ---".dimmed());
+            for c in &comments {
+                let author = c
+                    .user
+                    .as_ref()
+                    .map(|u| u.login.as_str())
+                    .unwrap_or("unknown");
+                let date = c.created_at.as_deref().unwrap_or("");
+                println!("\n{} ({})", author.bold(), date.dimmed());
+                if let Some(body) = &c.body {
+                    println!("{}", body);
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn create(
+    hostname: &Option<String>,
+    cli_repo: &Option<String>,
+    title: Option<String>,
+    body: Option<String>,
+    labels: Vec<String>,
+    assignees: Vec<String>,
+) -> Result<()> {
+    let hostname = resolve_hostname(hostname)?;
+    let (owner, repo) = resolve_repo(cli_repo)?;
+    let client = create_client(&hostname)?;
+
+    let title = match title {
+        Some(t) => t,
+        None => Input::new().with_prompt("Title").interact_text()?,
+    };
+
+    let body_text = match body {
+        Some(b) => Some(b),
+        None => {
+            let b: String = Input::new()
+                .with_prompt("Body (optional)")
+                .allow_empty(true)
+                .interact_text()?;
+            if b.is_empty() { None } else { Some(b) }
+        }
+    };
+
+    let create_body = CreateIssue {
+        title,
+        body: body_text,
+        labels: if labels.is_empty() {
+            None
+        } else {
+            Some(labels)
+        },
+        assignees: if assignees.is_empty() {
+            None
+        } else {
+            Some(assignees)
+        },
+        milestone: None,
+    };
+
+    let issue = client.create_issue(&owner, &repo, &create_body).await?;
+    println!(
+        "✓ Created issue #{}: {}",
+        issue.number,
+        issue.title
+    );
+    if let Some(url) = &issue.html_url {
+        println!("{}", url);
+    }
+    Ok(())
+}
+
+async fn close(
+    hostname: &Option<String>,
+    cli_repo: &Option<String>,
+    number: u64,
+) -> Result<()> {
+    let hostname = resolve_hostname(hostname)?;
+    let (owner, repo) = resolve_repo(cli_repo)?;
+    let client = create_client(&hostname)?;
+
+    let body = UpdateIssue {
+        state: Some("closed".to_string()),
+        title: None,
+        body: None,
+    };
+    client.update_issue(&owner, &repo, number, &body).await?;
+    println!("✓ Closed issue #{}", number);
+    Ok(())
+}
+
+async fn reopen(
+    hostname: &Option<String>,
+    cli_repo: &Option<String>,
+    number: u64,
+) -> Result<()> {
+    let hostname = resolve_hostname(hostname)?;
+    let (owner, repo) = resolve_repo(cli_repo)?;
+    let client = create_client(&hostname)?;
+
+    let body = UpdateIssue {
+        state: Some("open".to_string()),
+        title: None,
+        body: None,
+    };
+    client.update_issue(&owner, &repo, number, &body).await?;
+    println!("✓ Reopened issue #{}", number);
+    Ok(())
+}
+
+async fn comment(
+    hostname: &Option<String>,
+    cli_repo: &Option<String>,
+    number: u64,
+    body: Option<String>,
+) -> Result<()> {
+    let hostname = resolve_hostname(hostname)?;
+    let (owner, repo) = resolve_repo(cli_repo)?;
+    let client = create_client(&hostname)?;
+
+    let body_text = match body {
+        Some(b) => b,
+        None => Input::new()
+            .with_prompt("Comment body")
+            .interact_text()?,
+    };
+
+    let comment_body = CreateComment { body: body_text };
+    client
+        .create_issue_comment(&owner, &repo, number, &comment_body)
+        .await?;
+    println!("✓ Added comment to issue #{}", number);
+    Ok(())
+}
