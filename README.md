@@ -1,4 +1,4 @@
-# gb — GitBucket CLI
+# gb - GitBucket CLI
 
 `gb` is a command-line interface for GitBucket.
 It is inspired by [GitHub CLI (`gh`)](https://cli.github.com/) and implemented in Rust.
@@ -72,33 +72,33 @@ gb pr diff 5
 
 ## Command reference
 
-| Command | Description |
-| --- | --- |
-| `gb auth login` | Authenticate to a GitBucket instance |
-| `gb auth logout` | Remove auth for a host |
-| `gb auth status` | Show current auth status |
-| `gb auth token` | Print access token |
-| `gb repo list [OWNER]` | List repositories |
-| `gb repo view [OWNER/REPO]` | Show repository details |
-| `gb repo create [NAME]` | Create a repository |
-| `gb repo clone <REPO>` | Clone a repository |
-| `gb repo delete [OWNER/REPO]` | Delete a repository |
-| `gb repo fork [OWNER/REPO]` | Fork a repository |
-| `gb issue list` | List issues |
-| `gb issue view <NUMBER>` | Show issue details |
-| `gb issue create` | Create an issue |
-| `gb issue close <NUMBER>` | Close an issue |
-| `gb issue reopen <NUMBER>` | Reopen an issue |
-| `gb issue comment <NUMBER>` | Add an issue comment |
-| `gb pr list` | List pull requests |
-| `gb pr view <NUMBER>` | Show PR details |
-| `gb pr create` | Create a pull request |
-| `gb pr close <NUMBER>` | Close a pull request |
-| `gb pr merge <NUMBER>` | Merge a pull request |
-| `gb pr checkout <NUMBER>` | Checkout a PR branch |
-| `gb pr diff <NUMBER>` | Show PR diff |
-| `gb pr comment <NUMBER>` | Add a PR comment |
-| `gb browse` | Open repository in browser |
+| Command                       | Description                          |
+| ----------------------------- | ------------------------------------ |
+| `gb auth login`               | Authenticate to a GitBucket instance |
+| `gb auth logout`              | Remove auth for a host               |
+| `gb auth status`              | Show current auth status             |
+| `gb auth token`               | Print access token                   |
+| `gb repo list [OWNER]`        | List repositories                    |
+| `gb repo view [OWNER/REPO]`   | Show repository details              |
+| `gb repo create [NAME]`       | Create a repository                  |
+| `gb repo clone <REPO>`        | Clone a repository                   |
+| `gb repo delete [OWNER/REPO]` | Delete a repository                  |
+| `gb repo fork [OWNER/REPO]`   | Fork a repository                    |
+| `gb issue list`               | List issues                          |
+| `gb issue view <NUMBER>`      | Show issue details                   |
+| `gb issue create`             | Create an issue                      |
+| `gb issue close <NUMBER>`     | Close an issue                       |
+| `gb issue reopen <NUMBER>`    | Reopen an issue                      |
+| `gb issue comment <NUMBER>`   | Add an issue comment                 |
+| `gb pr list`                  | List pull requests                   |
+| `gb pr view <NUMBER>`         | Show PR details                      |
+| `gb pr create`                | Create a pull request                |
+| `gb pr close <NUMBER>`        | Close a pull request                 |
+| `gb pr merge <NUMBER>`        | Merge a pull request                 |
+| `gb pr checkout <NUMBER>`     | Checkout a PR branch                 |
+| `gb pr diff <NUMBER>`         | Show PR diff                         |
+| `gb pr comment <NUMBER>`      | Add a PR comment                     |
+| `gb browse`                   | Open repository in browser           |
 
 ## Global options
 
@@ -134,13 +134,13 @@ gb issue view 1 --web
 
 ## Environment variables
 
-| Variable | Description |
-| --- | --- |
-| `GB_TOKEN` | Access token (takes precedence over file config for auth) |
-| `GB_HOST` | Default host |
-| `GB_REPO` | Default repository (`OWNER/REPO`) |
-| `GB_CONFIG_DIR` | Config directory path (default: `~/.config/gb/`) |
-| `NO_COLOR` | Disable colored output |
+| Variable        | Description                                               |
+| --------------- | --------------------------------------------------------- |
+| `GB_TOKEN`      | Access token (takes precedence over file config for auth) |
+| `GB_HOST`       | Default host                                              |
+| `GB_REPO`       | Default repository (`OWNER/REPO`)                         |
+| `GB_CONFIG_DIR` | Config directory path (default: `~/.config/gb/`)          |
+| `NO_COLOR`      | Disable colored output                                    |
 
 ## Configuration file
 
