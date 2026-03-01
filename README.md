@@ -1,4 +1,4 @@
-# gb - GitBucket CLI
+# GitBucket CLI
 
 `gb` is a command-line interface for GitBucket.
 It is inspired by [GitHub CLI (`gh`)](https://cli.github.com/) and implemented in Rust.
