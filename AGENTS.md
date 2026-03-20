@@ -1,5 +1,14 @@
 # Repository Guidelines
 
+## Current Implementation Status
+
+- Implemented top-level commands: `auth`, `repo`, `issue`, `pr`, and `browse`.
+- Implemented auth flows: `login`, `logout`, `status`, and `token`.
+- Repository flows support list/view/create/clone/delete/fork.
+- Issue flows support list/view/create/close/reopen/comment.
+- Pull request flows support list/view/create/close/merge/checkout/diff/comment.
+- Planned but not yet implemented: `label`, `milestone`, `api`, `config`, and `completion`.
+
 ## Project Structure & Module Organization
 
 - `src/main.rs`: CLI entrypoint and command dispatch.
@@ -10,6 +19,8 @@
 - `src/output/`: table and display helpers.
 - `README.md`: user-facing usage guide.
 - `SPEC.md`: detailed functional specification.
+
+Keep `README.md`, `SPEC.md`, and CLI help text aligned whenever command behavior or options change.
 
 ## Build, Test, and Development Commands
 
@@ -26,6 +37,15 @@
 - Use `snake_case` for functions/modules/files, `PascalCase` for structs/enums/traits, `SCREAMING_SNAKE_CASE` for constants.
 - Prefer explicit error handling via `Result<T, GbError>` and `?`.
 - Keep command UX consistent with GitHub CLI naming (`list`, `view`, `create`, `--json`, `--web`).
+- Prefer storing GitBucket targets as host-or-base-URL strings; path-prefixed deployments such as `https://localhost/gitbucket` are supported.
+- Preserve the current `reqwest` TLS setup using `rustls-tls-native-roots` so self-hosted instances can use system-trusted certificates.
+
+## Current Functional Notes
+
+- `--hostname/-H` and `GB_HOST` accept either a bare host or a full base URL.
+- Auth config is stored in `~/.config/gb/config.toml` (or `GB_CONFIG_DIR`) under `[hosts."<host-or-url>"]`.
+- Repository auto-resolution supports HTTPS, SSH, and GitBucket `/git/` clone URLs.
+- `issue list` and `pr list` currently accept `--state`, but the API request is not yet filtered by that option.
 
 ## Testing Guidelines
 
