@@ -86,7 +86,8 @@ impl ApiClient {
         self.handle_response(resp).await
     }
 
-    /// Make a raw request (for `gb api`)
+    /// Make a raw request (reserved for the future `gb api` command)
+    #[allow(dead_code)]
     pub async fn raw_request(
         &self,
         method: Method,
