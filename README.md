@@ -150,6 +150,7 @@ gb issue view 1 --web
 | `GB_HOST`       | Default GitBucket host or base URL                        |
 | `GB_REPO`       | Default repository (`OWNER/REPO`)                         |
 | `GB_CONFIG_DIR` | Config directory path (default: `~/.config/gb/`)          |
+| `GB_PROTOCOL`   | Protocol override when using `GB_TOKEN` with a plain host |
 | `NO_COLOR`      | Disable colored output                                    |
 
 ## Configuration file

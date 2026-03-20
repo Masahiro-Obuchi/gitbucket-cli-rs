@@ -101,14 +101,15 @@ pub async fn run(
 async fn list(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
-    _state: &str,
+    state: &str,
     json: bool,
 ) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = resolve_repo(cli_repo)?;
     let client = create_client(&hostname)?;
+    let state = crate::cli::common::normalize_list_state(state)?;
 
-    let issues = client.list_issues(&owner, &repo).await?;
+    let issues = client.list_issues(&owner, &repo, &state).await?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&issues)?);

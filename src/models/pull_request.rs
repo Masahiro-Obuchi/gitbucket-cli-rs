@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use super::repository::Repository;
 use super::user::User;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -10,6 +11,8 @@ pub struct PullRequestHead {
     pub ref_name: String,
     #[serde(default)]
     pub sha: Option<String>,
+    #[serde(default)]
+    pub repo: Option<Repository>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

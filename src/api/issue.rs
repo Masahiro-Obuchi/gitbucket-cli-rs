@@ -5,8 +5,9 @@ use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
 
 impl ApiClient {
     /// List issues for a repository
-    pub async fn list_issues(&self, owner: &str, repo: &str) -> Result<Vec<Issue>> {
-        self.get(&format!("/repos/{}/{}/issues", owner, repo)).await
+    pub async fn list_issues(&self, owner: &str, repo: &str, state: &str) -> Result<Vec<Issue>> {
+        self.get(&format!("/repos/{owner}/{repo}/issues?state={state}"))
+            .await
     }
 
     /// Get a single issue

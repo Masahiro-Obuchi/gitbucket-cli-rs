@@ -36,6 +36,17 @@ pub fn parse_owner_repo(s: &str) -> Result<(String, String)> {
     Ok((parts[0].to_string(), parts[1].to_string()))
 }
 
+/// Normalize the state filter for list commands.
+pub fn normalize_list_state(state: &str) -> Result<String> {
+    match state.to_ascii_lowercase().as_str() {
+        "open" | "closed" | "all" => Ok(state.to_ascii_lowercase()),
+        _ => Err(GbError::Other(format!(
+            "Invalid state '{}'. Expected one of: open, closed, all",
+            state
+        ))),
+    }
+}
+
 /// Detect owner/repo from the current git remote
 fn detect_repo_from_git() -> Result<(String, String)> {
     let output = Command::new("git")
@@ -112,6 +123,14 @@ mod tests {
         assert!(parse_owner_repo("noslash").is_err());
         assert!(parse_owner_repo("/repo").is_err());
         assert!(parse_owner_repo("owner/").is_err());
+    }
+
+    #[test]
+    fn test_normalize_list_state() {
+        assert_eq!(normalize_list_state("OPEN").unwrap(), "open");
+        assert_eq!(normalize_list_state("closed").unwrap(), "closed");
+        assert_eq!(normalize_list_state("all").unwrap(), "all");
+        assert!(normalize_list_state("draft").is_err());
     }
 
     #[test]

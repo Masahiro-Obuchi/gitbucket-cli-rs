@@ -85,6 +85,14 @@ pub enum PrCommand {
     },
 }
 
+fn pr_head_fetch_source(pr: &crate::models::pull_request::PullRequest) -> &str {
+    pr.head
+        .as_ref()
+        .and_then(|head| head.repo.as_ref())
+        .and_then(|repo| repo.clone_url.as_deref())
+        .unwrap_or("origin")
+}
+
 pub async fn run(
     args: PrArgs,
     cli_hostname: &Option<String>,
@@ -116,14 +124,15 @@ pub async fn run(
 async fn list(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
-    _state: &str,
+    state: &str,
     json: bool,
 ) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = resolve_repo(cli_repo)?;
     let client = create_client(&hostname)?;
+    let state = crate::cli::common::normalize_list_state(state)?;
 
-    let prs = client.list_pull_requests(&owner, &repo).await?;
+    let prs = client.list_pull_requests(&owner, &repo, &state).await?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&prs)?);
@@ -360,9 +369,11 @@ async fn checkout(hostname: &Option<String>, cli_repo: &Option<String>, number: 
         .map(|h| h.ref_name.as_str())
         .ok_or_else(|| crate::error::GbError::Other("PR has no head branch".into()))?;
 
+    let fetch_source = pr_head_fetch_source(&pr);
+
     // Fetch and checkout
     let fetch_status = std::process::Command::new("git")
-        .args(["fetch", "origin", branch])
+        .args(["fetch", fetch_source, branch])
         .status()?;
 
     if !fetch_status.success() {
@@ -370,7 +381,7 @@ async fn checkout(hostname: &Option<String>, cli_repo: &Option<String>, number: 
     }
 
     let checkout_status = std::process::Command::new("git")
-        .args(["checkout", branch])
+        .args(["checkout", "-B", branch, "FETCH_HEAD"])
         .status()?;
 
     if !checkout_status.success() {
@@ -398,13 +409,25 @@ async fn diff(hostname: &Option<String>, cli_repo: &Option<String>, number: u64)
         .map(|b| b.ref_name.as_str())
         .unwrap_or("main");
 
+    let fetch_source = pr_head_fetch_source(&pr);
+
     // Fetch both branches and show diff
-    let _ = std::process::Command::new("git")
-        .args(["fetch", "origin", head, base])
-        .status();
+    let base_fetch = std::process::Command::new("git")
+        .args(["fetch", "origin", base])
+        .status()?;
+    if !base_fetch.success() {
+        return Err(crate::error::GbError::Other("git fetch failed".into()));
+    }
+
+    let head_fetch = std::process::Command::new("git")
+        .args(["fetch", fetch_source, head])
+        .status()?;
+    if !head_fetch.success() {
+        return Err(crate::error::GbError::Other("git fetch failed".into()));
+    }
 
     let status = std::process::Command::new("git")
-        .args(["diff", &format!("origin/{}...origin/{}", base, head)])
+        .args(["diff", &format!("origin/{}...FETCH_HEAD", base)])
         .status()?;
 
     if !status.success() {

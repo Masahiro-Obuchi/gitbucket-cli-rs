@@ -5,8 +5,14 @@ use crate::models::pull_request::{CreatePullRequest, MergePullRequest, MergeResu
 
 impl ApiClient {
     /// List pull requests for a repository
-    pub async fn list_pull_requests(&self, owner: &str, repo: &str) -> Result<Vec<PullRequest>> {
-        self.get(&format!("/repos/{}/{}/pulls", owner, repo)).await
+    pub async fn list_pull_requests(
+        &self,
+        owner: &str,
+        repo: &str,
+        state: &str,
+    ) -> Result<Vec<PullRequest>> {
+        self.get(&format!("/repos/{owner}/{repo}/pulls?state={state}"))
+            .await
     }
 
     /// Get a single pull request
