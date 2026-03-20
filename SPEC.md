@@ -49,7 +49,7 @@ Available on all commands:
 
 | Option | Short | Env var | Description |
 | --- | --- | --- | --- |
-| `--hostname <HOST>` | `-H` | `GB_HOST` | GitBucket host (e.g. `gitbucket.example.com`) |
+| `--hostname <HOST>` | `-H` | `GB_HOST` | GitBucket host or base URL (e.g. `gitbucket.example.com` or `https://localhost/gitbucket`) |
 | `--repo <OWNER/REPO>` | `-R` | `GB_REPO` | Target repository |
 | `--help` | `-h` | — | Show help |
 | `--version` | `-V` | — | Show version |
@@ -68,7 +68,7 @@ gb auth login [OPTIONS]
 
 | Option | Short | Default | Description |
 | --- | --- | --- | --- |
-| `--hostname <HOST>` | `-H` | interactive prompt | Hostname |
+| `--hostname <HOST>` | `-H` | interactive prompt | Hostname or base URL |
 | `--token <TOKEN>` | `-t` | interactive prompt | Personal access token |
 | `--protocol <PROTOCOL>` | — | `https` | `https` or `http` |
 
@@ -84,6 +84,7 @@ Examples:
 gb auth login
 gb auth login -H gitbucket.example.com -t <TOKEN>
 gb auth login -H localhost:8080 --protocol http
+gb auth login -H https://localhost/gitbucket -t <TOKEN>
 ```
 
 #### `gb auth logout`
@@ -423,6 +424,7 @@ The repository is resolved from:
 - Personal Access Token (PAT) only.
 - Stored per host.
 - Verified during login via `GET /user`.
+- Path-prefixed GitBucket deployments are supported by passing a base URL such as `https://localhost/gitbucket`.
 
 ### 4.2 Configuration file
 
@@ -438,6 +440,15 @@ Example:
 
 ```toml
 [hosts."gitbucket.example.com"]
+token = "your-token"
+user = "alice"
+protocol = "https"
+```
+
+Path-prefixed instances can also be stored as keys:
+
+```toml
+[hosts."https://localhost/gitbucket"]
 token = "your-token"
 user = "alice"
 protocol = "https"
@@ -501,7 +512,7 @@ Available on view/browse flows using `--web` or `gb browse`.
 
 | Variable | Description |
 | --- | --- |
-| `GB_HOST` | Default hostname |
+| `GB_HOST` | Default hostname or base URL |
 | `GB_REPO` | Default repository (`OWNER/REPO`) |
 | `GB_TOKEN` | Access token override |
 | `GB_CONFIG_DIR` | Custom config directory |
@@ -575,7 +586,7 @@ src/
 | Crate | Purpose |
 | --- | --- |
 | `clap` | CLI parsing |
-| `reqwest` | HTTP client (`rustls-tls`) |
+| `reqwest` | HTTP client (`rustls-tls-native-roots`) |
 | `tokio` | Async runtime |
 | `serde` / `serde_json` | Serialization |
 | `toml` | Config encoding |

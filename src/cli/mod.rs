@@ -16,7 +16,7 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
 
-    /// GitBucket hostname
+    /// GitBucket host or base URL
     #[arg(long, short = 'H', global = true, env = "GB_HOST")]
     pub hostname: Option<String>,
 

@@ -32,12 +32,20 @@ cp target/release/gb ~/.local/bin/
 
 ```bash
 gb auth login
-# GitBucket hostname: gitbucket.example.com
+# GitBucket host or URL: gitbucket.example.com
 # Personal access token: ********
 # ✓ Logged in to gitbucket.example.com as alice
 ```
 
 Create a token in **GitBucket → Account Settings → Personal access tokens**.
+
+For subpath deployments, pass the base URL (or host plus path):
+
+```bash
+gb auth login -H https://localhost/gitbucket
+# or
+gb auth login -H localhost/gitbucket --protocol https
+```
 
 ### 2) Repository operations
 
@@ -103,7 +111,7 @@ gb pr diff 5
 ## Global options
 
 ```text
--H, --hostname <HOST>    GitBucket hostname
+-H, --hostname <HOST>    GitBucket host or base URL
 -R, --repo <OWNER/REPO>  Target repository
 -h, --help               Show help
 -V, --version            Show version
@@ -137,7 +145,7 @@ gb issue view 1 --web
 | Variable        | Description                                               |
 | --------------- | --------------------------------------------------------- |
 | `GB_TOKEN`      | Access token (takes precedence over file config for auth) |
-| `GB_HOST`       | Default host                                              |
+| `GB_HOST`       | Default GitBucket host or base URL                        |
 | `GB_REPO`       | Default repository (`OWNER/REPO`)                         |
 | `GB_CONFIG_DIR` | Config directory path (default: `~/.config/gb/`)          |
 | `NO_COLOR`      | Disable colored output                                    |
@@ -148,6 +156,15 @@ Credentials are stored in `~/.config/gb/config.toml` (or under `GB_CONFIG_DIR`).
 
 ```toml
 [hosts."gitbucket.example.com"]
+token = "your-personal-access-token"
+user = "alice"
+protocol = "https"
+```
+
+Subpath deployments can also be stored:
+
+```toml
+[hosts."https://localhost/gitbucket"]
 token = "your-personal-access-token"
 user = "alice"
 protocol = "https"

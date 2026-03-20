@@ -1,6 +1,7 @@
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
 use reqwest::{Client, Method, Response};
 use serde::de::DeserializeOwned;
+use url::Url;
 
 use crate::error::{GbError, Result};
 
@@ -22,11 +23,9 @@ impl ApiClient {
         );
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
 
-        let client = Client::builder()
-            .default_headers(headers)
-            .build()?;
+        let client = Client::builder().default_headers(headers).build()?;
 
-        let base_url = format!("{}://{}/api/v3", protocol, hostname);
+        let base_url = normalize_base_url(hostname, protocol)?;
 
         Ok(Self { client, base_url })
     }
@@ -127,5 +126,64 @@ impl ApiClient {
                 message,
             })
         }
+    }
+}
+
+fn normalize_base_url(hostname: &str, protocol: &str) -> Result<String> {
+    let input = hostname.trim().trim_end_matches('/');
+    let candidate = if input.starts_with("http://") || input.starts_with("https://") {
+        input.to_string()
+    } else {
+        format!("{}://{}", protocol, input)
+    };
+
+    let parsed = Url::parse(&candidate)?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| GbError::Config(format!("Invalid GitBucket host or URL: {}", hostname)))?;
+
+    let mut base = format!("{}://{}", parsed.scheme(), host);
+    if let Some(port) = parsed.port() {
+        base.push_str(&format!(":{}", port));
+    }
+
+    let path = parsed.path().trim_end_matches('/');
+    if !path.is_empty() && path != "/" {
+        base.push_str(path);
+    }
+
+    if base.ends_with("/api/v3") {
+        Ok(base)
+    } else {
+        Ok(format!("{}/api/v3", base))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_base_url;
+
+    #[test]
+    fn normalizes_plain_hostname() {
+        let base = normalize_base_url("gitbucket.example.com", "https").unwrap();
+        assert_eq!(base, "https://gitbucket.example.com/api/v3");
+    }
+
+    #[test]
+    fn normalizes_hostname_with_path() {
+        let base = normalize_base_url("localhost/gitbucket", "https").unwrap();
+        assert_eq!(base, "https://localhost/gitbucket/api/v3");
+    }
+
+    #[test]
+    fn normalizes_full_base_url() {
+        let base = normalize_base_url("https://localhost/gitbucket", "http").unwrap();
+        assert_eq!(base, "https://localhost/gitbucket/api/v3");
+    }
+
+    #[test]
+    fn keeps_existing_api_base_url() {
+        let base = normalize_base_url("https://localhost/gitbucket/api/v3", "https").unwrap();
+        assert_eq!(base, "https://localhost/gitbucket/api/v3");
     }
 }

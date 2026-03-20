@@ -4,15 +4,15 @@ use crate::api::client::ApiClient;
 use crate::config::auth::AuthConfig;
 use crate::error::{GbError, Result};
 
-/// Resolve hostname from CLI arg, env var, or config
+/// Resolve GitBucket host or URL from CLI arg, env var, or config
 pub fn resolve_hostname(cli_hostname: &Option<String>) -> Result<String> {
     if let Some(h) = cli_hostname {
         return Ok(h.clone());
     }
     let config = AuthConfig::load()?;
-    config
-        .default_hostname()
-        .ok_or_else(|| GbError::Auth("No hostname configured. Run `gb auth login` first.".into()))
+    config.default_hostname().ok_or_else(|| {
+        GbError::Auth("No GitBucket host or URL configured. Run `gb auth login` first.".into())
+    })
 }
 
 /// Resolve owner/repo from CLI arg, env var, or git remote
@@ -54,10 +54,7 @@ fn detect_repo_from_git() -> Result<(String, String)> {
 fn parse_git_url(url: &str) -> Result<(String, String)> {
     let path = if let Some(rest) = url.strip_prefix("git@") {
         // git@host:owner/repo.git
-        rest.split(':')
-            .nth(1)
-            .unwrap_or("")
-            .to_string()
+        rest.split(':').nth(1).unwrap_or("").to_string()
     } else if url.starts_with("http://") || url.starts_with("https://") {
         // https://host/owner/repo.git or https://host/git/owner/repo.git
         let parsed = url::Url::parse(url).map_err(|_| GbError::RepoNotFound)?;
@@ -107,8 +104,7 @@ mod tests {
 
     #[test]
     fn test_parse_git_url_ssh() {
-        let (owner, repo) =
-            parse_git_url("git@gitbucket.example.com:alice/my-repo.git").unwrap();
+        let (owner, repo) = parse_git_url("git@gitbucket.example.com:alice/my-repo.git").unwrap();
         assert_eq!(owner, "alice");
         assert_eq!(repo, "my-repo");
     }

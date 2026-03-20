@@ -2,7 +2,7 @@ use clap::{Args, Subcommand};
 use dialoguer::{Input, Password};
 
 use crate::config::auth::{AuthConfig, HostConfig};
-use crate::error::Result;
+use crate::error::{GbError, Result};
 
 #[derive(Args)]
 pub struct AuthArgs {
@@ -14,7 +14,7 @@ pub struct AuthArgs {
 pub enum AuthCommand {
     /// Authenticate with a GitBucket instance
     Login {
-        /// GitBucket hostname (e.g., gitbucket.example.com)
+        /// GitBucket host or URL (e.g., gitbucket.example.com or https://localhost/gitbucket)
         #[arg(long, short = 'H')]
         hostname: Option<String>,
         /// Personal access token
@@ -26,15 +26,15 @@ pub enum AuthCommand {
     },
     /// Remove authentication for a GitBucket instance
     Logout {
-        /// Hostname to logout from
+        /// Host or URL to logout from
         #[arg(long, short = 'H')]
         hostname: Option<String>,
     },
     /// Display the authentication status
     Status,
-    /// Print the auth token for a hostname
+    /// Print the auth token for a host or URL
     Token {
-        /// Hostname
+        /// Host or URL
         #[arg(long, short = 'H')]
         hostname: Option<String>,
     },
@@ -57,15 +57,13 @@ pub async fn run(args: AuthArgs, cli_hostname: &Option<String>) -> Result<()> {
     }
 }
 
-async fn login(
-    hostname: Option<&String>,
-    token: Option<String>,
-    protocol: String,
-) -> Result<()> {
+async fn login(hostname: Option<&String>, token: Option<String>, protocol: String) -> Result<()> {
     let hostname = match hostname {
         Some(h) => h.clone(),
         None => Input::new()
-            .with_prompt("GitBucket hostname (e.g., gitbucket.example.com)")
+            .with_prompt(
+                "GitBucket host or URL (e.g., gitbucket.example.com or https://localhost/gitbucket)",
+            )
             .interact_text()?,
     };
 
@@ -78,8 +76,20 @@ async fn login(
 
     // Verify the token by making a test API call
     let client = crate::api::client::ApiClient::new(&hostname, &token, &protocol)?;
-    let user: crate::models::user::User = client.get("/user").await.map_err(|_| {
-        crate::error::GbError::Auth("Failed to authenticate. Check your token and hostname.".into())
+    let user: crate::models::user::User = client.get("/user").await.map_err(|err| match err {
+        GbError::Api { status: 404, .. } => GbError::Auth(format!(
+            "Failed to authenticate against {} (HTTP 404). The configured host/URL may be missing a GitBucket base path such as `/gitbucket`.",
+            hostname
+        )),
+        GbError::Api { status: 401, .. } => GbError::Auth(format!(
+            "Failed to authenticate against {} (HTTP 401). The URL is reachable, but the token was rejected.",
+            hostname
+        )),
+        GbError::Http(source) => GbError::Auth(format!(
+            "Failed to connect to {}: {}. Check the protocol, certificate, and GitBucket base URL/path.",
+            hostname, source
+        )),
+        other => other,
     })?;
 
     let mut config = AuthConfig::load()?;
@@ -135,9 +145,9 @@ async fn print_token(hostname: Option<&String>) -> Result<()> {
     let config = AuthConfig::load()?;
     let hostname = match hostname {
         Some(h) => h.clone(),
-        None => config.default_hostname().ok_or_else(|| {
-            crate::error::GbError::Auth("No hosts configured.".into())
-        })?,
+        None => config
+            .default_hostname()
+            .ok_or_else(|| crate::error::GbError::Auth("No hosts configured.".into()))?,
     };
 
     let host = config.get_host(&hostname)?;
