@@ -65,8 +65,28 @@ fn parse_git_url(url: &str) -> Result<(String, String)> {
         return Err(GbError::RepoNotFound);
     };
 
-    let path = path.trim_end_matches(".git");
-    parse_owner_repo(path)
+    parse_repo_path(&path)
+}
+
+fn parse_repo_path(path: &str) -> Result<(String, String)> {
+    let segments: Vec<&str> = path
+        .trim_matches('/')
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+
+    if segments.len() < 2 {
+        return Err(GbError::RepoNotFound);
+    }
+
+    let owner = segments[segments.len() - 2];
+    let repo = segments[segments.len() - 1].trim_end_matches(".git");
+
+    if owner.is_empty() || repo.is_empty() {
+        return Err(GbError::RepoNotFound);
+    }
+
+    Ok((owner.to_string(), repo.to_string()))
 }
 
 /// Create an API client from config
@@ -113,6 +133,21 @@ mod tests {
     fn test_parse_git_url_with_git_prefix() {
         let (owner, repo) =
             parse_git_url("https://gitbucket.example.com/git/alice/my-repo.git").unwrap();
+        assert_eq!(owner, "alice");
+        assert_eq!(repo, "my-repo");
+    }
+
+    #[test]
+    fn test_parse_git_url_with_subpath() {
+        let (owner, repo) = parse_git_url("https://localhost/gitbucket/alice/my-repo.git").unwrap();
+        assert_eq!(owner, "alice");
+        assert_eq!(repo, "my-repo");
+    }
+
+    #[test]
+    fn test_parse_git_url_with_subpath_and_git_prefix() {
+        let (owner, repo) =
+            parse_git_url("https://localhost/gitbucket/git/alice/my-repo.git").unwrap();
         assert_eq!(owner, "alice");
         assert_eq!(repo, "my-repo");
     }

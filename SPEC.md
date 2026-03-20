@@ -475,6 +475,8 @@ When `--repo/-R` is omitted, `gb` tries to parse `git remote get-url origin`.
 
 - HTTPS: `https://host/owner/repo.git`
 - GitBucket HTTPS with `/git/`: `https://host/git/owner/repo.git`
+- Path-prefixed HTTPS: `https://host/gitbucket/owner/repo.git`
+- Path-prefixed GitBucket HTTPS with `/git/`: `https://host/gitbucket/git/owner/repo.git`
 - SSH: `git@host:owner/repo.git`
 
 ### 5.2 Resolution order

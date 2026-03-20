@@ -130,6 +130,8 @@ Supported remote URL formats include:
 
 - `https://gitbucket.example.com/alice/my-app.git`
 - `https://gitbucket.example.com/git/alice/my-app.git`
+- `https://localhost/gitbucket/alice/my-app.git`
+- `https://localhost/gitbucket/git/alice/my-app.git`
 - `git@gitbucket.example.com:alice/my-app.git`
 
 ## Output formats

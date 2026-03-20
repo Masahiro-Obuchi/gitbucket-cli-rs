@@ -161,7 +161,7 @@ fn normalize_base_url(hostname: &str, protocol: &str) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_base_url;
+    use super::{normalize_base_url, ApiClient};
 
     #[test]
     fn normalizes_plain_hostname() {
@@ -185,5 +185,14 @@ mod tests {
     fn keeps_existing_api_base_url() {
         let base = normalize_base_url("https://localhost/gitbucket/api/v3", "https").unwrap();
         assert_eq!(base, "https://localhost/gitbucket/api/v3");
+    }
+
+    #[test]
+    fn builds_web_url_from_subpath_base() {
+        let client = ApiClient::new("https://localhost/gitbucket", "dummy-token", "https").unwrap();
+        assert_eq!(
+            client.web_url("/alice/my-repo"),
+            "https://localhost/gitbucket/alice/my-repo"
+        );
     }
 }

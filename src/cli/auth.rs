@@ -76,21 +76,10 @@ async fn login(hostname: Option<&String>, token: Option<String>, protocol: Strin
 
     // Verify the token by making a test API call
     let client = crate::api::client::ApiClient::new(&hostname, &token, &protocol)?;
-    let user: crate::models::user::User = client.get("/user").await.map_err(|err| match err {
-        GbError::Api { status: 404, .. } => GbError::Auth(format!(
-            "Failed to authenticate against {} (HTTP 404). The configured host/URL may be missing a GitBucket base path such as `/gitbucket`.",
-            hostname
-        )),
-        GbError::Api { status: 401, .. } => GbError::Auth(format!(
-            "Failed to authenticate against {} (HTTP 401). The URL is reachable, but the token was rejected.",
-            hostname
-        )),
-        GbError::Http(source) => GbError::Auth(format!(
-            "Failed to connect to {}: {}. Check the protocol, certificate, and GitBucket base URL/path.",
-            hostname, source
-        )),
-        other => other,
-    })?;
+    let user: crate::models::user::User = client
+        .get("/user")
+        .await
+        .map_err(|err| map_login_error(&hostname, err))?;
 
     let mut config = AuthConfig::load()?;
     config.set_host(
@@ -153,4 +142,76 @@ async fn print_token(hostname: Option<&String>) -> Result<()> {
     let host = config.get_host(&hostname)?;
     println!("{}", host.token);
     Ok(())
+}
+
+fn map_login_error(hostname: &str, err: GbError) -> GbError {
+    match err {
+        GbError::Api { status: 404, .. } => GbError::Auth(format!(
+            "Failed to authenticate against {} (HTTP 404). The configured host/URL may be missing a GitBucket base path such as `/gitbucket`.",
+            hostname
+        )),
+        GbError::Api { status: 401, .. } => GbError::Auth(format!(
+            "Failed to authenticate against {} (HTTP 401). The URL is reachable, but the token was rejected.",
+            hostname
+        )),
+        GbError::Http(source) => GbError::Auth(format!(
+            "Failed to connect to {}: {}. Check the protocol, certificate, and GitBucket base URL/path.",
+            hostname, source
+        )),
+        other => other,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::map_login_error;
+    use crate::error::GbError;
+
+    #[test]
+    fn maps_404_to_base_path_hint() {
+        let err = map_login_error(
+            "localhost",
+            GbError::Api {
+                status: 404,
+                message: String::new(),
+            },
+        );
+
+        match err {
+            GbError::Auth(message) => {
+                assert!(message.contains("HTTP 404"));
+                assert!(message.contains("/gitbucket"));
+            }
+            other => panic!("expected auth error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn maps_401_to_token_hint() {
+        let err = map_login_error(
+            "https://localhost/gitbucket",
+            GbError::Api {
+                status: 401,
+                message: String::new(),
+            },
+        );
+
+        match err {
+            GbError::Auth(message) => {
+                assert!(message.contains("HTTP 401"));
+                assert!(message.contains("token was rejected"));
+            }
+            other => panic!("expected auth error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn preserves_unhandled_errors() {
+        let err = map_login_error("localhost", GbError::Other("boom".into()));
+
+        match err {
+            GbError::Other(message) => assert_eq!(message, "boom"),
+            other => panic!("expected original error, got {:?}", other),
+        }
+    }
 }
