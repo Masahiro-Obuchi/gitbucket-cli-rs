@@ -109,9 +109,7 @@ pub async fn run(
         }
         PrCommand::Checkout { number } => checkout(cli_hostname, cli_repo, number).await,
         PrCommand::Diff { number } => diff(cli_hostname, cli_repo, number).await,
-        PrCommand::Comment { number, body } => {
-            comment(cli_hostname, cli_repo, number, body).await
-        }
+        PrCommand::Comment { number, body } => comment(cli_hostname, cli_repo, number, body).await,
     }
 }
 
@@ -140,11 +138,7 @@ async fn list(
             } else {
                 &pr.state
             };
-            let branch = pr
-                .head
-                .as_ref()
-                .map(|h| h.ref_name.as_str())
-                .unwrap_or("");
+            let branch = pr.head.as_ref().map(|h| h.ref_name.as_str()).unwrap_or("");
             vec![
                 format!("#{}", pr.number),
                 format_state(state),
@@ -189,21 +183,13 @@ async fn view(
         &pr.state
     };
 
-    println!(
-        "{} {}",
-        pr.title.bold(),
-        format!("#{}", pr.number).dimmed()
-    );
+    println!("{} {}", pr.title.bold(), format!("#{}", pr.number).dimmed());
     println!("{}", format_state(state));
     println!();
 
     if let Some(head) = &pr.head {
         if let Some(base) = &pr.base {
-            println!(
-                "{} ← {}",
-                base.ref_name.cyan(),
-                head.ref_name.green()
-            );
+            println!("{} ← {}", base.ref_name.cyan(), head.ref_name.green());
         }
     }
 
@@ -266,9 +252,7 @@ async fn create(
                 Ok(o) if o.status.success() => {
                     String::from_utf8_lossy(&o.stdout).trim().to_string()
                 }
-                _ => Input::new()
-                    .with_prompt("Head branch")
-                    .interact_text()?,
+                _ => Input::new().with_prompt("Head branch").interact_text()?,
             }
         }
     };
@@ -293,7 +277,11 @@ async fn create(
                 .with_prompt("Body (optional)")
                 .allow_empty(true)
                 .interact_text()?;
-            if b.is_empty() { None } else { Some(b) }
+            if b.is_empty() {
+                None
+            } else {
+                Some(b)
+            }
         }
     };
 
@@ -314,11 +302,7 @@ async fn create(
     Ok(())
 }
 
-async fn close(
-    hostname: &Option<String>,
-    cli_repo: &Option<String>,
-    number: u64,
-) -> Result<()> {
+async fn close(hostname: &Option<String>, cli_repo: &Option<String>, number: u64) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = resolve_repo(cli_repo)?;
     let client = create_client(&hostname)?;
@@ -364,11 +348,7 @@ async fn merge(
     Ok(())
 }
 
-async fn checkout(
-    hostname: &Option<String>,
-    cli_repo: &Option<String>,
-    number: u64,
-) -> Result<()> {
+async fn checkout(hostname: &Option<String>, cli_repo: &Option<String>, number: u64) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = resolve_repo(cli_repo)?;
     let client = create_client(&hostname)?;
@@ -401,11 +381,7 @@ async fn checkout(
     Ok(())
 }
 
-async fn diff(
-    hostname: &Option<String>,
-    cli_repo: &Option<String>,
-    number: u64,
-) -> Result<()> {
+async fn diff(hostname: &Option<String>, cli_repo: &Option<String>, number: u64) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = resolve_repo(cli_repo)?;
     let client = create_client(&hostname)?;
@@ -428,10 +404,7 @@ async fn diff(
         .status();
 
     let status = std::process::Command::new("git")
-        .args([
-            "diff",
-            &format!("origin/{}...origin/{}", base, head),
-        ])
+        .args(["diff", &format!("origin/{}...origin/{}", base, head)])
         .status()?;
 
     if !status.success() {
@@ -453,9 +426,7 @@ async fn comment(
 
     let body_text = match body {
         Some(b) => b,
-        None => Input::new()
-            .with_prompt("Comment body")
-            .interact_text()?,
+        None => Input::new().with_prompt("Comment body").interact_text()?,
     };
 
     let comment_body = CreateComment { body: body_text };

@@ -79,7 +79,12 @@ pub async fn run(
     match args.command {
         RepoCommand::List { owner, json } => list(cli_hostname, owner, json).await,
         RepoCommand::View { repo, web } => {
-            view(cli_hostname, repo.as_ref().or(cli_repo.as_ref()).cloned(), web).await
+            view(
+                cli_hostname,
+                repo.as_ref().or(cli_repo.as_ref()).cloned(),
+                web,
+            )
+            .await
         }
         RepoCommand::Create {
             name,
@@ -127,16 +132,8 @@ async fn list(hostname: &Option<String>, owner: Option<String>, json: bool) -> R
             } else {
                 "public".green().to_string()
             };
-            let desc = r
-                .description
-                .as_deref()
-                .unwrap_or("")
-                .to_string();
-            vec![
-                r.full_name.clone(),
-                truncate(&desc, 50),
-                visibility,
-            ]
+            let desc = r.description.as_deref().unwrap_or("").to_string();
+            vec![r.full_name.clone(), truncate(&desc, 50), visibility]
         })
         .collect();
 
@@ -154,7 +151,8 @@ async fn view(hostname: &Option<String>, repo_arg: Option<String>, web: bool) ->
 
     if web {
         let url = client.web_url(&format!("/{}/{}", owner, repo));
-        open::that(&url).map_err(|e| crate::error::GbError::Other(format!("Failed to open browser: {}", e)))?;
+        open::that(&url)
+            .map_err(|e| crate::error::GbError::Other(format!("Failed to open browser: {}", e)))?;
         println!("Opening {} in your browser.", url);
         return Ok(());
     }
@@ -173,8 +171,16 @@ async fn view(hostname: &Option<String>, repo_arg: Option<String>, web: bool) ->
     println!(
         "{}  {}  {}",
         format!("Visibility: {}", visibility).dimmed(),
-        format!("Default branch: {}", r.default_branch.as_deref().unwrap_or("main")).dimmed(),
-        if r.fork { "(fork)".dimmed().to_string() } else { String::new() },
+        format!(
+            "Default branch: {}",
+            r.default_branch.as_deref().unwrap_or("main")
+        )
+        .dimmed(),
+        if r.fork {
+            "(fork)".dimmed().to_string()
+        } else {
+            String::new()
+        },
     );
 
     if let Some(url) = &r.html_url {
@@ -258,11 +264,7 @@ async fn clone(hostname: &Option<String>, repo: &str, directory: Option<&str>) -
     Ok(())
 }
 
-async fn delete(
-    hostname: &Option<String>,
-    repo_arg: Option<String>,
-    yes: bool,
-) -> Result<()> {
+async fn delete(hostname: &Option<String>, repo_arg: Option<String>, yes: bool) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = match repo_arg {
         Some(r) => crate::cli::common::parse_owner_repo(&r)?,

@@ -9,9 +9,8 @@ pub fn config_dir() -> Result<PathBuf> {
     if let Ok(dir) = std::env::var("GB_CONFIG_DIR") {
         return Ok(PathBuf::from(dir));
     }
-    let config = dirs::config_dir().ok_or_else(|| {
-        GbError::Config("Could not determine config directory".to_string())
-    })?;
+    let config = dirs::config_dir()
+        .ok_or_else(|| GbError::Config("Could not determine config directory".to_string()))?;
     Ok(config.join("gb"))
 }
 

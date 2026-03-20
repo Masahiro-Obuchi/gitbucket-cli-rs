@@ -36,4 +36,3 @@ async fn browse(hostname: &Option<String>, cli_repo: &Option<String>) -> error::
     println!("Opening {} in your browser.", url);
     Ok(())
 }
-

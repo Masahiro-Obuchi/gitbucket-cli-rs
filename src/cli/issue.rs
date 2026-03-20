@@ -128,10 +128,7 @@ async fn list(
                 format!("#{}", i.number),
                 format_state(&i.state),
                 truncate(&i.title, 60),
-                i.user
-                    .as_ref()
-                    .map(|u| u.login.clone())
-                    .unwrap_or_default(),
+                i.user.as_ref().map(|u| u.login.clone()).unwrap_or_default(),
                 labels,
             ]
         })
@@ -235,7 +232,11 @@ async fn create(
                 .with_prompt("Body (optional)")
                 .allow_empty(true)
                 .interact_text()?;
-            if b.is_empty() { None } else { Some(b) }
+            if b.is_empty() {
+                None
+            } else {
+                Some(b)
+            }
         }
     };
 
@@ -256,22 +257,14 @@ async fn create(
     };
 
     let issue = client.create_issue(&owner, &repo, &create_body).await?;
-    println!(
-        "✓ Created issue #{}: {}",
-        issue.number,
-        issue.title
-    );
+    println!("✓ Created issue #{}: {}", issue.number, issue.title);
     if let Some(url) = &issue.html_url {
         println!("{}", url);
     }
     Ok(())
 }
 
-async fn close(
-    hostname: &Option<String>,
-    cli_repo: &Option<String>,
-    number: u64,
-) -> Result<()> {
+async fn close(hostname: &Option<String>, cli_repo: &Option<String>, number: u64) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = resolve_repo(cli_repo)?;
     let client = create_client(&hostname)?;
@@ -286,11 +279,7 @@ async fn close(
     Ok(())
 }
 
-async fn reopen(
-    hostname: &Option<String>,
-    cli_repo: &Option<String>,
-    number: u64,
-) -> Result<()> {
+async fn reopen(hostname: &Option<String>, cli_repo: &Option<String>, number: u64) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = resolve_repo(cli_repo)?;
     let client = create_client(&hostname)?;
@@ -317,9 +306,7 @@ async fn comment(
 
     let body_text = match body {
         Some(b) => b,
-        None => Input::new()
-            .with_prompt("Comment body")
-            .interact_text()?,
+        None => Input::new().with_prompt("Comment body").interact_text()?,
     };
 
     let comment_body = CreateComment { body: body_text };

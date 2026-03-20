@@ -5,11 +5,7 @@ use crate::models::pull_request::{CreatePullRequest, MergePullRequest, MergeResu
 
 impl ApiClient {
     /// List pull requests for a repository
-    pub async fn list_pull_requests(
-        &self,
-        owner: &str,
-        repo: &str,
-    ) -> Result<Vec<PullRequest>> {
+    pub async fn list_pull_requests(&self, owner: &str, repo: &str) -> Result<Vec<PullRequest>> {
         self.get(&format!("/repos/{}/{}/pulls", owner, repo)).await
     }
 

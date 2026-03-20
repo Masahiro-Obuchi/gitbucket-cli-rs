@@ -24,11 +24,7 @@ impl ApiClient {
     }
 
     /// Create a repository under an organization
-    pub async fn create_org_repo(
-        &self,
-        org: &str,
-        body: &CreateRepository,
-    ) -> Result<Repository> {
+    pub async fn create_org_repo(&self, org: &str, body: &CreateRepository) -> Result<Repository> {
         self.post(&format!("/orgs/{}/repos", org), body).await
     }
 

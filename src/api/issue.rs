@@ -16,12 +16,7 @@ impl ApiClient {
     }
 
     /// Create an issue
-    pub async fn create_issue(
-        &self,
-        owner: &str,
-        repo: &str,
-        body: &CreateIssue,
-    ) -> Result<Issue> {
+    pub async fn create_issue(&self, owner: &str, repo: &str, body: &CreateIssue) -> Result<Issue> {
         self.post(&format!("/repos/{}/{}/issues", owner, repo), body)
             .await
     }
