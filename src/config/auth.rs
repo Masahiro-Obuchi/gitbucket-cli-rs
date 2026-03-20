@@ -33,6 +33,31 @@ fn protocol_from_hostname(hostname: &str) -> Option<String> {
         .map(|(protocol, _)| protocol.to_string())
 }
 
+fn canonical_hostname(hostname: &str) -> Option<String> {
+    let trimmed = hostname.trim().trim_end_matches('/');
+    let without_api = trimmed.strip_suffix("/api/v3").unwrap_or(trimmed);
+
+    if without_api.starts_with("http://") || without_api.starts_with("https://") {
+        let parsed = url::Url::parse(without_api).ok()?;
+        let host = parsed.host_str()?;
+
+        let mut canonical = host.to_string();
+        if let Some(port) = parsed.port() {
+            canonical.push(':');
+            canonical.push_str(&port.to_string());
+        }
+
+        let path = parsed.path().trim_end_matches('/');
+        if !path.is_empty() && path != "/" {
+            canonical.push_str(path);
+        }
+
+        Some(canonical)
+    } else {
+        Some(without_api.to_string())
+    }
+}
+
 impl AuthConfig {
     /// Load auth config from file
     pub fn load() -> Result<Self> {
@@ -55,6 +80,8 @@ impl AuthConfig {
 
     /// Get host config, checking environment variable first
     pub fn get_host(&self, hostname: &str) -> Result<HostConfig> {
+        let stored_host = self.find_host(hostname);
+
         // Check environment variable first
         if let Ok(token) = std::env::var("GB_TOKEN") {
             return Ok(HostConfig {
@@ -62,20 +89,29 @@ impl AuthConfig {
                 user: String::new(),
                 protocol: protocol_from_hostname(hostname)
                     .or_else(|| std::env::var("GB_PROTOCOL").ok())
+                    .or_else(|| stored_host.map(|host| host.protocol.clone()))
                     .unwrap_or_else(default_protocol),
             });
         }
 
-        self.hosts
-            .get(hostname)
-            .cloned()
-            .ok_or(GbError::NotAuthenticated)
+        stored_host.cloned().ok_or(GbError::NotAuthenticated)
     }
 
     /// Add or update host config
     pub fn set_host(&mut self, hostname: String, config: HostConfig) {
         self.default_host = Some(hostname.clone());
         self.hosts.insert(hostname, config);
+    }
+
+    fn find_host(&self, hostname: &str) -> Option<&HostConfig> {
+        if let Some(host) = self.hosts.get(hostname) {
+            return Some(host);
+        }
+
+        let canonical = canonical_hostname(hostname)?;
+        self.hosts.iter().find_map(|(key, host)| {
+            (canonical_hostname(key).as_deref() == Some(canonical.as_str())).then_some(host)
+        })
     }
 
     /// Remove host config
@@ -135,7 +171,9 @@ fn write_config_file(path: &Path, content: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{protocol_from_hostname, write_config_file, AuthConfig, HostConfig};
+    use super::{
+        canonical_hostname, protocol_from_hostname, write_config_file, AuthConfig, HostConfig,
+    };
     use std::collections::HashMap;
     use std::fs;
     use std::path::PathBuf;
@@ -201,6 +239,34 @@ mod tests {
             Some("https")
         );
         assert_eq!(protocol_from_hostname("gitbucket.example.com"), None);
+    }
+
+    #[test]
+    fn canonical_hostname_ignores_scheme_and_api_suffix() {
+        assert_eq!(
+            canonical_hostname("https://gitbucket.example.com/gitbucket/api/v3").as_deref(),
+            Some("gitbucket.example.com/gitbucket")
+        );
+        assert_eq!(
+            canonical_hostname("gitbucket.example.com/gitbucket").as_deref(),
+            Some("gitbucket.example.com/gitbucket")
+        );
+    }
+
+    #[test]
+    fn get_host_matches_equivalent_hostnames() {
+        let mut config = AuthConfig::default();
+        config.set_host(
+            "https://gitbucket.example.com/gitbucket".into(),
+            HostConfig {
+                token: "token".into(),
+                user: "alice".into(),
+                protocol: "http".into(),
+            },
+        );
+
+        let host = config.get_host("gitbucket.example.com/gitbucket").unwrap();
+        assert_eq!(host.protocol, "http");
     }
 
     #[test]

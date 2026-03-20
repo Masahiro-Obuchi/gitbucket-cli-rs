@@ -15,7 +15,7 @@ Last updated: 2026-03-20
 5. Medium - `gb issue list --state` and `gb pr list --state` accept a filter that is never applied.
    Status: fixed
 6. Medium - `GB_TOKEN` forces `https` for plain hostnames, which breaks HTTP-only local GitBucket instances.
-   Status: partially fixed via protocol inference from URL schemes and `GB_PROTOCOL` support for plain hosts
+   Status: fixed
 
 ## Verification
 
