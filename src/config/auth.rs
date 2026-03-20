@@ -177,6 +177,7 @@ mod tests {
     use std::collections::HashMap;
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn host(user: &str) -> HostConfig {
@@ -195,8 +196,23 @@ mod tests {
         std::env::temp_dir().join(format!("gb-tests-{name}-{}-{nanos}", std::process::id()))
     }
 
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn clear_auth_env() {
+        unsafe {
+            std::env::remove_var("GB_HOST");
+            std::env::remove_var("GB_TOKEN");
+            std::env::remove_var("GB_PROTOCOL");
+        }
+    }
+
     #[test]
     fn set_host_updates_default_host() {
+        let _guard = env_lock().lock().unwrap();
+        clear_auth_env();
         let mut config = AuthConfig::default();
 
         config.set_host("gitbucket.example.com".into(), host("alice"));
@@ -209,6 +225,8 @@ mod tests {
 
     #[test]
     fn default_hostname_prefers_explicit_default() {
+        let _guard = env_lock().lock().unwrap();
+        clear_auth_env();
         let mut config = AuthConfig {
             hosts: HashMap::new(),
             default_host: Some("b.example.com".into()),
@@ -221,11 +239,34 @@ mod tests {
 
     #[test]
     fn default_hostname_falls_back_to_sorted_hostnames() {
+        let _guard = env_lock().lock().unwrap();
+        clear_auth_env();
         let mut config = AuthConfig::default();
         config.hosts.insert("z.example.com".into(), host("zoe"));
         config.hosts.insert("a.example.com".into(), host("alice"));
 
         assert_eq!(config.default_hostname().as_deref(), Some("a.example.com"));
+    }
+
+    #[test]
+    fn default_hostname_prefers_environment_variable() {
+        let _guard = env_lock().lock().unwrap();
+        clear_auth_env();
+        let mut config = AuthConfig::default();
+        config.hosts.insert("a.example.com".into(), host("alice"));
+
+        unsafe {
+            std::env::set_var("GB_HOST", "env.example.com");
+        }
+
+        assert_eq!(
+            config.default_hostname().as_deref(),
+            Some("env.example.com")
+        );
+
+        unsafe {
+            std::env::remove_var("GB_HOST");
+        }
     }
 
     #[test]
@@ -255,6 +296,8 @@ mod tests {
 
     #[test]
     fn get_host_matches_equivalent_hostnames() {
+        let _guard = env_lock().lock().unwrap();
+        clear_auth_env();
         let mut config = AuthConfig::default();
         config.set_host(
             "https://gitbucket.example.com/gitbucket".into(),
@@ -270,7 +313,31 @@ mod tests {
     }
 
     #[test]
+    fn get_host_prefers_environment_token() {
+        let _guard = env_lock().lock().unwrap();
+        clear_auth_env();
+        let config = AuthConfig::default();
+
+        unsafe {
+            std::env::set_var("GB_TOKEN", "env-token");
+        }
+
+        let host = config
+            .get_host("https://gitbucket.example.com/gitbucket")
+            .unwrap();
+        assert_eq!(host.token, "env-token");
+        assert_eq!(host.protocol, "https");
+        assert_eq!(host.user, "");
+
+        unsafe {
+            std::env::remove_var("GB_TOKEN");
+        }
+    }
+
+    #[test]
     fn remove_host_promotes_next_sorted_host() {
+        let _guard = env_lock().lock().unwrap();
+        clear_auth_env();
         let mut config = AuthConfig {
             hosts: HashMap::new(),
             default_host: Some("b.example.com".into()),

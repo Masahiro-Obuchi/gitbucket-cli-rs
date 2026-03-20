@@ -202,4 +202,11 @@ mod tests {
             "https://gitbucket.example.com/gitbucket/alice/my-repo"
         );
     }
+
+    #[test]
+    fn preserves_port_and_trailing_slash_in_base_url() {
+        let base =
+            normalize_base_url("https://gitbucket.example.com:8443/gitbucket/", "http").unwrap();
+        assert_eq!(base, "https://gitbucket.example.com:8443/gitbucket/api/v3");
+    }
 }

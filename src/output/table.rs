@@ -63,3 +63,19 @@ fn strip_ansi(s: &str) -> String {
     }
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::strip_ansi;
+
+    #[test]
+    fn strip_ansi_removes_color_codes() {
+        let colored = "\u{1b}[31mERROR\u{1b}[0m";
+        assert_eq!(strip_ansi(colored), "ERROR");
+    }
+
+    #[test]
+    fn strip_ansi_keeps_plain_text() {
+        assert_eq!(strip_ansi("plain text"), "plain text");
+    }
+}
