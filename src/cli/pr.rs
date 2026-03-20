@@ -46,7 +46,7 @@ pub enum PrCommand {
         #[arg(long, short)]
         body: Option<String>,
         /// Head branch
-        #[arg(long, short = 'H')]
+        #[arg(long)]
         head: Option<String>,
         /// Base branch
         #[arg(long, short = 'B')]

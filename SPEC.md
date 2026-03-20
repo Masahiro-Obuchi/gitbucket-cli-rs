@@ -336,7 +336,7 @@ gb pr create [OPTIONS]
 | --- | --- | --- |
 | `--title <TEXT>` | `-t` | PR title (prompted when omitted) |
 | `--body <TEXT>` | `-b` | PR body |
-| `--head <BRANCH>` | `-H` | Head branch (uses current git branch when omitted) |
+| `--head <BRANCH>` | — | Head branch (uses current git branch when omitted) |
 | `--base <BRANCH>` | `-B` | Base branch (prompts, default `main`) |
 
 #### `gb pr close`

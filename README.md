@@ -9,7 +9,7 @@ $ gb issue list
 #1   OPEN    Fix login page bug             alice    bug
 #3   OPEN    Add dark mode support          bob      enhancement
 
-$ gb pr create -t "Add feature X" -H feature/x -B main
+$ gb pr create -t "Add feature X" --head feature/x -B main
 ✓ Created pull request #5: Add feature X
 ```
 
