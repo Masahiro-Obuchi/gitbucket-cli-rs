@@ -49,7 +49,7 @@ Available on all commands:
 
 | Option | Short | Env var | Description |
 | --- | --- | --- | --- |
-| `--hostname <HOST>` | `-H` | `GB_HOST` | GitBucket host or base URL (e.g. `gitbucket.example.com` or `https://localhost/gitbucket`) |
+| `--hostname <HOST>` | `-H` | `GB_HOST` | GitBucket host or base URL (e.g. `gitbucket.example.com` or `https://gitbucket.example.com/gitbucket`) |
 | `--repo <OWNER/REPO>` | `-R` | `GB_REPO` | Target repository |
 | `--help` | `-h` | — | Show help |
 | `--version` | `-V` | — | Show version |
@@ -84,7 +84,7 @@ Examples:
 gb auth login
 gb auth login -H gitbucket.example.com -t <TOKEN>
 gb auth login -H localhost:8080 --protocol http
-gb auth login -H https://localhost/gitbucket -t <TOKEN>
+gb auth login -H https://gitbucket.example.com/gitbucket -t <TOKEN>
 ```
 
 #### `gb auth logout`
@@ -424,7 +424,7 @@ The repository is resolved from:
 - Personal Access Token (PAT) only.
 - Stored per host.
 - Verified during login via `GET /user`.
-- Path-prefixed GitBucket deployments are supported by passing a base URL such as `https://localhost/gitbucket`.
+- Path-prefixed GitBucket deployments are supported by passing a base URL such as `https://gitbucket.example.com/gitbucket`.
 
 ### 4.2 Configuration file
 
@@ -448,7 +448,7 @@ protocol = "https"
 Path-prefixed instances can also be stored as keys:
 
 ```toml
-[hosts."https://localhost/gitbucket"]
+[hosts."https://gitbucket.example.com/gitbucket"]
 token = "your-token"
 user = "alice"
 protocol = "https"
@@ -475,8 +475,8 @@ When `--repo/-R` is omitted, `gb` tries to parse `git remote get-url origin`.
 
 - HTTPS: `https://host/owner/repo.git`
 - GitBucket HTTPS with `/git/`: `https://host/git/owner/repo.git`
-- Path-prefixed HTTPS: `https://host/gitbucket/owner/repo.git`
-- Path-prefixed GitBucket HTTPS with `/git/`: `https://host/gitbucket/git/owner/repo.git`
+- Path-prefixed HTTPS: `https://gitbucket.example.com/gitbucket/owner/repo.git`
+- Path-prefixed GitBucket HTTPS with `/git/`: `https://gitbucket.example.com/gitbucket/git/owner/repo.git`
 - SSH: `git@host:owner/repo.git`
 
 ### 5.2 Resolution order

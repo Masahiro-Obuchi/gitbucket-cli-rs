@@ -171,28 +171,34 @@ mod tests {
 
     #[test]
     fn normalizes_hostname_with_path() {
-        let base = normalize_base_url("localhost/gitbucket", "https").unwrap();
-        assert_eq!(base, "https://localhost/gitbucket/api/v3");
+        let base = normalize_base_url("gitbucket.example.com/gitbucket", "https").unwrap();
+        assert_eq!(base, "https://gitbucket.example.com/gitbucket/api/v3");
     }
 
     #[test]
     fn normalizes_full_base_url() {
-        let base = normalize_base_url("https://localhost/gitbucket", "http").unwrap();
-        assert_eq!(base, "https://localhost/gitbucket/api/v3");
+        let base = normalize_base_url("https://gitbucket.example.com/gitbucket", "http").unwrap();
+        assert_eq!(base, "https://gitbucket.example.com/gitbucket/api/v3");
     }
 
     #[test]
     fn keeps_existing_api_base_url() {
-        let base = normalize_base_url("https://localhost/gitbucket/api/v3", "https").unwrap();
-        assert_eq!(base, "https://localhost/gitbucket/api/v3");
+        let base =
+            normalize_base_url("https://gitbucket.example.com/gitbucket/api/v3", "https").unwrap();
+        assert_eq!(base, "https://gitbucket.example.com/gitbucket/api/v3");
     }
 
     #[test]
     fn builds_web_url_from_subpath_base() {
-        let client = ApiClient::new("https://localhost/gitbucket", "dummy-token", "https").unwrap();
+        let client = ApiClient::new(
+            "https://gitbucket.example.com/gitbucket",
+            "dummy-token",
+            "https",
+        )
+        .unwrap();
         assert_eq!(
             client.web_url("/alice/my-repo"),
-            "https://localhost/gitbucket/alice/my-repo"
+            "https://gitbucket.example.com/gitbucket/alice/my-repo"
         );
     }
 }

@@ -139,7 +139,8 @@ mod tests {
 
     #[test]
     fn test_parse_git_url_with_subpath() {
-        let (owner, repo) = parse_git_url("https://localhost/gitbucket/alice/my-repo.git").unwrap();
+        let (owner, repo) =
+            parse_git_url("https://gitbucket.example.com/gitbucket/alice/my-repo.git").unwrap();
         assert_eq!(owner, "alice");
         assert_eq!(repo, "my-repo");
     }
@@ -147,7 +148,7 @@ mod tests {
     #[test]
     fn test_parse_git_url_with_subpath_and_git_prefix() {
         let (owner, repo) =
-            parse_git_url("https://localhost/gitbucket/git/alice/my-repo.git").unwrap();
+            parse_git_url("https://gitbucket.example.com/gitbucket/git/alice/my-repo.git").unwrap();
         assert_eq!(owner, "alice");
         assert_eq!(repo, "my-repo");
     }

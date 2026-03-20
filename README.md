@@ -42,9 +42,9 @@ Create a token in **GitBucket → Account Settings → Personal access tokens**.
 For subpath deployments, pass the base URL (or host plus path):
 
 ```bash
-gb auth login -H https://localhost/gitbucket
+gb auth login -H https://gitbucket.example.com/gitbucket
 # or
-gb auth login -H localhost/gitbucket --protocol https
+gb auth login -H gitbucket.example.com/gitbucket --protocol https
 ```
 
 ### 2) Repository operations
@@ -130,8 +130,8 @@ Supported remote URL formats include:
 
 - `https://gitbucket.example.com/alice/my-app.git`
 - `https://gitbucket.example.com/git/alice/my-app.git`
-- `https://localhost/gitbucket/alice/my-app.git`
-- `https://localhost/gitbucket/git/alice/my-app.git`
+- `https://gitbucket.example.com/gitbucket/alice/my-app.git`
+- `https://gitbucket.example.com/gitbucket/git/alice/my-app.git`
 - `git@gitbucket.example.com:alice/my-app.git`
 
 ## Output formats
@@ -166,7 +166,7 @@ protocol = "https"
 Subpath deployments can also be stored:
 
 ```toml
-[hosts."https://localhost/gitbucket"]
+[hosts."https://gitbucket.example.com/gitbucket"]
 token = "your-personal-access-token"
 user = "alice"
 protocol = "https"

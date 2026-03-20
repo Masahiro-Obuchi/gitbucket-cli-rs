@@ -37,7 +37,7 @@ Keep `README.md`, `SPEC.md`, and CLI help text aligned whenever command behavior
 - Use `snake_case` for functions/modules/files, `PascalCase` for structs/enums/traits, `SCREAMING_SNAKE_CASE` for constants.
 - Prefer explicit error handling via `Result<T, GbError>` and `?`.
 - Keep command UX consistent with GitHub CLI naming (`list`, `view`, `create`, `--json`, `--web`).
-- Prefer storing GitBucket targets as host-or-base-URL strings; path-prefixed deployments such as `https://localhost/gitbucket` are supported.
+- Prefer storing GitBucket targets as host-or-base-URL strings; path-prefixed deployments such as `https://gitbucket.example.com/gitbucket` are supported.
 - Preserve the current `reqwest` TLS setup using `rustls-tls-native-roots` so self-hosted instances can use system-trusted certificates.
 
 ## Current Functional Notes

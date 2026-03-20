@@ -14,7 +14,7 @@ pub struct AuthArgs {
 pub enum AuthCommand {
     /// Authenticate with a GitBucket instance
     Login {
-        /// GitBucket host or URL (e.g., gitbucket.example.com or https://localhost/gitbucket)
+        /// GitBucket host or URL (e.g., gitbucket.example.com or https://gitbucket.example.com/gitbucket)
         #[arg(long, short = 'H')]
         hostname: Option<String>,
         /// Personal access token
@@ -62,7 +62,7 @@ async fn login(hostname: Option<&String>, token: Option<String>, protocol: Strin
         Some(h) => h.clone(),
         None => Input::new()
             .with_prompt(
-                "GitBucket host or URL (e.g., gitbucket.example.com or https://localhost/gitbucket)",
+                "GitBucket host or URL (e.g., gitbucket.example.com or https://gitbucket.example.com/gitbucket)",
             )
             .interact_text()?,
     };
@@ -189,7 +189,7 @@ mod tests {
     #[test]
     fn maps_401_to_token_hint() {
         let err = map_login_error(
-            "https://localhost/gitbucket",
+            "https://gitbucket.example.com/gitbucket",
             GbError::Api {
                 status: 401,
                 message: String::new(),
