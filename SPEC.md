@@ -76,7 +76,7 @@ Behavior:
 
 1. Prompt for hostname/token when omitted.
 2. Validate credentials by calling `GET /user`.
-3. Save the host profile to `config.toml` on success.
+3. Save the host profile to `config.toml` on success and mark it as the default host.
 
 Examples:
 
@@ -227,10 +227,8 @@ gb issue list [OPTIONS]
 
 | Option | Short | Default | Description |
 | --- | --- | --- | --- |
-| `--state <STATE>` | `-s` | `open` | Intended filter: `open`, `closed`, `all` |
+| `--state <STATE>` | `-s` | `open` | Filter: `open`, `closed`, `all` |
 | `--json` | — | `false` | Print JSON |
-
-> Current implementation note: `--state` is accepted by CLI, but listing currently uses the default API response without applying explicit state filtering in the request.
 
 Table output columns:
 
@@ -304,10 +302,8 @@ gb pr list [OPTIONS]
 
 | Option | Short | Default | Description |
 | --- | --- | --- | --- |
-| `--state <STATE>` | `-s` | `open` | Intended filter: `open`, `closed`, `all` |
+| `--state <STATE>` | `-s` | `open` | Filter: `open`, `closed`, `all` |
 | `--json` | — | `false` | Print JSON |
-
-> Current implementation note: `--state` is accepted by CLI, but listing currently uses the default API response without applying explicit state filtering in the request.
 
 Table output columns:
 
@@ -372,8 +368,9 @@ gb pr checkout <NUMBER>
 Execution flow:
 
 1. Fetch PR metadata from API.
-2. Run `git fetch origin <head-branch>`.
-3. Run `git checkout <head-branch>`.
+2. Resolve the fetch source from the PR head repository clone URL when available, otherwise use `origin`.
+3. Run `git fetch <fetch-source> <head-branch>`.
+4. Run `git checkout -B <head-branch> FETCH_HEAD`.
 
 #### `gb pr diff`
 
@@ -386,8 +383,10 @@ gb pr diff <NUMBER>
 Execution flow:
 
 1. Fetch PR metadata from API.
-2. Run `git fetch origin <head> <base>`.
-3. Run `git diff origin/<base>...origin/<head>`.
+2. Run `git fetch origin <base>`.
+3. Resolve the fetch source from the PR head repository clone URL when available, otherwise use `origin`.
+4. Run `git fetch <fetch-source> <head>`.
+5. Run `git diff origin/<base>...FETCH_HEAD`.
 
 #### `gb pr comment`
 
@@ -424,6 +423,7 @@ The repository is resolved from:
 - Personal Access Token (PAT) only.
 - Stored per host.
 - Verified during login via `GET /user`.
+- Successful login updates the saved `default_host`.
 - Path-prefixed GitBucket deployments are supported by passing a base URL such as `https://gitbucket.example.com/gitbucket`.
 
 ### 4.2 Configuration file
@@ -439,31 +439,45 @@ Override base directory with `GB_CONFIG_DIR`.
 Example:
 
 ```toml
-[hosts."gitbucket.example.com"]
-token = "your-token"
-user = "alice"
-protocol = "https"
-```
+default_host = "https://gitbucket.example.com/gitbucket"
 
-Path-prefixed instances can also be stored as keys:
-
-```toml
 [hosts."https://gitbucket.example.com/gitbucket"]
 token = "your-token"
 user = "alice"
 protocol = "https"
 ```
 
+Path-prefixed instances can also be stored as plain host-plus-path keys:
+
+```toml
+[hosts."gitbucket.example.com/gitbucket"]
+token = "your-token"
+user = "alice"
+protocol = "https"
+```
+
+On Unix-like systems, `config.toml` is written with `0600` permissions.
+
 ### 4.3 Credential precedence
 
 1. `GB_TOKEN` environment variable
 2. Host entry in `config.toml`
 
+When `GB_TOKEN` is set, protocol resolution uses this order:
+
+1. URL scheme embedded in `--hostname/-H` or `GB_HOST`
+2. `GB_PROTOCOL`
+3. Matching stored host configuration from `config.toml`
+4. Default `https`
+
 ### 4.4 Hostname resolution order
 
 1. `--hostname/-H`
 2. `GB_HOST`
-3. First configured host in `config.toml`
+3. Saved `default_host` in `config.toml`
+4. Lexicographically first configured host in `config.toml` as a backward-compatible fallback
+
+Stored hosts are matched canonically, so equivalent forms such as `https://host/path`, `host/path`, and `https://host/path/api/v3` resolve to the same saved entry.
 
 ---
 
@@ -495,6 +509,7 @@ If parsing fails, `RepoNotFound` is returned.
 
 - Human-readable columns with auto width.
 - ANSI-aware width calculations.
+- Unicode-safe truncation for long text fields.
 - Colored states:
   - `OPEN` (green)
   - `CLOSED` (red)
@@ -517,6 +532,7 @@ Available on view/browse flows using `--web` or `gb browse`.
 | `GB_HOST` | Default hostname or base URL |
 | `GB_REPO` | Default repository (`OWNER/REPO`) |
 | `GB_TOKEN` | Access token override |
+| `GB_PROTOCOL` | Protocol override when `GB_TOKEN` is used with a plain hostname |
 | `GB_CONFIG_DIR` | Custom config directory |
 | `NO_COLOR` | Disable colored output (terminal/toolchain dependent) |
 
@@ -601,7 +617,7 @@ src/
 
 ### 9.3 API client behavior
 
-- Base API URL: `{protocol}://{hostname}/api/v3`
+- Base API URL: normalized to `{scheme}://{host}{optional-path}/api/v3`
 - Auth header: `Authorization: token <PAT>`
 - Common methods: `get`, `post`, `patch`, `put`, `delete`
 - Planned extension helper: `raw_request` (for future `gb api`)
@@ -625,7 +641,7 @@ Repository:
 
 Issue:
 
-- `GET /repos/{owner}/{repo}/issues`
+- `GET /repos/{owner}/{repo}/issues?state={state}`
 - `GET /repos/{owner}/{repo}/issues/{number}`
 - `POST /repos/{owner}/{repo}/issues`
 - `PATCH /repos/{owner}/{repo}/issues/{number}`
@@ -634,7 +650,7 @@ Issue:
 
 Pull request:
 
-- `GET /repos/{owner}/{repo}/pulls`
+- `GET /repos/{owner}/{repo}/pulls?state={state}`
 - `GET /repos/{owner}/{repo}/pulls/{number}`
 - `POST /repos/{owner}/{repo}/pulls`
 - `PUT /repos/{owner}/{repo}/pulls/{number}/merge`

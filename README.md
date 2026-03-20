@@ -60,7 +60,7 @@ gb repo fork alice/my-app
 ### 3) Issue operations
 
 ```bash
-gb issue list
+gb issue list --state all
 gb issue create -t "Bug report"
 gb issue view 1
 gb issue close 1
@@ -70,7 +70,7 @@ gb issue comment 1 -b "Fixed!"
 ### 4) Pull request operations
 
 ```bash
-gb pr list
+gb pr list --state closed
 gb pr create
 gb pr view 5
 gb pr merge 5
@@ -142,6 +142,16 @@ gb issue list --json
 gb issue view 1 --web
 ```
 
+## State Filters
+
+`gb issue list` and `gb pr list` support `--state open`, `--state closed`, and `--state all`.
+Invalid values are rejected before the API call is made.
+
+## Pull Request Checkout And Diff
+
+`gb pr checkout` and `gb pr diff` work with same-repository PRs and fork-based PRs.
+When the PR head repository is available from the API response, `gb` fetches from that repository's clone URL and operates on `FETCH_HEAD`.
+
 ## Environment variables
 
 | Variable        | Description                                               |
@@ -156,6 +166,18 @@ gb issue view 1 --web
 ## Configuration file
 
 Credentials are stored in `~/.config/gb/config.toml` (or under `GB_CONFIG_DIR`).
+On Unix-like systems, the file is written with `0600` permissions.
+
+```toml
+default_host = "https://gitbucket.example.com/gitbucket"
+
+[hosts."https://gitbucket.example.com/gitbucket"]
+token = "your-personal-access-token"
+user = "alice"
+protocol = "https"
+```
+
+Plain host keys also work:
 
 ```toml
 [hosts."gitbucket.example.com"]
@@ -164,14 +186,12 @@ user = "alice"
 protocol = "https"
 ```
 
-Subpath deployments can also be stored:
+When `GB_TOKEN` is set, protocol selection uses this order:
 
-```toml
-[hosts."https://gitbucket.example.com/gitbucket"]
-token = "your-personal-access-token"
-user = "alice"
-protocol = "https"
-```
+1. URL scheme from `--hostname` or `GB_HOST` when present
+2. `GB_PROTOCOL`
+3. Matching stored host configuration
+4. Default `https`
 
 ## License
 
