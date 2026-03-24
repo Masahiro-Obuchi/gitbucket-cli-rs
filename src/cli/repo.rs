@@ -115,7 +115,7 @@ async fn list(hostname: &Option<String>, owner: Option<String>, json: bool) -> R
     let client = create_client(&hostname)?;
 
     let repos = match owner {
-        Some(ref o) => client.list_user_repos(o).await?,
+        Some(ref o) => client.list_owner_repos(o).await?,
         None => client.list_my_repos().await?,
     };
 
@@ -238,12 +238,11 @@ async fn create(
 }
 
 async fn clone(hostname: &Option<String>, repo: &str, directory: Option<&str>) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let client = create_client(&hostname)?;
-
     let clone_url = if repo.contains("://") || repo.contains('@') {
         repo.to_string()
     } else {
+        let hostname = resolve_hostname(hostname)?;
+        let client = create_client(&hostname)?;
         let (owner, name) = crate::cli::common::parse_owner_repo(repo)?;
         let r = client.get_repo(&owner, &name).await?;
         r.clone_url

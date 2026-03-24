@@ -1,11 +1,25 @@
 use crate::api::client::ApiClient;
-use crate::error::Result;
+use crate::error::{GbError, Result};
 use crate::models::repository::{CreateRepository, Repository};
 
 impl ApiClient {
     /// List repositories for a user
     pub async fn list_user_repos(&self, owner: &str) -> Result<Vec<Repository>> {
         self.get(&format!("/users/{}/repos", owner)).await
+    }
+
+    /// List repositories for an organization
+    pub async fn list_org_repos(&self, org: &str) -> Result<Vec<Repository>> {
+        self.get(&format!("/orgs/{}/repos", org)).await
+    }
+
+    /// List repositories for an owner that may be a user or organization
+    pub async fn list_owner_repos(&self, owner: &str) -> Result<Vec<Repository>> {
+        match self.list_org_repos(owner).await {
+            Ok(repos) => Ok(repos),
+            Err(GbError::Api { status: 404, .. }) => self.list_user_repos(owner).await,
+            Err(err) => Err(err),
+        }
     }
 
     /// List repositories for the authenticated user

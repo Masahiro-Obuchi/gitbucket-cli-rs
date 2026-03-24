@@ -348,13 +348,16 @@ async fn merge(
         .await?;
     if result.merged == Some(true) {
         println!("✓ Merged pull request #{}", number);
+        Ok(())
     } else {
         let msg = result
             .message
             .unwrap_or_else(|| "Unknown error".to_string());
-        println!("✗ Failed to merge: {}", msg);
+        Err(crate::error::GbError::Other(format!(
+            "Failed to merge pull request #{}: {}",
+            number, msg
+        )))
     }
-    Ok(())
 }
 
 async fn checkout(hostname: &Option<String>, cli_repo: &Option<String>, number: u64) -> Result<()> {
