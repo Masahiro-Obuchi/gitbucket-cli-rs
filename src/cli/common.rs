@@ -62,7 +62,7 @@ fn detect_repo_from_git() -> Result<(String, String)> {
 }
 
 /// Parse a git remote URL to extract owner/repo
-fn parse_git_url(url: &str) -> Result<(String, String)> {
+pub(crate) fn parse_git_url(url: &str) -> Result<(String, String)> {
     let path = if let Some(rest) = url.strip_prefix("git@") {
         // git@host:owner/repo.git
         rest.split(':').nth(1).unwrap_or("").to_string()

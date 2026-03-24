@@ -10,6 +10,12 @@ fn run_git(dir: &std::path::Path, args: &[&str]) {
     assert!(status.success(), "git {:?} failed", args);
 }
 
+fn git_output(dir: &std::path::Path, args: &[&str]) -> String {
+    let output = Command::new("git").current_dir(dir).args(args).output().unwrap();
+    assert!(output.status.success(), "git {:?} failed", args);
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
 fn gb_command() -> std::process::Command {
     assert_cmd::cargo::CommandCargoExt::cargo_bin("gb").unwrap()
 }
@@ -209,16 +215,18 @@ fn pr_create_fails_cleanly_when_head_is_detached() {
 }
 
 #[test]
-fn pr_diff_uses_api_repo_urls_when_origin_remote_is_missing() {
+fn pr_checkout_prefers_matching_remote_when_api_clone_url_is_unusable() {
     let temp = tempdir().unwrap();
-    let repos_dir = temp.path().join("repos");
-    std::fs::create_dir_all(&repos_dir).unwrap();
-
-    let base_bare = repos_dir.join("base.git");
-    let head_bare = repos_dir.join("head.git");
+    let hosting_root = temp.path().join("hosting");
+    let base_bare = hosting_root.join("alice").join("base.git");
+    let head_bare = hosting_root.join("bob").join("head.git");
+    std::fs::create_dir_all(base_bare.parent().unwrap()).unwrap();
+    std::fs::create_dir_all(head_bare.parent().unwrap()).unwrap();
     run_git(temp.path(), &["init", "--bare", base_bare.to_str().unwrap()]);
     run_git(temp.path(), &["init", "--bare", head_bare.to_str().unwrap()]);
 
+    let repos_dir = temp.path().join("repos");
+    std::fs::create_dir_all(&repos_dir).unwrap();
     let base_work = repos_dir.join("base-work");
     std::fs::create_dir_all(&base_work).unwrap();
     run_git(&base_work, &["init"]);
@@ -245,13 +253,43 @@ fn pr_diff_uses_api_repo_urls_when_origin_remote_is_missing() {
     run_git(&head_work, &["checkout", "-b", "feature/demo"]);
     std::fs::write(head_work.join("README.md"), "base\nfeature\n").unwrap();
     run_git(&head_work, &["commit", "-am", "feature"]);
-    run_git(&head_work, &["remote", "remove", "origin"]);
     run_git(&head_work, &["remote", "add", "fork", head_bare.to_str().unwrap()]);
     run_git(&head_work, &["push", "fork", "feature/demo"]);
 
     let local_repo = temp.path().join("local-repo");
     std::fs::create_dir_all(&local_repo).unwrap();
     run_git(&local_repo, &["init"]);
+    run_git(&local_repo, &["config", "user.name", "Test User"]);
+    run_git(&local_repo, &["config", "user.email", "test@example.com"]);
+    run_git(
+        &local_repo,
+        &[
+            "config",
+            &format!(
+                "url.file://{}/.insteadOf",
+                hosting_root.display()
+            ),
+            "https://gitbucket.example.com/",
+        ],
+    );
+    run_git(
+        &local_repo,
+        &[
+            "remote",
+            "add",
+            "upstream",
+            "https://gitbucket.example.com/alice/base.git",
+        ],
+    );
+    run_git(
+        &local_repo,
+        &[
+            "remote",
+            "add",
+            "fork",
+            "https://gitbucket.example.com/bob/head.git",
+        ],
+    );
 
     let body = format!(
         concat!(
@@ -259,17 +297,131 @@ fn pr_diff_uses_api_repo_urls_when_origin_remote_is_missing() {
             "\"number\":5,",
             "\"title\":\"Feature\",",
             "\"state\":\"open\",",
-            "\"head\":{{\"ref\":\"feature/demo\",\"repo\":{{\"name\":\"head\",\"full_name\":\"alice/head\",\"private\":false,\"clone_url\":\"file://{}\"}}}},",
-            "\"base\":{{\"ref\":\"main\",\"repo\":{{\"name\":\"base\",\"full_name\":\"alice/base\",\"private\":false,\"clone_url\":\"file://{}\"}}}}",
+            "\"head\":{{\"ref\":\"feature/demo\",\"repo\":{{\"name\":\"head\",\"full_name\":\"bob/head\",\"private\":true,\"clone_url\":\"git@gitbucket.example.com:bob/head.git\"}}}},",
+            "\"base\":{{\"ref\":\"main\",\"repo\":{{\"name\":\"base\",\"full_name\":\"alice/base\",\"private\":false,\"clone_url\":\"git@gitbucket.example.com:alice/base.git\"}}}}",
             "}}"
         ),
-        head_bare.display(),
-        base_bare.display()
     );
     let (port, server) = serve_json_once(
         "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
         "authorization: token test-token",
         &body,
+    );
+
+    let output = gb_command()
+        .current_dir(&local_repo)
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["pr", "checkout", "5"])
+        .output()
+        .unwrap();
+
+    server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(git_output(&local_repo, &["branch", "--show-current"]), "feature/demo");
+    let content = std::fs::read_to_string(local_repo.join("README.md")).unwrap();
+    assert!(content.contains("feature"), "README content: {content}");
+}
+
+#[test]
+fn pr_diff_prefers_matching_remotes_when_api_clone_urls_are_unusable() {
+    let temp = tempdir().unwrap();
+    let hosting_root = temp.path().join("hosting");
+    let base_bare = hosting_root.join("alice").join("base.git");
+    let head_bare = hosting_root.join("bob").join("head.git");
+    std::fs::create_dir_all(base_bare.parent().unwrap()).unwrap();
+    std::fs::create_dir_all(head_bare.parent().unwrap()).unwrap();
+    run_git(temp.path(), &["init", "--bare", base_bare.to_str().unwrap()]);
+    run_git(temp.path(), &["init", "--bare", head_bare.to_str().unwrap()]);
+
+    let repos_dir = temp.path().join("repos");
+    std::fs::create_dir_all(&repos_dir).unwrap();
+    let base_work = repos_dir.join("base-work");
+    std::fs::create_dir_all(&base_work).unwrap();
+    run_git(&base_work, &["init"]);
+    run_git(&base_work, &["config", "user.name", "Test User"]);
+    run_git(&base_work, &["config", "user.email", "test@example.com"]);
+    std::fs::write(base_work.join("README.md"), "base\n").unwrap();
+    run_git(&base_work, &["add", "README.md"]);
+    run_git(&base_work, &["commit", "-m", "base"]);
+    run_git(&base_work, &["branch", "-M", "main"]);
+    run_git(&base_work, &["remote", "add", "origin", base_bare.to_str().unwrap()]);
+    run_git(&base_work, &["push", "origin", "main"]);
+
+    let head_work = repos_dir.join("head-work");
+    run_git(
+        temp.path(),
+        &[
+            "clone",
+            base_bare.to_str().unwrap(),
+            head_work.to_str().unwrap(),
+        ],
+    );
+    run_git(&head_work, &["config", "user.name", "Test User"]);
+    run_git(&head_work, &["config", "user.email", "test@example.com"]);
+    run_git(&head_work, &["checkout", "-b", "feature/demo"]);
+    std::fs::write(head_work.join("README.md"), "base\nfeature\n").unwrap();
+    run_git(&head_work, &["commit", "-am", "feature"]);
+    run_git(&head_work, &["remote", "add", "fork", head_bare.to_str().unwrap()]);
+    run_git(&head_work, &["push", "fork", "feature/demo"]);
+
+    let local_repo = temp.path().join("local-repo");
+    std::fs::create_dir_all(&local_repo).unwrap();
+    run_git(&local_repo, &["init"]);
+    run_git(&local_repo, &["config", "user.name", "Test User"]);
+    run_git(&local_repo, &["config", "user.email", "test@example.com"]);
+    run_git(
+        &local_repo,
+        &[
+            "config",
+            &format!(
+                "url.file://{}/.insteadOf",
+                hosting_root.display()
+            ),
+            "https://gitbucket.example.com/",
+        ],
+    );
+    run_git(
+        &local_repo,
+        &[
+            "remote",
+            "add",
+            "upstream",
+            "https://gitbucket.example.com/alice/base.git",
+        ],
+    );
+    run_git(
+        &local_repo,
+        &[
+            "remote",
+            "add",
+            "fork",
+            "https://gitbucket.example.com/bob/head.git",
+        ],
+    );
+
+    let body = concat!(
+        "{",
+        "\"number\":5,",
+        "\"title\":\"Feature\",",
+        "\"state\":\"open\",",
+        "\"head\":{\"ref\":\"feature/demo\",\"repo\":{\"name\":\"head\",\"full_name\":\"bob/head\",\"private\":true,\"clone_url\":\"git@gitbucket.example.com:bob/head.git\"}},",
+        "\"base\":{\"ref\":\"main\",\"repo\":{\"name\":\"base\",\"full_name\":\"alice/base\",\"private\":false,\"clone_url\":\"git@gitbucket.example.com:alice/base.git\"}}",
+        "}"
+    );
+    let (port, server) = serve_json_once(
+        "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
+        "authorization: token test-token",
+        body,
     );
 
     let output = gb_command()
