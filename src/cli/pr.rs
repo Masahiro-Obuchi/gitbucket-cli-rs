@@ -2,7 +2,9 @@ use clap::{Args, Subcommand};
 use colored::Colorize;
 use dialoguer::Input;
 
-use crate::cli::common::{create_client, parse_owner_repo, parse_git_url, resolve_hostname, resolve_repo};
+use crate::cli::common::{
+    create_client, parse_git_url, parse_owner_repo, resolve_hostname, resolve_repo,
+};
 use crate::error::Result;
 use crate::models::comment::CreateComment;
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest};
@@ -495,7 +497,11 @@ async fn diff(hostname: &Option<String>, cli_repo: &Option<String>, number: u64)
 
     // Fetch both branches and show diff
     let base_fetch = std::process::Command::new("git")
-        .args(["fetch", &base_fetch_source, &format!("{}:{}", base, base_ref)])
+        .args([
+            "fetch",
+            &base_fetch_source,
+            &format!("{}:{}", base, base_ref),
+        ])
         .status()?;
     if !base_fetch.success() {
         return Err(crate::error::GbError::Other(format!(

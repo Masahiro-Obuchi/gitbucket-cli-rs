@@ -6,12 +6,20 @@ use std::thread;
 use tempfile::tempdir;
 
 fn run_git(dir: &std::path::Path, args: &[&str]) {
-    let status = Command::new("git").current_dir(dir).args(args).status().unwrap();
+    let status = Command::new("git")
+        .current_dir(dir)
+        .args(args)
+        .status()
+        .unwrap();
     assert!(status.success(), "git {:?} failed", args);
 }
 
 fn git_output(dir: &std::path::Path, args: &[&str]) -> String {
-    let output = Command::new("git").current_dir(dir).args(args).output().unwrap();
+    let output = Command::new("git")
+        .current_dir(dir)
+        .args(args)
+        .output()
+        .unwrap();
     assert!(output.status.success(), "git {:?} failed", args);
     String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
@@ -176,7 +184,10 @@ protocol = "https"
     );
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
-    assert!(!config.contains("secret-token"), "config was not updated: {config}");
+    assert!(
+        !config.contains("secret-token"),
+        "config was not updated: {config}"
+    );
 }
 
 #[test]
@@ -211,7 +222,10 @@ fn pr_create_fails_cleanly_when_head_is_detached() {
 
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("Could not determine current branch"), "stderr: {stderr}");
+    assert!(
+        stderr.contains("Could not determine current branch"),
+        "stderr: {stderr}"
+    );
 }
 
 #[test]
@@ -222,8 +236,14 @@ fn pr_checkout_prefers_matching_remote_when_api_clone_url_is_unusable() {
     let head_bare = hosting_root.join("bob").join("head.git");
     std::fs::create_dir_all(base_bare.parent().unwrap()).unwrap();
     std::fs::create_dir_all(head_bare.parent().unwrap()).unwrap();
-    run_git(temp.path(), &["init", "--bare", base_bare.to_str().unwrap()]);
-    run_git(temp.path(), &["init", "--bare", head_bare.to_str().unwrap()]);
+    run_git(
+        temp.path(),
+        &["init", "--bare", base_bare.to_str().unwrap()],
+    );
+    run_git(
+        temp.path(),
+        &["init", "--bare", head_bare.to_str().unwrap()],
+    );
 
     let repos_dir = temp.path().join("repos");
     std::fs::create_dir_all(&repos_dir).unwrap();
@@ -236,7 +256,10 @@ fn pr_checkout_prefers_matching_remote_when_api_clone_url_is_unusable() {
     run_git(&base_work, &["add", "README.md"]);
     run_git(&base_work, &["commit", "-m", "base"]);
     run_git(&base_work, &["branch", "-M", "main"]);
-    run_git(&base_work, &["remote", "add", "origin", base_bare.to_str().unwrap()]);
+    run_git(
+        &base_work,
+        &["remote", "add", "origin", base_bare.to_str().unwrap()],
+    );
     run_git(&base_work, &["push", "origin", "main"]);
 
     let head_work = repos_dir.join("head-work");
@@ -244,6 +267,8 @@ fn pr_checkout_prefers_matching_remote_when_api_clone_url_is_unusable() {
         temp.path(),
         &[
             "clone",
+            "--branch",
+            "main",
             base_bare.to_str().unwrap(),
             head_work.to_str().unwrap(),
         ],
@@ -253,7 +278,10 @@ fn pr_checkout_prefers_matching_remote_when_api_clone_url_is_unusable() {
     run_git(&head_work, &["checkout", "-b", "feature/demo"]);
     std::fs::write(head_work.join("README.md"), "base\nfeature\n").unwrap();
     run_git(&head_work, &["commit", "-am", "feature"]);
-    run_git(&head_work, &["remote", "add", "fork", head_bare.to_str().unwrap()]);
+    run_git(
+        &head_work,
+        &["remote", "add", "fork", head_bare.to_str().unwrap()],
+    );
     run_git(&head_work, &["push", "fork", "feature/demo"]);
 
     let local_repo = temp.path().join("local-repo");
@@ -265,10 +293,7 @@ fn pr_checkout_prefers_matching_remote_when_api_clone_url_is_unusable() {
         &local_repo,
         &[
             "config",
-            &format!(
-                "url.file://{}/.insteadOf",
-                hosting_root.display()
-            ),
+            &format!("url.file://{}/.insteadOf", hosting_root.display()),
             "https://gitbucket.example.com/",
         ],
     );
@@ -327,7 +352,10 @@ fn pr_checkout_prefers_matching_remote_when_api_clone_url_is_unusable() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(git_output(&local_repo, &["branch", "--show-current"]), "feature/demo");
+    assert_eq!(
+        git_output(&local_repo, &["branch", "--show-current"]),
+        "feature/demo"
+    );
     let content = std::fs::read_to_string(local_repo.join("README.md")).unwrap();
     assert!(content.contains("feature"), "README content: {content}");
 }
@@ -340,8 +368,14 @@ fn pr_diff_prefers_matching_remotes_when_api_clone_urls_are_unusable() {
     let head_bare = hosting_root.join("bob").join("head.git");
     std::fs::create_dir_all(base_bare.parent().unwrap()).unwrap();
     std::fs::create_dir_all(head_bare.parent().unwrap()).unwrap();
-    run_git(temp.path(), &["init", "--bare", base_bare.to_str().unwrap()]);
-    run_git(temp.path(), &["init", "--bare", head_bare.to_str().unwrap()]);
+    run_git(
+        temp.path(),
+        &["init", "--bare", base_bare.to_str().unwrap()],
+    );
+    run_git(
+        temp.path(),
+        &["init", "--bare", head_bare.to_str().unwrap()],
+    );
 
     let repos_dir = temp.path().join("repos");
     std::fs::create_dir_all(&repos_dir).unwrap();
@@ -354,7 +388,10 @@ fn pr_diff_prefers_matching_remotes_when_api_clone_urls_are_unusable() {
     run_git(&base_work, &["add", "README.md"]);
     run_git(&base_work, &["commit", "-m", "base"]);
     run_git(&base_work, &["branch", "-M", "main"]);
-    run_git(&base_work, &["remote", "add", "origin", base_bare.to_str().unwrap()]);
+    run_git(
+        &base_work,
+        &["remote", "add", "origin", base_bare.to_str().unwrap()],
+    );
     run_git(&base_work, &["push", "origin", "main"]);
 
     let head_work = repos_dir.join("head-work");
@@ -362,6 +399,8 @@ fn pr_diff_prefers_matching_remotes_when_api_clone_urls_are_unusable() {
         temp.path(),
         &[
             "clone",
+            "--branch",
+            "main",
             base_bare.to_str().unwrap(),
             head_work.to_str().unwrap(),
         ],
@@ -371,7 +410,10 @@ fn pr_diff_prefers_matching_remotes_when_api_clone_urls_are_unusable() {
     run_git(&head_work, &["checkout", "-b", "feature/demo"]);
     std::fs::write(head_work.join("README.md"), "base\nfeature\n").unwrap();
     run_git(&head_work, &["commit", "-am", "feature"]);
-    run_git(&head_work, &["remote", "add", "fork", head_bare.to_str().unwrap()]);
+    run_git(
+        &head_work,
+        &["remote", "add", "fork", head_bare.to_str().unwrap()],
+    );
     run_git(&head_work, &["push", "fork", "feature/demo"]);
 
     let local_repo = temp.path().join("local-repo");
@@ -383,10 +425,7 @@ fn pr_diff_prefers_matching_remotes_when_api_clone_urls_are_unusable() {
         &local_repo,
         &[
             "config",
-            &format!(
-                "url.file://{}/.insteadOf",
-                hosting_root.display()
-            ),
+            &format!("url.file://{}/.insteadOf", hosting_root.display()),
             "https://gitbucket.example.com/",
         ],
     );
