@@ -2,10 +2,11 @@ use clap::{Args, Subcommand};
 use colored::Colorize;
 use dialoguer::Input;
 
-use crate::cli::common::{create_client, resolve_hostname, resolve_repo};
+use crate::cli::common::{create_client, parse_owner_repo, parse_git_url, resolve_hostname, resolve_repo};
 use crate::error::Result;
 use crate::models::comment::CreateComment;
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest};
+use crate::models::repository::Repository;
 use crate::output::table::print_table;
 use crate::output::{format_state, truncate};
 
@@ -85,12 +86,90 @@ pub enum PrCommand {
     },
 }
 
-fn pr_head_fetch_source(pr: &crate::models::pull_request::PullRequest) -> &str {
-    pr.head
-        .as_ref()
-        .and_then(|head| head.repo.as_ref())
-        .and_then(|repo| repo.clone_url.as_deref())
-        .unwrap_or("origin")
+fn git_remote_names() -> Vec<String> {
+    let output = match std::process::Command::new("git").args(["remote"]).output() {
+        Ok(output) if output.status.success() => output,
+        _ => return Vec::new(),
+    };
+
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn git_remote_url(remote: &str) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["config", "--get", &format!("remote.{}.url", remote)])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if url.is_empty() {
+        None
+    } else {
+        Some(url)
+    }
+}
+
+fn matching_remote_name(repo: &Repository) -> Option<String> {
+    let expected_full_name = parse_owner_repo(&repo.full_name).ok();
+
+    for remote in git_remote_names() {
+        let Some(url) = git_remote_url(&remote) else {
+            continue;
+        };
+
+        if repo.clone_url.as_deref() == Some(url.as_str()) {
+            return Some(remote);
+        }
+
+        if let (Some((expected_owner, expected_repo)), Ok((owner, repo_name))) =
+            (expected_full_name.as_ref(), parse_git_url(&url))
+        {
+            if owner == *expected_owner && repo_name == *expected_repo {
+                return Some(remote);
+            }
+        }
+    }
+
+    None
+}
+
+fn pr_repo_fetch_source(repo: Option<&Repository>) -> String {
+    repo.and_then(matching_remote_name)
+        .or_else(|| repo.and_then(|repository| repository.clone_url.clone()))
+        .unwrap_or_else(|| "origin".to_string())
+}
+
+fn pr_head_fetch_source(pr: &crate::models::pull_request::PullRequest) -> String {
+    pr_repo_fetch_source(pr.head.as_ref().and_then(|head| head.repo.as_ref()))
+}
+
+fn pr_base_fetch_source(pr: &crate::models::pull_request::PullRequest) -> String {
+    pr_repo_fetch_source(pr.base.as_ref().and_then(|base| base.repo.as_ref()))
+}
+
+fn current_branch_name() -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["branch", "--show-current"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch.is_empty() {
+        None
+    } else {
+        Some(branch)
+    }
 }
 
 pub async fn run(
@@ -252,18 +331,11 @@ async fn create(
 
     let head = match head {
         Some(h) => h,
-        None => {
-            // Try to detect current branch
-            let output = std::process::Command::new("git")
-                .args(["branch", "--show-current"])
-                .output();
-            match output {
-                Ok(o) if o.status.success() => {
-                    String::from_utf8_lossy(&o.stdout).trim().to_string()
-                }
-                _ => Input::new().with_prompt("Head branch").interact_text()?,
-            }
-        }
+        None => current_branch_name().ok_or_else(|| {
+            crate::error::GbError::Other(
+                "Could not determine current branch. Specify --head when running from a detached HEAD state.".into(),
+            )
+        })?,
     };
 
     let base = match base {
@@ -348,13 +420,16 @@ async fn merge(
         .await?;
     if result.merged == Some(true) {
         println!("✓ Merged pull request #{}", number);
+        Ok(())
     } else {
         let msg = result
             .message
             .unwrap_or_else(|| "Unknown error".to_string());
-        println!("✗ Failed to merge: {}", msg);
+        Err(crate::error::GbError::Other(format!(
+            "Failed to merge pull request #{}: {}",
+            number, msg
+        )))
     }
-    Ok(())
 }
 
 async fn checkout(hostname: &Option<String>, cli_repo: &Option<String>, number: u64) -> Result<()> {
@@ -370,18 +445,22 @@ async fn checkout(hostname: &Option<String>, cli_repo: &Option<String>, number: 
         .ok_or_else(|| crate::error::GbError::Other("PR has no head branch".into()))?;
 
     let fetch_source = pr_head_fetch_source(&pr);
+    let head_ref = format!("refs/gb/pr/{}/head", number);
 
     // Fetch and checkout
     let fetch_status = std::process::Command::new("git")
-        .args(["fetch", fetch_source, branch])
+        .args(["fetch", &fetch_source, &format!("{}:{}", branch, head_ref)])
         .status()?;
 
     if !fetch_status.success() {
-        return Err(crate::error::GbError::Other("git fetch failed".into()));
+        return Err(crate::error::GbError::Other(format!(
+            "git fetch failed for '{}' from {}",
+            branch, fetch_source
+        )));
     }
 
     let checkout_status = std::process::Command::new("git")
-        .args(["checkout", "-B", branch, "FETCH_HEAD"])
+        .args(["checkout", "-B", branch, &head_ref])
         .status()?;
 
     if !checkout_status.success() {
@@ -410,24 +489,33 @@ async fn diff(hostname: &Option<String>, cli_repo: &Option<String>, number: u64)
         .unwrap_or("main");
 
     let fetch_source = pr_head_fetch_source(&pr);
+    let base_fetch_source = pr_base_fetch_source(&pr);
+    let base_ref = format!("refs/gb/pr/{}/base", number);
+    let head_ref = format!("refs/gb/pr/{}/head", number);
 
     // Fetch both branches and show diff
     let base_fetch = std::process::Command::new("git")
-        .args(["fetch", "origin", base])
+        .args(["fetch", &base_fetch_source, &format!("{}:{}", base, base_ref)])
         .status()?;
     if !base_fetch.success() {
-        return Err(crate::error::GbError::Other("git fetch failed".into()));
+        return Err(crate::error::GbError::Other(format!(
+            "git fetch failed for '{}' from {}",
+            base, base_fetch_source
+        )));
     }
 
     let head_fetch = std::process::Command::new("git")
-        .args(["fetch", fetch_source, head])
+        .args(["fetch", &fetch_source, &format!("{}:{}", head, head_ref)])
         .status()?;
     if !head_fetch.success() {
-        return Err(crate::error::GbError::Other("git fetch failed".into()));
+        return Err(crate::error::GbError::Other(format!(
+            "git fetch failed for '{}' from {}",
+            head, fetch_source
+        )));
     }
 
     let status = std::process::Command::new("git")
-        .args(["diff", &format!("origin/{}...FETCH_HEAD", base)])
+        .args(["diff", &format!("{}...{}", base_ref, head_ref)])
         .status()?;
 
     if !status.success() {

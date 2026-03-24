@@ -116,8 +116,25 @@ impl AuthConfig {
 
     /// Remove host config
     pub fn remove_host(&mut self, hostname: &str) -> bool {
-        let removed = self.hosts.remove(hostname).is_some();
-        if removed && self.default_host.as_deref() == Some(hostname) {
+        let key_to_remove = if self.hosts.contains_key(hostname) {
+            Some(hostname.to_string())
+        } else {
+            let canonical = canonical_hostname(hostname);
+            self.hosts.keys().find_map(|key| {
+                (canonical_hostname(key).as_ref() == canonical.as_ref()).then(|| key.clone())
+            })
+        };
+
+        let removed = key_to_remove
+            .as_ref()
+            .map(|key| self.hosts.remove(key).is_some())
+            .unwrap_or(false);
+
+        if removed
+            && key_to_remove
+                .as_deref()
+                .is_some_and(|key| self.default_host.as_deref() == Some(key))
+        {
             self.default_host = sorted_hostnames(&self.hosts).into_iter().next();
         }
         removed
