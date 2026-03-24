@@ -547,3 +547,101 @@ fn pr_merge_sends_expected_payload() {
     assert!(body["sha"].is_null());
     assert!(body["merge_method"].is_null());
 }
+
+#[test]
+fn issue_reopen_sends_open_state_patch() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server(
+        "200 OK",
+        r#"{"number":7,"title":"Bug report","state":"open","labels":[]}"#,
+    );
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["issue", "reopen", "7"])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(request.method, "PATCH");
+    assert_eq!(request.target, "/api/v3/repos/alice/project/issues/7");
+    let body: Value = serde_json::from_str(&request.body).unwrap();
+    assert_eq!(body["state"], "open");
+    assert!(body["title"].is_null());
+    assert!(body["body"].is_null());
+}
+
+#[test]
+fn issue_comment_sends_expected_payload() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server("200 OK", r#"{"id":11,"body":"Looks good"}"#);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["issue", "comment", "7", "--body", "Looks good"])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(request.method, "POST");
+    assert_eq!(
+        request.target,
+        "/api/v3/repos/alice/project/issues/7/comments"
+    );
+    let body: Value = serde_json::from_str(&request.body).unwrap();
+    assert_eq!(body["body"], "Looks good");
+}
+
+#[test]
+fn pr_comment_sends_expected_payload() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server("200 OK", r#"{"id":12,"body":"Please rebase"}"#);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["pr", "comment", "5", "--body", "Please rebase"])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(request.method, "POST");
+    assert_eq!(
+        request.target,
+        "/api/v3/repos/alice/project/issues/5/comments"
+    );
+    let body: Value = serde_json::from_str(&request.body).unwrap();
+    assert_eq!(body["body"], "Please rebase");
+}
