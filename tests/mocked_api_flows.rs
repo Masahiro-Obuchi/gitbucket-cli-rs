@@ -333,3 +333,217 @@ fn pr_create_sends_expected_payload() {
     assert_eq!(body["head"], "feature/branch");
     assert_eq!(body["base"], "main");
 }
+
+#[test]
+fn repo_create_user_sends_expected_payload() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server(
+        "200 OK",
+        r#"{"name":"demo","full_name":"alice/demo","private":true,"fork":false}"#,
+    );
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args([
+            "repo",
+            "create",
+            "demo",
+            "--description",
+            "CLI repo",
+            "--private",
+            "--add-readme",
+        ])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(request.method, "POST");
+    assert_eq!(request.target, "/api/v3/user/repos");
+    let body: Value = serde_json::from_str(&request.body).unwrap();
+    assert_eq!(body["name"], "demo");
+    assert_eq!(body["description"], "CLI repo");
+    assert_eq!(body["private"], true);
+    assert_eq!(body["auto_init"], true);
+}
+
+#[test]
+fn repo_create_org_sends_expected_payload() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server(
+        "200 OK",
+        r#"{"name":"demo","full_name":"my-org/demo","private":false,"fork":false}"#,
+    );
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args([
+            "repo",
+            "create",
+            "demo",
+            "--org",
+            "my-org",
+            "--description",
+            "Org repo",
+        ])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(request.method, "POST");
+    assert_eq!(request.target, "/api/v3/orgs/my-org/repos");
+    let body: Value = serde_json::from_str(&request.body).unwrap();
+    assert_eq!(body["name"], "demo");
+    assert_eq!(body["description"], "Org repo");
+    assert_eq!(body["private"], false);
+    assert_eq!(body["auto_init"], false);
+}
+
+#[test]
+fn repo_fork_posts_empty_json_body() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server(
+        "200 OK",
+        r#"{"name":"project","full_name":"bob/project","private":false,"fork":true}"#,
+    );
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["repo", "fork", "alice/project"])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(request.method, "POST");
+    assert_eq!(request.target, "/api/v3/repos/alice/project/forks");
+    let body: Value = serde_json::from_str(&request.body).unwrap();
+    assert_eq!(body, serde_json::json!({}));
+}
+
+#[test]
+fn issue_close_sends_closed_state_patch() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server(
+        "200 OK",
+        r#"{"number":7,"title":"Bug report","state":"closed","labels":[]}"#,
+    );
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["issue", "close", "7"])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(request.method, "PATCH");
+    assert_eq!(request.target, "/api/v3/repos/alice/project/issues/7");
+    let body: Value = serde_json::from_str(&request.body).unwrap();
+    assert_eq!(body["state"], "closed");
+    assert!(body["title"].is_null());
+    assert!(body["body"].is_null());
+}
+
+#[test]
+fn pr_close_sends_closed_state_patch() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server(
+        "200 OK",
+        r#"{"number":9,"title":"Feature","state":"closed","labels":[]}"#,
+    );
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["pr", "close", "9"])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(request.method, "PATCH");
+    assert_eq!(request.target, "/api/v3/repos/alice/project/issues/9");
+    let body: Value = serde_json::from_str(&request.body).unwrap();
+    assert_eq!(body["state"], "closed");
+    assert!(body["title"].is_null());
+    assert!(body["body"].is_null());
+}
+
+#[test]
+fn pr_merge_sends_expected_payload() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server("200 OK", r#"{"merged":true,"message":"merged"}"#);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["pr", "merge", "5", "--message", "Ship it"])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(request.method, "PUT");
+    assert_eq!(request.target, "/api/v3/repos/alice/project/pulls/5/merge");
+    let body: Value = serde_json::from_str(&request.body).unwrap();
+    assert_eq!(body["commit_message"], "Ship it");
+    assert!(body["sha"].is_null());
+    assert!(body["merge_method"].is_null());
+}
