@@ -64,9 +64,13 @@ These execute the real CLI binary as a subprocess.
 - `tests/state_requests.rs`
   `issue list` and `pr list` state query parameters
 - `tests/mocked_api_flows.rs`
-  mocked HTTP request paths and payloads for auth, repo create/fork, issue create/close, PR create/close/merge
+  mocked HTTP request paths and payloads for auth, repo create/fork, issue create/reopen/close/comment, PR create/close/merge/comment
+- `tests/view_flows.rs`
+  view rendering and representative 404 API error handling for repo, issue, and PR commands
 - `tests/regression_pre_fix.rs`
   regression coverage for previously fixed CLI bugs, including git-heavy flows such as `repo clone`, `pr checkout`, and `pr diff`
+- `tests/e2e_smoke.rs`
+  ignored live-instance smoke tests for a real GitBucket server
 
 ## How To Choose A Test Type
 
@@ -100,3 +104,28 @@ Add or extend a git regression test when:
 2. Run the narrowest target that covers your change.
 3. Run `cargo test` before committing.
 4. Run `cargo clippy --all-targets --all-features -- -D warnings` before merging significant changes.
+
+## Live E2E Smoke
+
+A minimal live-instance smoke test scaffold exists in `tests/e2e_smoke.rs`.
+These tests are ignored by default and require a reachable GitBucket instance.
+
+Required environment variables:
+
+- `GB_E2E_HOST`
+- `GB_E2E_TOKEN`
+- `GB_E2E_REPO`
+
+Optional environment variable:
+
+- `GB_E2E_PROTOCOL`
+
+Example:
+
+```bash
+GB_E2E_HOST=gitbucket.example.com \
+GB_E2E_TOKEN=... \
+GB_E2E_REPO=alice/project \
+GB_E2E_PROTOCOL=https \
+cargo test --test e2e_smoke -- --ignored --nocapture
+```
