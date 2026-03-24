@@ -193,6 +193,10 @@ When `GB_TOKEN` is set, protocol selection uses this order:
 3. Matching stored host configuration
 4. Default `https`
 
+## Acknowledgements
+
+This project exists thanks to [GitBucket](https://gitbucket.github.io/) and the community around it. Thank you for building and maintaining the software that made this CLI worth creating.
+
 ## License
 
 MIT
