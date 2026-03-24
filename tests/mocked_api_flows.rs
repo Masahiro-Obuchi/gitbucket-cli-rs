@@ -1,11 +1,14 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Read, Write};
-use std::net::TcpListener;
+use std::io::{self, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use tempfile::tempdir;
+
+const SERVER_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug)]
 struct CapturedRequest {
@@ -19,6 +22,28 @@ fn gb_command() -> std::process::Command {
     assert_cmd::cargo::CommandCargoExt::cargo_bin("gb").unwrap()
 }
 
+fn accept_with_timeout(listener: TcpListener) -> TcpStream {
+    listener.set_nonblocking(true).unwrap();
+    let deadline = Instant::now() + SERVER_TIMEOUT;
+
+    loop {
+        match listener.accept() {
+            Ok((stream, _)) => {
+                stream.set_read_timeout(Some(SERVER_TIMEOUT)).unwrap();
+                stream.set_write_timeout(Some(SERVER_TIMEOUT)).unwrap();
+                return stream;
+            }
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+                if Instant::now() >= deadline {
+                    panic!("timed out waiting for CLI to connect to mock server");
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            Err(err) => panic!("failed to accept mock server connection: {err}"),
+        }
+    }
+}
+
 fn spawn_server(status_line: &str, body: &str) -> (u16, thread::JoinHandle<CapturedRequest>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -26,12 +51,21 @@ fn spawn_server(status_line: &str, body: &str) -> (u16, thread::JoinHandle<Captu
     let body = body.to_string();
 
     let handle = thread::spawn(move || {
-        let (mut stream, _) = listener.accept().unwrap();
+        let mut stream = accept_with_timeout(listener);
         let mut buffer = Vec::new();
         let mut chunk = [0_u8; 1024];
         let header_end;
         loop {
-            let read = stream.read(&mut chunk).unwrap();
+            let read = match stream.read(&mut chunk) {
+                Ok(read) => read,
+                Err(err)
+                    if err.kind() == io::ErrorKind::TimedOut
+                        || err.kind() == io::ErrorKind::WouldBlock =>
+                {
+                    panic!("timed out while reading request headers from CLI");
+                }
+                Err(err) => panic!("failed to read request headers from CLI: {err}"),
+            };
             if read == 0 {
                 panic!("connection closed before request headers were fully read");
             }
@@ -61,7 +95,16 @@ fn spawn_server(status_line: &str, body: &str) -> (u16, thread::JoinHandle<Captu
             .and_then(|value| value.parse::<usize>().ok())
             .unwrap_or(0);
         while buffer.len() < header_end + content_length {
-            let read = stream.read(&mut chunk).unwrap();
+            let read = match stream.read(&mut chunk) {
+                Ok(read) => read,
+                Err(err)
+                    if err.kind() == io::ErrorKind::TimedOut
+                        || err.kind() == io::ErrorKind::WouldBlock =>
+                {
+                    panic!("timed out while reading request body from CLI");
+                }
+                Err(err) => panic!("failed to read request body from CLI: {err}"),
+            };
             if read == 0 {
                 break;
             }

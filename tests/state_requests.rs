@@ -1,11 +1,36 @@
-use std::io::{Read, Write};
-use std::net::TcpListener;
+use std::io::{self, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use tempfile::tempdir;
 
+const SERVER_TIMEOUT: Duration = Duration::from_secs(5);
+
 fn gb_command() -> std::process::Command {
     assert_cmd::cargo::CommandCargoExt::cargo_bin("gb").unwrap()
+}
+
+fn accept_with_timeout(listener: TcpListener) -> TcpStream {
+    listener.set_nonblocking(true).unwrap();
+    let deadline = Instant::now() + SERVER_TIMEOUT;
+
+    loop {
+        match listener.accept() {
+            Ok((stream, _)) => {
+                stream.set_read_timeout(Some(SERVER_TIMEOUT)).unwrap();
+                stream.set_write_timeout(Some(SERVER_TIMEOUT)).unwrap();
+                return stream;
+            }
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+                if Instant::now() >= deadline {
+                    panic!("timed out waiting for CLI to connect to mock server");
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            Err(err) => panic!("failed to accept mock server connection: {err}"),
+        }
+    }
 }
 
 fn serve_json_once(
@@ -20,11 +45,20 @@ fn serve_json_once(
     let body = body.to_string();
 
     let server = thread::spawn(move || {
-        let (mut stream, _) = listener.accept().unwrap();
+        let mut stream = accept_with_timeout(listener);
         let mut request = Vec::new();
         let mut buf = [0_u8; 1024];
         loop {
-            let read = stream.read(&mut buf).unwrap();
+            let read = match stream.read(&mut buf) {
+                Ok(read) => read,
+                Err(err)
+                    if err.kind() == io::ErrorKind::TimedOut
+                        || err.kind() == io::ErrorKind::WouldBlock =>
+                {
+                    panic!("timed out while reading request from CLI");
+                }
+                Err(err) => panic!("failed to read request from CLI: {err}"),
+            };
             if read == 0 {
                 break;
             }
