@@ -93,6 +93,31 @@ fn pr_head_fetch_source(pr: &crate::models::pull_request::PullRequest) -> &str {
         .unwrap_or("origin")
 }
 
+fn pr_base_fetch_source(pr: &crate::models::pull_request::PullRequest) -> &str {
+    pr.base
+        .as_ref()
+        .and_then(|base| base.repo.as_ref())
+        .and_then(|repo| repo.clone_url.as_deref())
+        .unwrap_or("origin")
+}
+
+fn current_branch_name() -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["branch", "--show-current"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if branch.is_empty() {
+        None
+    } else {
+        Some(branch)
+    }
+}
+
 pub async fn run(
     args: PrArgs,
     cli_hostname: &Option<String>,
@@ -252,18 +277,11 @@ async fn create(
 
     let head = match head {
         Some(h) => h,
-        None => {
-            // Try to detect current branch
-            let output = std::process::Command::new("git")
-                .args(["branch", "--show-current"])
-                .output();
-            match output {
-                Ok(o) if o.status.success() => {
-                    String::from_utf8_lossy(&o.stdout).trim().to_string()
-                }
-                _ => Input::new().with_prompt("Head branch").interact_text()?,
-            }
-        }
+        None => current_branch_name().ok_or_else(|| {
+            crate::error::GbError::Other(
+                "Could not determine current branch. Specify --head when running from a detached HEAD state.".into(),
+            )
+        })?,
     };
 
     let base = match base {
@@ -413,24 +431,27 @@ async fn diff(hostname: &Option<String>, cli_repo: &Option<String>, number: u64)
         .unwrap_or("main");
 
     let fetch_source = pr_head_fetch_source(&pr);
+    let base_fetch_source = pr_base_fetch_source(&pr);
+    let base_ref = format!("refs/gb/pr/{}/base", number);
+    let head_ref = format!("refs/gb/pr/{}/head", number);
 
     // Fetch both branches and show diff
     let base_fetch = std::process::Command::new("git")
-        .args(["fetch", "origin", base])
+        .args(["fetch", base_fetch_source, &format!("{}:{}", base, base_ref)])
         .status()?;
     if !base_fetch.success() {
         return Err(crate::error::GbError::Other("git fetch failed".into()));
     }
 
     let head_fetch = std::process::Command::new("git")
-        .args(["fetch", fetch_source, head])
+        .args(["fetch", fetch_source, &format!("{}:{}", head, head_ref)])
         .status()?;
     if !head_fetch.success() {
         return Err(crate::error::GbError::Other("git fetch failed".into()));
     }
 
     let status = std::process::Command::new("git")
-        .args(["diff", &format!("origin/{}...FETCH_HEAD", base)])
+        .args(["diff", &format!("{}...{}", base_ref, head_ref)])
         .status()?;
 
     if !status.success() {
