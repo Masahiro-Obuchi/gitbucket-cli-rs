@@ -1,6 +1,7 @@
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
 use reqwest::{Client, Method, Response};
 use serde::de::DeserializeOwned;
+use serde_json::Value;
 use url::Url;
 
 use crate::error::{GbError, Result};
@@ -24,7 +25,6 @@ impl ApiClient {
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
 
         let client = Client::builder().default_headers(headers).build()?;
-
         let base_url = normalize_base_url(hostname, protocol)?;
 
         Ok(Self { client, base_url })
@@ -110,27 +110,44 @@ impl ApiClient {
 
     /// Get the base URL for constructing web URLs
     pub fn web_url(&self, path: &str) -> String {
-        // Remove /api/v3 to get the web URL
         let base = self.base_url.trim_end_matches("/api/v3");
         format!("{}{}", base, path)
     }
 
     async fn handle_response<T: DeserializeOwned>(&self, resp: Response) -> Result<T> {
         let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
         if status.is_success() {
-            let body = resp.json::<T>().await?;
-            Ok(body)
+            parse_success_body(&body)
         } else {
-            let message = resp.text().await.unwrap_or_default();
             Err(GbError::Api {
                 status: status.as_u16(),
-                message,
+                message: body,
             })
         }
     }
 }
 
-fn normalize_base_url(hostname: &str, protocol: &str) -> Result<String> {
+fn parse_success_body<T: DeserializeOwned>(body: &str) -> Result<T> {
+    let value: Value = serde_json::from_str(body)?;
+
+    if let Some(inner) = value.as_str() {
+        return Ok(serde_json::from_str(inner)?);
+    }
+
+    if value.get("status").is_some() {
+        if let Some(inner) = value.get("body") {
+            return match inner {
+                Value::String(text) => Ok(serde_json::from_str(text)?),
+                other => Ok(serde_json::from_value(other.clone())?),
+            };
+        }
+    }
+
+    Ok(serde_json::from_value(value)?)
+}
+
+pub(crate) fn normalize_base_url(hostname: &str, protocol: &str) -> Result<String> {
     let input = hostname.trim().trim_end_matches('/');
     let candidate = if input.starts_with("http://") || input.starts_with("https://") {
         input.to_string()
@@ -160,9 +177,22 @@ fn normalize_base_url(hostname: &str, protocol: &str) -> Result<String> {
     }
 }
 
+pub(crate) fn normalize_web_base_url(hostname: &str, protocol: &str) -> Result<String> {
+    Ok(normalize_base_url(hostname, protocol)?
+        .trim_end_matches("/api/v3")
+        .to_string())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{normalize_base_url, ApiClient};
+    use serde::Deserialize;
+
+    use super::{normalize_base_url, normalize_web_base_url, parse_success_body, ApiClient};
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct WrappedValue {
+        name: String,
+    }
 
     #[test]
     fn normalizes_plain_hostname() {
@@ -208,5 +238,35 @@ mod tests {
         let base =
             normalize_base_url("https://gitbucket.example.com:8443/gitbucket/", "http").unwrap();
         assert_eq!(base, "https://gitbucket.example.com:8443/gitbucket/api/v3");
+    }
+
+    #[test]
+    fn normalizes_web_base_url() {
+        let base = normalize_web_base_url("gitbucket.example.com/gitbucket", "https").unwrap();
+        assert_eq!(base, "https://gitbucket.example.com/gitbucket");
+    }
+
+    #[test]
+    fn parses_string_wrapped_json_response() {
+        let parsed: WrappedValue = parse_success_body(r#""{\"name\":\"wrapped\"}""#).unwrap();
+        assert_eq!(
+            parsed,
+            WrappedValue {
+                name: "wrapped".into()
+            }
+        );
+    }
+
+    #[test]
+    fn parses_enveloped_body_json_response() {
+        let parsed: WrappedValue =
+            parse_success_body(r#"{"status":200,"body":"{\"name\":\"wrapped\"}","headers":{}}"#)
+                .unwrap();
+        assert_eq!(
+            parsed,
+            WrappedValue {
+                name: "wrapped".into()
+            }
+        );
     }
 }

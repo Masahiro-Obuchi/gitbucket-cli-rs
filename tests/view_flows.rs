@@ -358,3 +358,47 @@ fn pr_view_surfaces_api_404() {
     assert!(stderr.contains("API error (404)"));
     assert!(stderr.contains("missing pr"));
 }
+
+#[test]
+fn pr_view_falls_back_to_list_when_single_pr_response_is_empty() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_sequence_server(vec![
+        ExpectedResponse {
+            request_line: "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1".into(),
+            auth_header: "token test-token".into(),
+            status_line: "200 OK".into(),
+            body: String::new(),
+        },
+        ExpectedResponse {
+            request_line: "GET /api/v3/repos/alice/project/pulls?state=all HTTP/1.1".into(),
+            auth_header: "token test-token".into(),
+            status_line: "200 OK".into(),
+            body: r#"[{"number":5,"title":"Fallback PR","body":"PR body","state":"open","merged":false,"user":{"login":"alice"},"head":{"ref":"feature/demo"},"base":{"ref":"main"},"created_at":"2026-03-24T00:00:00Z"}]"#.into(),
+        },
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .env("NO_COLOR", "1")
+        .args(["pr", "view", "5"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert_eq!(requests.len(), 2);
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Fallback PR #5"));
+    assert!(stdout.contains("OPEN"));
+    assert!(stdout.contains("feature/demo"));
+}

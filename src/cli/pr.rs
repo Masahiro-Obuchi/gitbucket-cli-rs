@@ -5,6 +5,7 @@ use dialoguer::Input;
 use crate::cli::common::{
     create_client, parse_git_url, parse_owner_repo, resolve_hostname, resolve_repo,
 };
+use crate::config::auth::AuthConfig;
 use crate::error::Result;
 use crate::models::comment::CreateComment;
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest};
@@ -116,6 +117,53 @@ fn git_remote_url(remote: &str) -> Option<String> {
         None
     } else {
         Some(url)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct GitFetchSource {
+    command_source: String,
+    display_source: String,
+}
+
+fn credentialed_git_http_url(hostname: &str, url: &str) -> Option<String> {
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return None;
+    }
+
+    let config = AuthConfig::load().ok()?;
+    let host = config.get_host(hostname).ok()?;
+    if host.user.is_empty() {
+        return None;
+    }
+
+    let mut parsed = url::Url::parse(url).ok()?;
+    parsed.set_username(&host.user).ok()?;
+    parsed.set_password(Some(&host.token)).ok()?;
+    Some(parsed.to_string())
+}
+
+fn resolve_git_fetch_source(hostname: &str, source: &str) -> GitFetchSource {
+    if source.starts_with("http://") || source.starts_with("https://") {
+        return GitFetchSource {
+            command_source: credentialed_git_http_url(hostname, source)
+                .unwrap_or_else(|| source.to_string()),
+            display_source: source.to_string(),
+        };
+    }
+
+    if let Some(remote_url) = git_remote_url(source) {
+        if let Some(command_source) = credentialed_git_http_url(hostname, &remote_url) {
+            return GitFetchSource {
+                command_source,
+                display_source: source.to_string(),
+            };
+        }
+    }
+
+    GitFetchSource {
+        command_source: source.to_string(),
+        display_source: source.to_string(),
     }
 }
 
@@ -446,23 +494,29 @@ async fn checkout(hostname: &Option<String>, cli_repo: &Option<String>, number: 
         .map(|h| h.ref_name.as_str())
         .ok_or_else(|| crate::error::GbError::Other("PR has no head branch".into()))?;
 
-    let fetch_source = pr_head_fetch_source(&pr);
+    let fetch_source = resolve_git_fetch_source(&hostname, &pr_head_fetch_source(&pr));
     let head_ref = format!("refs/gb/pr/{}/head", number);
 
     // Fetch and checkout
-    let fetch_status = std::process::Command::new("git")
-        .args(["fetch", &fetch_source, &format!("{}:{}", branch, head_ref)])
-        .status()?;
+    let fetch_output = std::process::Command::new("git")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .arg("fetch")
+        .arg(&fetch_source.command_source)
+        .arg(format!("{}:{}", branch, head_ref))
+        .output()?;
 
-    if !fetch_status.success() {
+    if !fetch_output.status.success() {
         return Err(crate::error::GbError::Other(format!(
             "git fetch failed for '{}' from {}",
-            branch, fetch_source
+            branch, fetch_source.display_source
         )));
     }
 
     let checkout_status = std::process::Command::new("git")
-        .args(["checkout", "-B", branch, &head_ref])
+        .arg("checkout")
+        .arg("-B")
+        .arg(branch)
+        .arg(&head_ref)
         .status()?;
 
     if !checkout_status.success() {
@@ -490,43 +544,49 @@ async fn diff(hostname: &Option<String>, cli_repo: &Option<String>, number: u64)
         .map(|b| b.ref_name.as_str())
         .unwrap_or("main");
 
-    let fetch_source = pr_head_fetch_source(&pr);
-    let base_fetch_source = pr_base_fetch_source(&pr);
+    let fetch_source = resolve_git_fetch_source(&hostname, &pr_head_fetch_source(&pr));
+    let base_fetch_source = resolve_git_fetch_source(&hostname, &pr_base_fetch_source(&pr));
     let base_ref = format!("refs/gb/pr/{}/base", number);
     let head_ref = format!("refs/gb/pr/{}/head", number);
 
     // Fetch both branches and show diff
     let base_fetch = std::process::Command::new("git")
-        .args([
-            "fetch",
-            &base_fetch_source,
-            &format!("{}:{}", base, base_ref),
-        ])
-        .status()?;
-    if !base_fetch.success() {
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .arg("fetch")
+        .arg(&base_fetch_source.command_source)
+        .arg(format!("{}:{}", base, base_ref))
+        .output()?;
+    if !base_fetch.status.success() {
         return Err(crate::error::GbError::Other(format!(
             "git fetch failed for '{}' from {}",
-            base, base_fetch_source
+            base, base_fetch_source.display_source
         )));
     }
 
     let head_fetch = std::process::Command::new("git")
-        .args(["fetch", &fetch_source, &format!("{}:{}", head, head_ref)])
-        .status()?;
-    if !head_fetch.success() {
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .arg("fetch")
+        .arg(&fetch_source.command_source)
+        .arg(format!("{}:{}", head, head_ref))
+        .output()?;
+    if !head_fetch.status.success() {
         return Err(crate::error::GbError::Other(format!(
             "git fetch failed for '{}' from {}",
-            head, fetch_source
+            head, fetch_source.display_source
         )));
     }
 
     let status = std::process::Command::new("git")
-        .args(["diff", &format!("{}...{}", base_ref, head_ref)])
-        .status()?;
+        .arg("diff")
+        .arg(format!("{}...{}", base_ref, head_ref))
+        .output()?;
 
-    if !status.success() {
+    if !status.status.success() {
         return Err(crate::error::GbError::Other("git diff failed".into()));
     }
+
+    print!("{}", String::from_utf8_lossy(&status.stdout));
+    eprint!("{}", String::from_utf8_lossy(&status.stderr));
 
     Ok(())
 }

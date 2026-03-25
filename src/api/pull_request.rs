@@ -1,5 +1,5 @@
 use crate::api::client::ApiClient;
-use crate::error::Result;
+use crate::error::{GbError, Result};
 use crate::models::comment::{Comment, CreateComment};
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest, MergeResult, PullRequest};
 
@@ -22,8 +22,19 @@ impl ApiClient {
         repo: &str,
         number: u64,
     ) -> Result<PullRequest> {
-        self.get(&format!("/repos/{}/{}/pulls/{}", owner, repo, number))
+        match self
+            .get(&format!("/repos/{}/{}/pulls/{}", owner, repo, number))
             .await
+        {
+            Ok(pr) => Ok(pr),
+            Err(GbError::Json(_)) => {
+                let prs = self.list_pull_requests(owner, repo, "all").await?;
+                prs.into_iter()
+                    .find(|pr| pr.number == number)
+                    .ok_or_else(|| GbError::Other(format!("Pull request #{} not found", number)))
+            }
+            Err(err) => Err(err),
+        }
     }
 
     /// Create a pull request
