@@ -645,3 +645,425 @@ fn pr_comment_sends_expected_payload() {
     let body: Value = serde_json::from_str(&request.body).unwrap();
     assert_eq!(body["body"], "Please rebase");
 }
+
+#[test]
+fn repo_fork_accepts_repo_flag_after_subcommand() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server(
+        "200 OK",
+        r#"{"name":"project","full_name":"alice/project-fork","description":"","private":false,"fork":true}"#,
+    );
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["repo", "fork", "-R", "alice/project"])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(request.method, "POST");
+    assert_eq!(request.target, "/api/v3/repos/alice/project/forks");
+}
+
+#[test]
+fn pr_create_accepts_gitbucket_wrapped_json_response() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server(
+        "200 OK",
+        r#""{\"number\":9,\"title\":\"Wrapped PR\",\"state\":\"open\",\"merged\":false,\"head\":{\"ref\":\"feature/demo\"},\"base\":{\"ref\":\"main\"}}""#,
+    );
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args([
+            "pr",
+            "create",
+            "-t",
+            "Wrapped PR",
+            "-b",
+            "Body",
+            "--head",
+            "feature/demo",
+            "--base",
+            "main",
+        ])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(request.method, "POST");
+    assert_eq!(request.target, "/api/v3/repos/alice/project/pulls");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Created pull request #9"));
+}
+
+#[test]
+fn pr_merge_accepts_gitbucket_enveloped_response() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server(
+        "200 OK",
+        r#"{"status":200,"body":"{\"sha\":\"abc123\",\"merged\":true,\"message\":\"Pull Request successfully merged\"}","headers":{}}"#,
+    );
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["pr", "merge", "9", "-m", "merge body"])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(request.method, "PUT");
+    assert_eq!(request.target, "/api/v3/repos/alice/project/pulls/9/merge");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Merged pull request #9"));
+}
+
+#[derive(Debug)]
+struct ScriptedResponse {
+    expected_request_line: String,
+    status_line: String,
+    headers: Vec<(String, String)>,
+    body: String,
+}
+
+impl ScriptedResponse {
+    fn json(expected_request_line: &str, status_line: &str, body: &str) -> Self {
+        Self {
+            expected_request_line: expected_request_line.into(),
+            status_line: status_line.into(),
+            headers: vec![("content-type".into(), "application/json".into())],
+            body: body.into(),
+        }
+    }
+
+    fn html(expected_request_line: &str, status_line: &str, body: &str) -> Self {
+        Self {
+            expected_request_line: expected_request_line.into(),
+            status_line: status_line.into(),
+            headers: vec![("content-type".into(), "text/html; charset=utf-8".into())],
+            body: body.into(),
+        }
+    }
+
+    fn with_header(mut self, name: &str, value: &str) -> Self {
+        self.headers.push((name.into(), value.into()));
+        self
+    }
+}
+
+fn accept_next_with_timeout(listener: &TcpListener) -> TcpStream {
+    let deadline = Instant::now() + SERVER_TIMEOUT;
+
+    loop {
+        match listener.accept() {
+            Ok((stream, _)) => {
+                stream.set_read_timeout(Some(SERVER_TIMEOUT)).unwrap();
+                stream.set_write_timeout(Some(SERVER_TIMEOUT)).unwrap();
+                return stream;
+            }
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+                if Instant::now() >= deadline {
+                    panic!("timed out waiting for CLI to connect to mock server");
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            Err(err) => panic!("failed to accept mock server connection: {err}"),
+        }
+    }
+}
+
+fn read_request(stream: &mut TcpStream) -> CapturedRequest {
+    let mut buffer = Vec::new();
+    let mut chunk = [0_u8; 1024];
+    let header_end;
+    loop {
+        let read = match stream.read(&mut chunk) {
+            Ok(read) => read,
+            Err(err)
+                if err.kind() == io::ErrorKind::TimedOut
+                    || err.kind() == io::ErrorKind::WouldBlock =>
+            {
+                panic!("timed out while reading request headers from CLI");
+            }
+            Err(err) => panic!("failed to read request headers from CLI: {err}"),
+        };
+        if read == 0 {
+            panic!("connection closed before request headers were fully read");
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+        if let Some(pos) = buffer.windows(4).position(|w| w == b"\r\n\r\n") {
+            header_end = pos + 4;
+            break;
+        }
+    }
+
+    let header_text = String::from_utf8(buffer[..header_end].to_vec()).unwrap();
+    let mut lines = header_text.split("\r\n").filter(|line| !line.is_empty());
+    let request_line = lines.next().unwrap();
+    let mut request_parts = request_line.split_whitespace();
+    let method = request_parts.next().unwrap().to_string();
+    let target = request_parts.next().unwrap().to_string();
+
+    let mut headers = HashMap::new();
+    for line in lines {
+        if let Some((name, value)) = line.split_once(':') {
+            headers.insert(name.trim().to_ascii_lowercase(), value.trim().to_string());
+        }
+    }
+
+    let content_length = headers
+        .get("content-length")
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(0);
+    while buffer.len() < header_end + content_length {
+        let read = match stream.read(&mut chunk) {
+            Ok(read) => read,
+            Err(err)
+                if err.kind() == io::ErrorKind::TimedOut
+                    || err.kind() == io::ErrorKind::WouldBlock =>
+            {
+                panic!("timed out while reading request body from CLI");
+            }
+            Err(err) => panic!("failed to read request body from CLI: {err}"),
+        };
+        if read == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+    }
+    let body_bytes =
+        &buffer[header_end..header_end + content_length.min(buffer.len() - header_end)];
+    let body_text = String::from_utf8(body_bytes.to_vec()).unwrap();
+
+    CapturedRequest {
+        method,
+        target,
+        headers,
+        body: body_text,
+    }
+}
+
+fn write_response(stream: &mut TcpStream, response: &ScriptedResponse) {
+    let mut headers = String::new();
+    for (name, value) in &response.headers {
+        headers.push_str(name);
+        headers.push_str(": ");
+        headers.push_str(value);
+        headers.push_str("\r\n");
+    }
+
+    let payload = format!(
+        "HTTP/1.1 {}\r\n{}content-length: {}\r\nconnection: close\r\n\r\n{}",
+        response.status_line,
+        headers,
+        response.body.len(),
+        response.body
+    );
+    stream.write_all(payload.as_bytes()).unwrap();
+}
+
+fn spawn_scripted_server(
+    responses: Vec<ScriptedResponse>,
+) -> (u16, thread::JoinHandle<Vec<CapturedRequest>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    let handle = thread::spawn(move || {
+        let mut captured = Vec::new();
+        for response in responses {
+            let mut stream = accept_next_with_timeout(&listener);
+            let request = read_request(&mut stream);
+            let request_line = format!("{} {} HTTP/1.1", request.method, request.target);
+            assert_eq!(request_line, response.expected_request_line);
+            write_response(&mut stream, &response);
+            captured.push(request);
+        }
+        captured
+    });
+
+    (port, handle)
+}
+
+#[test]
+fn issue_close_falls_back_to_gitbucket_web_session() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "PATCH /gitbucket/api/v3/repos/alice/project/issues/7 HTTP/1.1",
+            "404 Not Found",
+            r#"{"message":"Not Found"}"#,
+        ),
+        ScriptedResponse::html("POST /gitbucket/signin HTTP/1.1", "200 OK", "signed in")
+            .with_header("set-cookie", "JSESSIONID=session123; Path=/; HttpOnly"),
+        ScriptedResponse::html(
+            "POST /gitbucket/alice/project/issue_comments/state HTTP/1.1",
+            "200 OK",
+            "updated",
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .env("GB_USER", "alice")
+        .env("GB_PASSWORD", "secret-pass")
+        .args(["issue", "close", "7"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(requests.len(), 3);
+    assert_eq!(
+        requests[0].headers.get("authorization").map(String::as_str),
+        Some("token test-token")
+    );
+    assert!(requests[1].body.contains("userName=alice"));
+    assert!(requests[1].body.contains("password=secret-pass"));
+    assert_eq!(
+        requests[2].headers.get("cookie").map(String::as_str),
+        Some("JSESSIONID=session123")
+    );
+    assert!(requests[2].body.contains("issueId=7"));
+    assert!(requests[2].body.contains("action=close"));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Closed issue #7"));
+}
+
+#[test]
+fn issue_reopen_falls_back_to_gitbucket_web_session() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "PATCH /gitbucket/api/v3/repos/alice/project/issues/8 HTTP/1.1",
+            "404 Not Found",
+            r#"{"message":"Not Found"}"#,
+        ),
+        ScriptedResponse::html("POST /gitbucket/signin HTTP/1.1", "200 OK", "signed in")
+            .with_header("set-cookie", "JSESSIONID=session234; Path=/; HttpOnly"),
+        ScriptedResponse::html(
+            "POST /gitbucket/alice/project/issue_comments/state HTTP/1.1",
+            "200 OK",
+            "updated",
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .env("GB_USER", "alice")
+        .env("GB_PASSWORD", "secret-pass")
+        .args(["issue", "reopen", "8"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(requests.len(), 3);
+    assert_eq!(
+        requests[2].headers.get("cookie").map(String::as_str),
+        Some("JSESSIONID=session234")
+    );
+    assert!(requests[2].body.contains("issueId=8"));
+    assert!(requests[2].body.contains("action=reopen"));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Reopened issue #8"));
+}
+
+#[test]
+fn repo_fork_falls_back_to_gitbucket_web_session() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "POST /gitbucket/api/v3/repos/alice/project/forks HTTP/1.1",
+            "404 Not Found",
+            r#"{"message":"Not Found"}"#,
+        ),
+        ScriptedResponse::html("POST /gitbucket/signin HTTP/1.1", "200 OK", "signed in")
+            .with_header("set-cookie", "JSESSIONID=session345; Path=/; HttpOnly"),
+        ScriptedResponse::html(
+            "POST /gitbucket/alice/project/fork HTTP/1.1",
+            "200 OK",
+            "forked",
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .env("GB_USER", "alice")
+        .env("GB_PASSWORD", "secret-pass")
+        .args(["repo", "fork", "-R", "alice/project", "--group", "my-group"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(requests.len(), 3);
+    assert_eq!(
+        requests[2].headers.get("cookie").map(String::as_str),
+        Some("JSESSIONID=session345")
+    );
+    assert!(requests[2].body.contains("account=my-group"));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Forked alice/project → my-group/project"));
+}

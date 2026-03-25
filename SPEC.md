@@ -141,7 +141,7 @@ gb repo list [OWNER] [OPTIONS]
 
 | Argument/Option | Description |
 | --- | --- |
-| `OWNER` | User or organization name (omit to list your repos) |
+| `OWNER` | User or group name (omit to list your repos) |
 | `--json` | Print JSON |
 
 Table output columns:
@@ -177,7 +177,7 @@ gb repo create [NAME] [OPTIONS]
 | `--description <TEXT>` | `-d` | none | Repository description |
 | `--private` | — | `false` | Create as private |
 | `--add-readme` | — | `false` | Auto-initialize README |
-| `--org <ORG>` | — | none | Create under an organization |
+| `--group <GROUP>` | — | none | Create under a group (`--org` remains accepted as an alias) |
 
 #### `gb repo clone`
 
@@ -202,7 +202,7 @@ gb repo delete [OWNER/REPO] [OPTIONS]
 
 | Argument/Option | Description |
 | --- | --- |
-| `OWNER/REPO` | Repository to delete (omit to auto-detect) |
+| `OWNER/REPO` | Repository to delete (explicit repository required) |
 | `--yes` | Skip confirmation prompt |
 
 #### `gb repo fork`
@@ -210,8 +210,15 @@ gb repo delete [OWNER/REPO] [OPTIONS]
 Fork a repository.
 
 ```text
-gb repo fork [OWNER/REPO]
+gb repo fork [OWNER/REPO] [OPTIONS]
 ```
+
+| Option | Short | Description |
+| --- | --- | --- |
+| `--repo <OWNER/REPO>` | `-R` | Repository to fork |
+| `--group <GROUP>` | — | Group to fork into (defaults to your user; `--org` remains accepted as an alias) |
+
+Implementation detail: if GitBucket returns `404` for the REST fork endpoint, `gb` falls back to the web fork flow and signs in with the configured username or `GB_USER`.
 
 ---
 
@@ -272,11 +279,15 @@ gb issue create [OPTIONS]
 gb issue close <NUMBER>
 ```
 
+Implementation detail: if GitBucket returns `404` for the REST issue update endpoint, `gb` falls back to the web issue state flow and signs in with the configured username or `GB_USER`.
+
 #### `gb issue reopen`
 
 ```text
 gb issue reopen <NUMBER>
 ```
+
+Implementation detail: same fallback behavior as `gb issue close`.
 
 #### `gb issue comment`
 
@@ -533,6 +544,8 @@ Available on view/browse flows using `--web` or `gb browse`.
 | `GB_REPO` | Default repository (`OWNER/REPO`) |
 | `GB_TOKEN` | Access token override |
 | `GB_PROTOCOL` | Protocol override when `GB_TOKEN` is used with a plain hostname |
+| `GB_USER` | Username for GitBucket web-session fallbacks |
+| `GB_PASSWORD` | Password for GitBucket web-session fallbacks |
 | `GB_CONFIG_DIR` | Custom config directory |
 | `NO_COLOR` | Disable colored output (terminal/toolchain dependent) |
 

@@ -1,7 +1,10 @@
 use std::process::Command;
 
+use dialoguer::Password;
+
 use crate::api::client::ApiClient;
-use crate::config::auth::AuthConfig;
+use crate::api::web::GitBucketWebSession;
+use crate::config::auth::{AuthConfig, HostConfig};
 use crate::error::{GbError, Result};
 
 /// Resolve GitBucket host or URL from CLI arg, env var, or config
@@ -20,7 +23,6 @@ pub fn resolve_repo(cli_repo: &Option<String>) -> Result<(String, String)> {
     if let Some(r) = cli_repo {
         return parse_owner_repo(r);
     }
-    // Try to detect from git remote
     detect_repo_from_git()
 }
 
@@ -64,13 +66,10 @@ fn detect_repo_from_git() -> Result<(String, String)> {
 /// Parse a git remote URL to extract owner/repo
 pub(crate) fn parse_git_url(url: &str) -> Result<(String, String)> {
     let path = if let Some(rest) = url.strip_prefix("git@") {
-        // git@host:owner/repo.git
         rest.split(':').nth(1).unwrap_or("").to_string()
     } else if url.starts_with("http://") || url.starts_with("https://") {
-        // https://host/owner/repo.git or https://host/git/owner/repo.git
         let parsed = url::Url::parse(url).map_err(|_| GbError::RepoNotFound)?;
         let path = parsed.path().trim_start_matches('/').to_string();
-        // Remove leading "git/" if present (GitBucket git URL)
         path.strip_prefix("git/").unwrap_or(&path).to_string()
     } else {
         return Err(GbError::RepoNotFound);
@@ -100,11 +99,38 @@ fn parse_repo_path(path: &str) -> Result<(String, String)> {
     Ok((owner.to_string(), repo.to_string()))
 }
 
+pub fn resolve_host_config(hostname: &str) -> Result<HostConfig> {
+    let config = AuthConfig::load()?;
+    config.get_host(hostname)
+}
+
 /// Create an API client from config
 pub fn create_client(hostname: &str) -> Result<ApiClient> {
-    let config = AuthConfig::load()?;
-    let host = config.get_host(hostname)?;
+    let host = resolve_host_config(hostname)?;
     ApiClient::new(hostname, &host.token, &host.protocol)
+}
+
+pub async fn create_web_session(hostname: &str) -> Result<GitBucketWebSession> {
+    let host = resolve_host_config(hostname)?;
+    let username = if let Ok(user) = std::env::var("GB_USER") {
+        user
+    } else if !host.user.is_empty() {
+        host.user.clone()
+    } else {
+        return Err(GbError::Auth(
+            "GitBucket web actions require a username. Run `gb auth login` first or set `GB_USER`."
+                .into(),
+        ));
+    };
+
+    let password = match std::env::var("GB_PASSWORD") {
+        Ok(password) => password,
+        Err(_) => Password::new()
+            .with_prompt(format!("GitBucket password for {}", username))
+            .interact()?,
+    };
+
+    GitBucketWebSession::sign_in(hostname, &username, &password, &host.protocol).await
 }
 
 #[cfg(test)]

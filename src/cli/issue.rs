@@ -2,8 +2,8 @@ use clap::{Args, Subcommand};
 use colored::Colorize;
 use dialoguer::Input;
 
-use crate::cli::common::{create_client, resolve_hostname, resolve_repo};
-use crate::error::Result;
+use crate::cli::common::{create_client, create_web_session, resolve_hostname, resolve_repo};
+use crate::error::{GbError, Result};
 use crate::models::comment::CreateComment;
 use crate::models::issue::{CreateIssue, UpdateIssue};
 use crate::output::table::print_table;
@@ -183,14 +183,22 @@ async fn view(
 
     if let Some(body) = &issue.body {
         if !body.is_empty() {
-            println!("\n{}", body);
+            println!(
+                "
+{}",
+                body
+            );
         }
     }
 
     if show_comments {
         let comments = client.list_issue_comments(&owner, &repo, number).await?;
         if !comments.is_empty() {
-            println!("\n{}", "--- Comments ---".dimmed());
+            println!(
+                "
+{}",
+                "--- Comments ---".dimmed()
+            );
             for c in &comments {
                 let author = c
                     .user
@@ -198,7 +206,12 @@ async fn view(
                     .map(|u| u.login.as_str())
                     .unwrap_or("unknown");
                 let date = c.created_at.as_deref().unwrap_or("");
-                println!("\n{} ({})", author.bold(), date.dimmed());
+                println!(
+                    "
+{} ({})",
+                    author.bold(),
+                    date.dimmed()
+                );
                 if let Some(body) = &c.body {
                     println!("{}", body);
                 }
@@ -266,33 +279,46 @@ async fn create(
 }
 
 async fn close(hostname: &Option<String>, cli_repo: &Option<String>, number: u64) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
-
-    let body = UpdateIssue {
-        state: Some("closed".to_string()),
-        title: None,
-        body: None,
-    };
-    client.update_issue(&owner, &repo, number, &body).await?;
-    println!("✓ Closed issue #{}", number);
-    Ok(())
+    set_issue_state(hostname, cli_repo, number, "closed", "close", "Closed").await
 }
 
 async fn reopen(hostname: &Option<String>, cli_repo: &Option<String>, number: u64) -> Result<()> {
+    set_issue_state(hostname, cli_repo, number, "open", "reopen", "Reopened").await
+}
+
+async fn set_issue_state(
+    hostname: &Option<String>,
+    cli_repo: &Option<String>,
+    number: u64,
+    api_state: &str,
+    web_action: &str,
+    verb: &str,
+) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = resolve_repo(cli_repo)?;
     let client = create_client(&hostname)?;
 
     let body = UpdateIssue {
-        state: Some("open".to_string()),
+        state: Some(api_state.to_string()),
         title: None,
         body: None,
     };
-    client.update_issue(&owner, &repo, number, &body).await?;
-    println!("✓ Reopened issue #{}", number);
-    Ok(())
+
+    match client.update_issue(&owner, &repo, number, &body).await {
+        Ok(_) => {
+            println!("✓ {} issue #{}", verb, number);
+            Ok(())
+        }
+        Err(GbError::Api { status: 404, .. }) => {
+            let session = create_web_session(&hostname).await?;
+            session
+                .update_issue_state(&owner, &repo, number, web_action)
+                .await?;
+            println!("✓ {} issue #{}", verb, number);
+            Ok(())
+        }
+        Err(err) => Err(err),
+    }
 }
 
 async fn comment(

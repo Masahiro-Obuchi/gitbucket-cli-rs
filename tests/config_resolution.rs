@@ -205,3 +205,38 @@ protocol = "https"
     assert!(stdout.contains("\"title\": \"From env\""));
     assert!(stdout.contains("\"number\": 1"));
 }
+
+#[test]
+fn repo_delete_requires_explicit_repo_even_inside_git_repo() {
+    let temp = tempdir().unwrap();
+    let status = std::process::Command::new("git")
+        .args(["init"])
+        .current_dir(temp.path())
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let status = std::process::Command::new("git")
+        .args([
+            "remote",
+            "add",
+            "origin",
+            "https://gitbucket.example.com/alice/project.git",
+        ])
+        .current_dir(temp.path())
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", "gitbucket.example.com")
+        .args(["repo", "delete", "--yes"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Refusing to delete without an explicit repository"));
+}

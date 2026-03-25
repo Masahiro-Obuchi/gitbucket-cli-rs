@@ -2,8 +2,11 @@ use clap::{Args, Subcommand};
 use colored::Colorize;
 use dialoguer::{Confirm, Input};
 
-use crate::cli::common::{create_client, resolve_hostname, resolve_repo};
-use crate::error::Result;
+use crate::cli::common::{
+    create_client, create_web_session, parse_owner_repo, resolve_host_config, resolve_hostname,
+    resolve_repo,
+};
+use crate::error::{GbError, Result};
 use crate::models::repository::CreateRepository;
 use crate::output::table::print_table;
 use crate::output::truncate;
@@ -18,7 +21,7 @@ pub struct RepoArgs {
 pub enum RepoCommand {
     /// List repositories
     List {
-        /// Owner (user or organization). If omitted, lists your repositories.
+        /// Owner (user or group). If omitted, lists your repositories.
         owner: Option<String>,
         /// Output as JSON
         #[arg(long)]
@@ -28,6 +31,9 @@ pub enum RepoCommand {
     View {
         /// Repository in OWNER/REPO format
         repo: Option<String>,
+        /// Repository in OWNER/REPO format
+        #[arg(long = "repo", short = 'R', conflicts_with = "repo")]
+        repo_flag: Option<String>,
         /// Open in browser
         #[arg(long, short)]
         web: bool,
@@ -45,9 +51,9 @@ pub enum RepoCommand {
         /// Initialize with a README
         #[arg(long)]
         add_readme: bool,
-        /// Organization to create under
-        #[arg(long)]
-        org: Option<String>,
+        /// Group to create under
+        #[arg(long = "group", alias = "org")]
+        group: Option<String>,
     },
     /// Clone a repository
     Clone {
@@ -60,6 +66,9 @@ pub enum RepoCommand {
     Delete {
         /// Repository in OWNER/REPO format
         repo: Option<String>,
+        /// Repository in OWNER/REPO format
+        #[arg(long = "repo", short = 'R', conflicts_with = "repo")]
+        repo_flag: Option<String>,
         /// Skip confirmation
         #[arg(long)]
         yes: bool,
@@ -68,6 +77,12 @@ pub enum RepoCommand {
     Fork {
         /// Repository to fork (OWNER/REPO)
         repo: Option<String>,
+        /// Repository to fork (OWNER/REPO)
+        #[arg(long = "repo", short = 'R', conflicts_with = "repo")]
+        repo_flag: Option<String>,
+        /// Group to fork into (defaults to your user)
+        #[arg(long = "group", alias = "org")]
+        group: Option<String>,
     },
 }
 
@@ -78,35 +93,31 @@ pub async fn run(
 ) -> Result<()> {
     match args.command {
         RepoCommand::List { owner, json } => list(cli_hostname, owner, json).await,
-        RepoCommand::View { repo, web } => {
-            view(
-                cli_hostname,
-                repo.as_ref().or(cli_repo.as_ref()).cloned(),
-                web,
-            )
-            .await
-        }
+        RepoCommand::View {
+            repo,
+            repo_flag,
+            web,
+        } => view(cli_hostname, repo.or(repo_flag).or(cli_repo.clone()), web).await,
         RepoCommand::Create {
             name,
             description,
             private,
             add_readme,
-            org,
-        } => create(cli_hostname, name, description, private, add_readme, org).await,
+            group,
+        } => create(cli_hostname, name, description, private, add_readme, group).await,
         RepoCommand::Clone { repo, directory } => {
             clone(cli_hostname, &repo, directory.as_deref()).await
         }
-        RepoCommand::Delete { repo, yes } => {
-            delete(
-                cli_hostname,
-                repo.as_ref().or(cli_repo.as_ref()).cloned(),
-                yes,
-            )
-            .await
-        }
-        RepoCommand::Fork { repo } => {
-            fork(cli_hostname, repo.as_ref().or(cli_repo.as_ref()).cloned()).await
-        }
+        RepoCommand::Delete {
+            repo,
+            repo_flag,
+            yes,
+        } => delete(cli_hostname, repo.or(repo_flag).or(cli_repo.clone()), yes).await,
+        RepoCommand::Fork {
+            repo,
+            repo_flag,
+            group,
+        } => fork(cli_hostname, repo.or(repo_flag).or(cli_repo.clone()), group).await,
     }
 }
 
@@ -144,7 +155,7 @@ async fn list(hostname: &Option<String>, owner: Option<String>, json: bool) -> R
 async fn view(hostname: &Option<String>, repo_arg: Option<String>, web: bool) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = match repo_arg {
-        Some(r) => crate::cli::common::parse_owner_repo(&r)?,
+        Some(r) => parse_owner_repo(&r)?,
         None => resolve_repo(&None)?,
     };
     let client = create_client(&hostname)?;
@@ -191,7 +202,8 @@ async fn view(hostname: &Option<String>, repo_arg: Option<String>, web: bool) ->
     }
 
     println!(
-        "\nStars: {}  Forks: {}  Issues: {}",
+        "
+Stars: {}  Forks: {}  Issues: {}",
         r.watchers_count.unwrap_or(0),
         r.forks_count.unwrap_or(0),
         r.open_issues_count.unwrap_or(0),
@@ -206,7 +218,7 @@ async fn create(
     description: Option<String>,
     private: bool,
     add_readme: bool,
-    org: Option<String>,
+    group: Option<String>,
 ) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let client = create_client(&hostname)?;
@@ -225,8 +237,8 @@ async fn create(
         auto_init: Some(add_readme),
     };
 
-    let repo = match org {
-        Some(o) => client.create_org_repo(&o, &body).await?,
+    let repo = match group {
+        Some(group_name) => client.create_org_repo(&group_name, &body).await?,
         None => client.create_user_repo(&body).await?,
     };
 
@@ -243,7 +255,7 @@ async fn clone(hostname: &Option<String>, repo: &str, directory: Option<&str>) -
     } else {
         let hostname = resolve_hostname(hostname)?;
         let client = create_client(&hostname)?;
-        let (owner, name) = crate::cli::common::parse_owner_repo(repo)?;
+        let (owner, name) = parse_owner_repo(repo)?;
         let r = client.get_repo(&owner, &name).await?;
         r.clone_url
             .unwrap_or_else(|| client.web_url(&format!("/{}/{}.git", owner, name)))
@@ -265,10 +277,13 @@ async fn clone(hostname: &Option<String>, repo: &str, directory: Option<&str>) -
 
 async fn delete(hostname: &Option<String>, repo_arg: Option<String>, yes: bool) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = match repo_arg {
-        Some(r) => crate::cli::common::parse_owner_repo(&r)?,
-        None => resolve_repo(&None)?,
-    };
+    let repo_arg = repo_arg.ok_or_else(|| {
+        crate::error::GbError::Other(
+            "Refusing to delete without an explicit repository. Pass OWNER/REPO or -R/--repo."
+                .into(),
+        )
+    })?;
+    let (owner, repo) = parse_owner_repo(&repo_arg)?;
 
     if !yes {
         let confirmed = Confirm::new()
@@ -290,18 +305,58 @@ async fn delete(hostname: &Option<String>, repo_arg: Option<String>, yes: bool) 
     Ok(())
 }
 
-async fn fork(hostname: &Option<String>, repo_arg: Option<String>) -> Result<()> {
+async fn fork(
+    hostname: &Option<String>,
+    repo_arg: Option<String>,
+    group: Option<String>,
+) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = match repo_arg {
-        Some(r) => crate::cli::common::parse_owner_repo(&r)?,
+        Some(r) => parse_owner_repo(&r)?,
         None => resolve_repo(&None)?,
     };
 
     let client = create_client(&hostname)?;
-    let forked = client.fork_repo(&owner, &repo).await?;
-    println!("✓ Forked {}/{} → {}", owner, repo, forked.full_name);
-    if let Some(url) = &forked.html_url {
-        println!("{}", url);
+    match client.fork_repo(&owner, &repo).await {
+        Ok(forked) => {
+            println!("✓ Forked {}/{} → {}", owner, repo, forked.full_name);
+            if let Some(url) = &forked.html_url {
+                println!("{}", url);
+            }
+            Ok(())
+        }
+        Err(GbError::Api { status: 404, .. }) => {
+            let target_account = resolve_fork_target(&hostname, group)?;
+            let session = create_web_session(&hostname).await?;
+            session.fork_repo(&owner, &repo, &target_account).await?;
+            println!("✓ Forked {}/{} → {}/{}", owner, repo, target_account, repo);
+            println!(
+                "{}",
+                client.web_url(&format!("/{}/{}", target_account, repo))
+            );
+            Ok(())
+        }
+        Err(err) => Err(err),
     }
-    Ok(())
+}
+
+fn resolve_fork_target(hostname: &str, group: Option<String>) -> Result<String> {
+    if let Some(group) = group {
+        return Ok(group);
+    }
+    if let Ok(user) = std::env::var("GB_USER") {
+        if !user.is_empty() {
+            return Ok(user);
+        }
+    }
+
+    let host = resolve_host_config(hostname)?;
+    if !host.user.is_empty() {
+        return Ok(host.user);
+    }
+
+    Err(GbError::Auth(
+        "GitBucket fork requires a destination user or group. Run `gb auth login` first, pass `--group`, or set `GB_USER`."
+            .into(),
+    ))
 }

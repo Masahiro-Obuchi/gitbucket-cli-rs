@@ -86,7 +86,10 @@ impl AuthConfig {
         if let Ok(token) = std::env::var("GB_TOKEN") {
             return Ok(HostConfig {
                 token,
-                user: String::new(),
+                user: std::env::var("GB_USER")
+                    .ok()
+                    .or_else(|| stored_host.map(|host| host.user.clone()))
+                    .unwrap_or_default(),
                 protocol: protocol_from_hostname(hostname)
                     .or_else(|| std::env::var("GB_PROTOCOL").ok())
                     .or_else(|| stored_host.map(|host| host.protocol.clone()))

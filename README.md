@@ -53,6 +53,7 @@ gb auth login -H gitbucket.example.com/gitbucket --protocol https
 gb repo list
 gb repo view alice/my-app
 gb repo create my-new-repo
+gb repo create my-team-repo --group dev-team
 gb repo clone alice/my-app
 gb repo fork alice/my-app
 ```
@@ -147,6 +148,12 @@ gb issue view 1 --web
 `gb issue list` and `gb pr list` support `--state open`, `--state closed`, and `--state all`.
 Invalid values are rejected before the API call is made.
 
+## GitBucket Web Fallbacks
+
+Some GitBucket actions are only exposed through the web UI, not the REST API.
+When `gb repo fork`, `gb issue close`, or `gb issue reopen` hits that case, `gb` falls back to a short web sign-in flow and may prompt for your password.
+Use `GB_USER` and `GB_PASSWORD` to preseed those prompts when needed.
+
 ## Pull Request Checkout And Diff
 
 `gb pr checkout` and `gb pr diff` work with same-repository PRs and fork-based PRs.
@@ -161,6 +168,8 @@ When the PR head repository is available from the API response, `gb` fetches fro
 | `GB_REPO`       | Default repository (`OWNER/REPO`)                         |
 | `GB_CONFIG_DIR` | Config directory path (default: `~/.config/gb/`)          |
 | `GB_PROTOCOL`   | Protocol override when using `GB_TOKEN` with a plain host |
+| `GB_USER`       | Username for GitBucket web-session fallbacks              |
+| `GB_PASSWORD`   | Password for GitBucket web-session fallbacks              |
 | `NO_COLOR`      | Disable colored output                                    |
 
 ## Configuration file
