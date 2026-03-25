@@ -124,7 +124,7 @@ These checks are necessary for API compatibility and git command behavior.
 
 - [ ] `gb repo create <name>` creates a repository.
 - [ ] `gb repo create --private` creates a private repository.
-- [ ] `gb repo create --org <org>` creates a repository under the organization.
+- [ ] `gb repo create --group <group>` creates a repository under the group.
 - [ ] `gb repo delete` prompts for confirmation.
 - [ ] `gb repo delete --yes` skips confirmation.
 - [ ] `gb repo fork` creates a fork and prints the resulting repository.
@@ -238,11 +238,11 @@ These checks are necessary for API compatibility and git command behavior.
 
 ### Good candidates for E2E tests
 
-- auth login against a live GitBucket instance
-- repo create, fork, delete
-- issue create, list, close, reopen, comment
-- PR create, view, merge, checkout, diff
-- browser URL generation
+- auth login against a disposable Docker GitBucket instance
+- repo view against a seeded repository
+- issue list `--json` against a seeded repository
+- pr list `--json` against a seeded repository
+- later expansion to repo/issue/pr write flows after smoke stability
 
 ## Minimal Manual Smoke Test
 

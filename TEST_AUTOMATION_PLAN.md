@@ -197,14 +197,12 @@ Recommended environment:
 
 ### 5.1 Highest-value E2E scenarios
 
-- auth login against a live instance
-- repo list/view/create
-- issue create/list/view/close/reopen/comment
-- PR create/list/view/comment/merge
-- `pr checkout` for same-repo PR
-- `pr checkout` for fork PR
-- `pr diff` for same-repo PR
-- `pr diff` for fork PR
+- Docker-backed smoke bootstrap for a disposable GitBucket instance
+- auth login against the disposable instance
+- repo view against a seeded repository
+- issue list `--json` against the seeded repository
+- pr list `--json` against the seeded repository
+- expand to write flows only after the smoke lane is stable
 
 ### 5.2 What should remain manual even after E2E exists
 
@@ -214,7 +212,7 @@ Recommended environment:
 
 Exit condition:
 
-- a small but representative smoke suite passes against a disposable real GitBucket environment
+- a small but representative smoke suite passes against a disposable real GitBucket environment in local runs and CI
 
 ## Suggested Test Layout
 

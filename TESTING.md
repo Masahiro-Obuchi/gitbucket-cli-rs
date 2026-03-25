@@ -31,6 +31,7 @@ Useful focused runs:
 cargo test --test config_resolution
 cargo test --test mocked_api_flows
 cargo test --test regression_pre_fix
+cargo test --test e2e_smoke -- --ignored --nocapture
 cargo test <name>
 ```
 
@@ -70,7 +71,7 @@ These execute the real CLI binary as a subprocess.
 - `tests/regression_pre_fix.rs`
   regression coverage for previously fixed CLI bugs, including git-heavy flows such as `repo clone`, `pr checkout`, and `pr diff`
 - `tests/e2e_smoke.rs`
-  ignored live-instance smoke tests for a real GitBucket server
+  ignored Docker-backed smoke tests for a disposable GitBucket fixture
 
 ## How To Choose A Test Type
 
@@ -107,25 +108,26 @@ Add or extend a git regression test when:
 
 ## Live E2E Smoke
 
-A minimal live-instance smoke test scaffold exists in `tests/e2e_smoke.rs`.
-These tests are ignored by default and require a reachable GitBucket instance.
+A Docker-backed live smoke test scaffold exists in `tests/e2e_smoke.rs`.
+These tests are ignored by default and are intended to be driven by the bootstrap scripts in `scripts/e2e/`.
 
-Required environment variables:
+Default local flow:
+
+```bash
+./scripts/e2e/bootstrap.sh
+set -a
+source .tmp/e2e/runtime.env
+set +a
+cargo test --test e2e_smoke -- --ignored --nocapture
+./scripts/e2e/down.sh
+```
+
+Bootstrap writes these environment variables to `.tmp/e2e/runtime.env`:
 
 - `GB_E2E_HOST`
 - `GB_E2E_TOKEN`
 - `GB_E2E_REPO`
-
-Optional environment variable:
-
 - `GB_E2E_PROTOCOL`
+- `GB_E2E_BASE_URL`
 
-Example:
-
-```bash
-GB_E2E_HOST=gitbucket.example.com \
-GB_E2E_TOKEN=... \
-GB_E2E_REPO=alice/project \
-GB_E2E_PROTOCOL=https \
-cargo test --test e2e_smoke -- --ignored --nocapture
-```
+The dedicated GitHub Actions workflow in `.github/workflows/e2e.yml` uses the same bootstrap contract on `main` pushes.
