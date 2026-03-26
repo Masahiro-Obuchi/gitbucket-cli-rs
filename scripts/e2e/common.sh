@@ -11,9 +11,14 @@ GB_E2E_HTTP_PORT="${GB_E2E_HTTP_PORT:-18080}"
 GB_E2E_BASE_URL="${GB_E2E_BASE_URL:-http://127.0.0.1:${GB_E2E_HTTP_PORT}}"
 GB_E2E_DATA_DIR="${GB_E2E_DATA_DIR:-${GB_E2E_ROOT}/gitbucket-data}"
 GB_E2E_ENV_FILE="${GB_E2E_ENV_FILE:-${GB_E2E_ROOT}/runtime.env}"
-GB_E2E_REPO_OWNER="${GB_E2E_REPO_OWNER:-root}"
+GB_E2E_USER="${GB_E2E_USER:-gb-e2e-user}"
+GB_E2E_PASSWORD="${GB_E2E_PASSWORD:-gb-e2e-pass}"
+GB_E2E_REPO_OWNER="${GB_E2E_REPO_OWNER:-${GB_E2E_USER}}"
 GB_E2E_REPO_NAME="${GB_E2E_REPO_NAME:-e2e-smoke}"
 GB_E2E_REPO="${GB_E2E_REPO_OWNER}/${GB_E2E_REPO_NAME}"
+GB_E2E_FORK_SOURCE_OWNER="${GB_E2E_FORK_SOURCE_OWNER:-root}"
+GB_E2E_FORK_SOURCE_NAME="${GB_E2E_FORK_SOURCE_NAME:-e2e-fork-source}"
+GB_E2E_FORK_SOURCE="${GB_E2E_FORK_SOURCE_OWNER}/${GB_E2E_FORK_SOURCE_NAME}"
 
 export REPO_ROOT
 export COMPOSE_FILE
@@ -23,9 +28,14 @@ export GB_E2E_HTTP_PORT
 export GB_E2E_BASE_URL
 export GB_E2E_DATA_DIR
 export GB_E2E_ENV_FILE
+export GB_E2E_USER
+export GB_E2E_PASSWORD
 export GB_E2E_REPO_OWNER
 export GB_E2E_REPO_NAME
 export GB_E2E_REPO
+export GB_E2E_FORK_SOURCE_OWNER
+export GB_E2E_FORK_SOURCE_NAME
+export GB_E2E_FORK_SOURCE
 
 compose() {
   docker compose -p "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE_FILE}" "$@"
@@ -59,5 +69,10 @@ curl_json() {
 extract_json_string() {
   local key=$1
   local file=$2
-  python3 -c "import json,sys; data=json.load(open(sys.argv[2], encoding=\"utf-8\")); value=data.get(sys.argv[1], \"\"); print(\"\" if value is None else value)" "${key}" "${file}"
+  python3 -c 'import json,sys; data=json.load(open(sys.argv[2], encoding="utf-8")); value=data.get(sys.argv[1], ""); print("" if value is None else value)' "${key}" "${file}"
+}
+
+extract_html_clipboard_token() {
+  local file=$1
+  python3 -c 'import pathlib,re,sys; body=pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"); match=re.search(r"data-clipboard-text=\"([0-9a-f]{40})\"", body); print(match.group(1) if match else "")' "${file}"
 }
