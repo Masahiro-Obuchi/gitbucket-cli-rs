@@ -62,6 +62,15 @@ impl GitBucketWebSession {
         .await
     }
 
+    pub async fn delete_repo(&self, owner: &str, repo: &str) -> Result<()> {
+        self.post_form(
+            &format!("/{owner}/{repo}/settings/delete"),
+            Vec::new(),
+            "delete the repository",
+        )
+        .await
+    }
+
     pub async fn update_issue_state(
         &self,
         owner: &str,

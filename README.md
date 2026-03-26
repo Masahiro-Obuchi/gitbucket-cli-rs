@@ -151,7 +151,7 @@ Invalid values are rejected before the API call is made.
 ## GitBucket Web Fallbacks
 
 Some GitBucket actions are only exposed through the web UI, not the REST API.
-When `gb repo fork`, `gb issue close`, or `gb issue reopen` hits that case, `gb` falls back to a short web sign-in flow and may prompt for your password.
+When `gb repo delete`, `gb repo fork`, `gb issue close`, or `gb issue reopen` hits that case, `gb` falls back to a short web sign-in flow and may prompt for your password.
 Use `GB_USER` and `GB_PASSWORD` to preseed those prompts when needed.
 
 ## Pull Request Checkout And Diff

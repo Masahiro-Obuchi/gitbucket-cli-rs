@@ -220,6 +220,8 @@ gb repo fork [OWNER/REPO] [OPTIONS]
 
 Implementation detail: if GitBucket returns `404` for the REST fork endpoint, `gb` falls back to the web fork flow and signs in with the configured username or `GB_USER`.
 
+`gb repo delete` behaves similarly: if GitBucket returns `404` for `DELETE /repos/{owner}/{repo}`, `gb` retries through the web danger-zone form.
+
 ---
 
 ### 3.4 `gb issue` — issue operations

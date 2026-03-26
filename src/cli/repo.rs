@@ -61,11 +61,11 @@ pub enum RepoCommand {
     },
     /// Delete a repository
     Delete {
-        /// Repository in OWNER/REPO format
-        repo: Option<String>,
         /// Skip confirmation
         #[arg(long)]
         yes: bool,
+        /// Repository in OWNER/REPO format
+        repo: Option<String>,
     },
     /// Fork a repository
     Fork {
@@ -283,9 +283,19 @@ async fn delete(hostname: &Option<String>, repo_arg: Option<String>, yes: bool) 
     }
 
     let client = create_client(&hostname)?;
-    client.delete_repo(&owner, &repo).await?;
-    println!("✓ Deleted repository {}/{}", owner, repo);
-    Ok(())
+    match client.delete_repo(&owner, &repo).await {
+        Ok(()) => {
+            println!("✓ Deleted repository {}/{}", owner, repo);
+            Ok(())
+        }
+        Err(GbError::Api { status: 404, .. }) => {
+            let session = create_web_session(&hostname).await?;
+            session.delete_repo(&owner, &repo).await?;
+            println!("✓ Deleted repository {}/{}", owner, repo);
+            Ok(())
+        }
+        Err(err) => Err(err),
+    }
 }
 
 async fn fork(

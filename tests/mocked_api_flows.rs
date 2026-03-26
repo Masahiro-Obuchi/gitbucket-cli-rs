@@ -1023,6 +1023,82 @@ fn issue_reopen_falls_back_to_gitbucket_web_session() {
 }
 
 #[test]
+fn repo_delete_yes_skips_confirmation_and_sends_delete_request() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server("204 No Content", "");
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["repo", "delete", "--yes", "alice/project"])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(request.method, "DELETE");
+    assert_eq!(request.target, "/api/v3/repos/alice/project");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Deleted repository alice/project"));
+}
+
+#[test]
+fn repo_delete_falls_back_to_gitbucket_web_session() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "DELETE /gitbucket/api/v3/repos/alice/project HTTP/1.1",
+            "404 Not Found",
+            r#"{"message":"Not Found"}"#,
+        ),
+        ScriptedResponse::html("POST /gitbucket/signin HTTP/1.1", "200 OK", "signed in")
+            .with_header("set-cookie", "JSESSIONID=session456; Path=/; HttpOnly"),
+        ScriptedResponse::html(
+            "POST /gitbucket/alice/project/settings/delete HTTP/1.1",
+            "200 OK",
+            "deleted",
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .env("GB_USER", "alice")
+        .env("GB_PASSWORD", "secret-pass")
+        .env("GB_REPO", "ignored/from-env")
+        .args(["repo", "delete", "alice/project", "--yes"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(requests.len(), 3);
+    assert_eq!(
+        requests[2].headers.get("cookie").map(String::as_str),
+        Some("JSESSIONID=session456")
+    );
+    assert!(requests[2].body.is_empty());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Deleted repository alice/project"));
+}
+
+#[test]
 fn repo_fork_falls_back_to_gitbucket_web_session() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_scripted_server(vec![
