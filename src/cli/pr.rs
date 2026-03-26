@@ -493,11 +493,12 @@ async fn checkout(hostname: &Option<String>, cli_repo: &Option<String>, number: 
         .as_ref()
         .map(|h| h.ref_name.as_str())
         .ok_or_else(|| crate::error::GbError::Other("PR has no head branch".into()))?;
+    let local_branch = format!("pr-{}", number);
 
     let fetch_source = resolve_git_fetch_source(&hostname, &pr_head_fetch_source(&pr));
     let head_ref = format!("refs/gb/pr/{}/head", number);
 
-    // Fetch and checkout
+    // Fetch into a dedicated hidden ref, then move a tool-owned local branch onto it.
     let fetch_output = std::process::Command::new("git")
         .env("GIT_TERMINAL_PROMPT", "0")
         .arg("fetch")
@@ -515,7 +516,7 @@ async fn checkout(hostname: &Option<String>, cli_repo: &Option<String>, number: 
     let checkout_status = std::process::Command::new("git")
         .arg("checkout")
         .arg("-B")
-        .arg(branch)
+        .arg(&local_branch)
         .arg(&head_ref)
         .status()?;
 
@@ -523,7 +524,10 @@ async fn checkout(hostname: &Option<String>, cli_repo: &Option<String>, number: 
         return Err(crate::error::GbError::Other("git checkout failed".into()));
     }
 
-    println!("✓ Checked out branch '{}' for PR #{}", branch, number);
+    println!(
+        "✓ Checked out branch '{}' for PR #{} (from '{}')",
+        local_branch, number, branch
+    );
     Ok(())
 }
 

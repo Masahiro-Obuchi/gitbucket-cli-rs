@@ -354,12 +354,153 @@ fn pr_checkout_prefers_matching_remote_when_api_clone_url_is_unusable() {
     );
     assert_eq!(
         git_output(&local_repo, &["branch", "--show-current"]),
-        "feature/demo"
+        "pr-5"
     );
     let content = std::fs::read_to_string(local_repo.join("README.md")).unwrap();
     assert!(content.contains("feature"), "README content: {content}");
 }
 
+#[test]
+fn pr_checkout_does_not_overwrite_local_main_when_pr_branch_is_named_main() {
+    let temp = tempdir().unwrap();
+    let hosting_root = temp.path().join("hosting");
+    let base_bare = hosting_root.join("alice").join("base.git");
+    let head_bare = hosting_root.join("bob").join("head.git");
+    std::fs::create_dir_all(base_bare.parent().unwrap()).unwrap();
+    std::fs::create_dir_all(head_bare.parent().unwrap()).unwrap();
+    run_git(
+        temp.path(),
+        &["init", "--bare", base_bare.to_str().unwrap()],
+    );
+    run_git(
+        temp.path(),
+        &["init", "--bare", head_bare.to_str().unwrap()],
+    );
+
+    let repos_dir = temp.path().join("repos");
+    std::fs::create_dir_all(&repos_dir).unwrap();
+    let base_work = repos_dir.join("base-work");
+    std::fs::create_dir_all(&base_work).unwrap();
+    run_git(&base_work, &["init"]);
+    run_git(&base_work, &["config", "user.name", "Test User"]);
+    run_git(&base_work, &["config", "user.email", "test@example.com"]);
+    std::fs::write(base_work.join("README.md"), "base\n").unwrap();
+    run_git(&base_work, &["add", "README.md"]);
+    run_git(&base_work, &["commit", "-m", "base"]);
+    run_git(&base_work, &["branch", "-M", "main"]);
+    run_git(
+        &base_work,
+        &["remote", "add", "origin", base_bare.to_str().unwrap()],
+    );
+    run_git(&base_work, &["push", "origin", "main"]);
+
+    let head_work = repos_dir.join("head-work");
+    run_git(
+        temp.path(),
+        &[
+            "clone",
+            "--branch",
+            "main",
+            base_bare.to_str().unwrap(),
+            head_work.to_str().unwrap(),
+        ],
+    );
+    run_git(&head_work, &["config", "user.name", "Test User"]);
+    run_git(&head_work, &["config", "user.email", "test@example.com"]);
+    run_git(&head_work, &["checkout", "-B", "main"]);
+    std::fs::write(head_work.join("README.md"), "base\npr-main\n").unwrap();
+    run_git(&head_work, &["commit", "-am", "pr main"]);
+    run_git(
+        &head_work,
+        &["remote", "add", "fork", head_bare.to_str().unwrap()],
+    );
+    run_git(&head_work, &["push", "fork", "main"]);
+
+    let local_repo = temp.path().join("local-repo");
+    std::fs::create_dir_all(&local_repo).unwrap();
+    run_git(&local_repo, &["init"]);
+    run_git(&local_repo, &["config", "user.name", "Test User"]);
+    run_git(&local_repo, &["config", "user.email", "test@example.com"]);
+    run_git(
+        &local_repo,
+        &[
+            "config",
+            &format!("url.file://{}/.insteadOf", hosting_root.display()),
+            "https://gitbucket.example.com/",
+        ],
+    );
+    run_git(
+        &local_repo,
+        &[
+            "remote",
+            "add",
+            "upstream",
+            "https://gitbucket.example.com/alice/base.git",
+        ],
+    );
+    run_git(
+        &local_repo,
+        &[
+            "remote",
+            "add",
+            "fork",
+            "https://gitbucket.example.com/bob/head.git",
+        ],
+    );
+    std::fs::write(local_repo.join("README.md"), "local-main\n").unwrap();
+    run_git(&local_repo, &["add", "README.md"]);
+    run_git(&local_repo, &["commit", "-m", "local main"]);
+    run_git(&local_repo, &["branch", "-M", "main"]);
+    let local_main_before = git_output(&local_repo, &["rev-parse", "main"]);
+
+    let body = concat!(
+        "{",
+        "\"number\":7,",
+        "\"title\":\"Main branch PR\",",
+        "\"state\":\"open\",",
+        "\"head\":{\"ref\":\"main\",\"repo\":{\"name\":\"head\",\"full_name\":\"bob/head\",\"private\":true,\"clone_url\":\"git@gitbucket.example.com:bob/head.git\"}},",
+        "\"base\":{\"ref\":\"main\",\"repo\":{\"name\":\"base\",\"full_name\":\"alice/base\",\"private\":false,\"clone_url\":\"git@gitbucket.example.com:alice/base.git\"}}",
+        "}"
+    );
+    let (port, server) = serve_json_once(
+        "GET /api/v3/repos/alice/project/pulls/7 HTTP/1.1",
+        "authorization: token test-token",
+        body,
+    );
+
+    let output = gb_command()
+        .current_dir(&local_repo)
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["pr", "checkout", "7"])
+        .output()
+        .unwrap();
+
+    server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        git_output(&local_repo, &["branch", "--show-current"]),
+        "pr-7"
+    );
+    assert_eq!(
+        git_output(&local_repo, &["rev-parse", "main"]),
+        local_main_before
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Checked out branch 'pr-7'"),
+        "stdout: {stdout}"
+    );
+}
 #[test]
 fn pr_diff_prefers_matching_remotes_when_api_clone_urls_are_unusable() {
     let temp = tempdir().unwrap();
