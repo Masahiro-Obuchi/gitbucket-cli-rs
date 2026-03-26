@@ -647,7 +647,7 @@ fn pr_comment_sends_expected_payload() {
 }
 
 #[test]
-fn repo_fork_accepts_repo_flag_after_subcommand() {
+fn repo_fork_accepts_positional_repo_after_subcommand() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_server(
         "200 OK",
@@ -658,9 +658,10 @@ fn repo_fork_accepts_repo_flag_after_subcommand() {
         .current_dir(temp.path())
         .env("GB_CONFIG_DIR", temp.path())
         .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "ignored/from-env")
         .env("GB_TOKEN", "test-token")
         .env("GB_PROTOCOL", "http")
-        .args(["repo", "fork", "-R", "alice/project"])
+        .args(["repo", "fork", "alice/project"])
         .output()
         .unwrap();
 
@@ -1047,7 +1048,8 @@ fn repo_fork_falls_back_to_gitbucket_web_session() {
         .env("GB_PROTOCOL", "http")
         .env("GB_USER", "alice")
         .env("GB_PASSWORD", "secret-pass")
-        .args(["repo", "fork", "-R", "alice/project", "--group", "my-group"])
+        .env("GB_REPO", "ignored/from-env")
+        .args(["repo", "fork", "alice/project", "--group", "my-group"])
         .output()
         .unwrap();
 

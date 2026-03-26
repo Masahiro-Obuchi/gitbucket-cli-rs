@@ -31,9 +31,6 @@ pub enum RepoCommand {
     View {
         /// Repository in OWNER/REPO format
         repo: Option<String>,
-        /// Repository in OWNER/REPO format
-        #[arg(long = "repo", short = 'R', conflicts_with = "repo")]
-        repo_flag: Option<String>,
         /// Open in browser
         #[arg(long, short)]
         web: bool,
@@ -66,9 +63,6 @@ pub enum RepoCommand {
     Delete {
         /// Repository in OWNER/REPO format
         repo: Option<String>,
-        /// Repository in OWNER/REPO format
-        #[arg(long = "repo", short = 'R', conflicts_with = "repo")]
-        repo_flag: Option<String>,
         /// Skip confirmation
         #[arg(long)]
         yes: bool,
@@ -77,9 +71,6 @@ pub enum RepoCommand {
     Fork {
         /// Repository to fork (OWNER/REPO)
         repo: Option<String>,
-        /// Repository to fork (OWNER/REPO)
-        #[arg(long = "repo", short = 'R', conflicts_with = "repo")]
-        repo_flag: Option<String>,
         /// Group to fork into (defaults to your user)
         #[arg(long = "group", alias = "org")]
         group: Option<String>,
@@ -93,11 +84,7 @@ pub async fn run(
 ) -> Result<()> {
     match args.command {
         RepoCommand::List { owner, json } => list(cli_hostname, owner, json).await,
-        RepoCommand::View {
-            repo,
-            repo_flag,
-            web,
-        } => view(cli_hostname, repo.or(repo_flag).or(cli_repo.clone()), web).await,
+        RepoCommand::View { repo, web } => view(cli_hostname, repo.or(cli_repo.clone()), web).await,
         RepoCommand::Create {
             name,
             description,
@@ -108,16 +95,12 @@ pub async fn run(
         RepoCommand::Clone { repo, directory } => {
             clone(cli_hostname, &repo, directory.as_deref()).await
         }
-        RepoCommand::Delete {
-            repo,
-            repo_flag,
-            yes,
-        } => delete(cli_hostname, repo.or(repo_flag).or(cli_repo.clone()), yes).await,
-        RepoCommand::Fork {
-            repo,
-            repo_flag,
-            group,
-        } => fork(cli_hostname, repo.or(repo_flag).or(cli_repo.clone()), group).await,
+        RepoCommand::Delete { repo, yes } => {
+            delete(cli_hostname, repo.or(cli_repo.clone()), yes).await
+        }
+        RepoCommand::Fork { repo, group } => {
+            fork(cli_hostname, repo.or(cli_repo.clone()), group).await
+        }
     }
 }
 

@@ -160,7 +160,7 @@ gb repo view [OWNER/REPO] [OPTIONS]
 
 | Argument/Option | Short | Description |
 | --- | --- | --- |
-| `OWNER/REPO` | — | Repository (omit to auto-detect from git remote) |
+| `OWNER/REPO` | — | Repository (omit to auto-detect from git remote or pass globally with `gb -R OWNER/REPO repo view`) |
 | `--web` | `-w` | Open in browser |
 
 #### `gb repo create`
@@ -202,7 +202,7 @@ gb repo delete [OWNER/REPO] [OPTIONS]
 
 | Argument/Option | Description |
 | --- | --- |
-| `OWNER/REPO` | Repository to delete (explicit repository required) |
+| `OWNER/REPO` | Repository to delete (explicit repository required; or pass globally with `gb -R OWNER/REPO repo delete`) |
 | `--yes` | Skip confirmation prompt |
 
 #### `gb repo fork`
@@ -213,9 +213,9 @@ Fork a repository.
 gb repo fork [OWNER/REPO] [OPTIONS]
 ```
 
-| Option | Short | Description |
+| Argument/Option | Short | Description |
 | --- | --- | --- |
-| `--repo <OWNER/REPO>` | `-R` | Repository to fork |
+| `OWNER/REPO` | — | Repository to fork (or pass globally with `gb -R OWNER/REPO repo fork`) |
 | `--group <GROUP>` | — | Group to fork into (defaults to your user; `--org` remains accepted as an alias) |
 
 Implementation detail: if GitBucket returns `404` for the REST fork endpoint, `gb` falls back to the web fork flow and signs in with the configured username or `GB_USER`.

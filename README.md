@@ -120,7 +120,7 @@ gb pr diff 5
 
 ## Repository auto-resolution
 
-If `-R/--repo` is omitted, `gb` tries to detect `OWNER/REPO` from `git remote get-url origin`.
+If `-R/--repo` is omitted, `gb` tries to detect `OWNER/REPO` from `git remote get-url origin`. For `gb repo view`, `gb repo delete`, and `gb repo fork`, you can also pass `OWNER/REPO` positionally after the subcommand.
 
 ```bash
 cd ~/projects/my-app
