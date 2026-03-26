@@ -29,8 +29,9 @@ Useful focused runs:
 
 ```bash
 cargo test --test config_resolution
-cargo test --test mocked_api_flows
-cargo test --test regression_pre_fix
+cargo test --test api_auth_repo_flows
+cargo test --test api_issue_pr_flows
+cargo test --test git_regressions
 cargo test --test e2e_smoke -- --ignored --nocapture
 cargo test <name>
 ```
@@ -41,7 +42,7 @@ cargo test <name>
 
 These cover pure logic and formatting behavior.
 
-- `src/config/auth.rs`
+- `src/config/auth/`
   host canonicalization, default-host selection, protocol resolution, config removal behavior, file permissions
 - `src/cli/common.rs`
   repo parsing, git URL parsing, list-state validation
@@ -53,7 +54,7 @@ These cover pure logic and formatting behavior.
   ANSI stripping and table helper behavior
 - `src/cli/auth.rs`
   login error mapping
-- `src/cli/pr.rs`
+- `src/cli/pr/`
   PR remote identity matching for fetch source selection
 
 ### Integration tests in `tests/`
@@ -64,11 +65,13 @@ These execute the real CLI binary as a subprocess.
   invalid `--state` handling, host/token/repo/protocol precedence, config selection behavior
 - `tests/state_requests.rs`
   `issue list` and `pr list` state query parameters
-- `tests/mocked_api_flows.rs`
-  mocked HTTP request paths and payloads for auth, repo create/fork, issue create/reopen/close/comment, PR create/close/merge/comment
+- `tests/api_auth_repo_flows.rs`
+  mocked HTTP request paths and payloads for auth and repo create/fork/delete flows
+- `tests/api_issue_pr_flows.rs`
+  mocked HTTP request paths and payloads for issue and PR create/reopen/close/merge/comment flows
 - `tests/view_flows.rs`
   view rendering and representative 404 API error handling for repo, issue, and PR commands
-- `tests/regression_pre_fix.rs`
+- `tests/git_regressions.rs`
   regression coverage for previously fixed CLI bugs, including git-heavy flows such as `repo clone`, `pr checkout`, and `pr diff`
 - `tests/e2e_smoke.rs`
   ignored Docker-backed smoke tests for a disposable GitBucket fixture
@@ -95,8 +98,8 @@ Add or extend a git regression test when:
 
 ## Practical Notes
 
-- The mocked HTTP helpers use timeouts so failures should become test failures, not hangs.
-- `tests/regression_pre_fix.rs` intentionally uses temporary git repositories and is heavier than the other integration tests.
+- The mocked HTTP helpers use timeouts so failures should become test failures, not hangs. Shared helpers now live under `tests/support/`.
+- `tests/git_regressions.rs` intentionally uses temporary git repositories and is heavier than the other integration tests.
 - If a new bug fix depends on both HTTP shape and git behavior, prefer adding one focused mocked API test and one focused git regression test instead of one oversized test.
 
 ## Suggested Workflow

@@ -1,72 +1,37 @@
-use std::io::{Read, Write};
-use std::net::TcpListener;
+mod support;
+
 use std::process::Command;
 use std::thread;
 
 use tempfile::tempdir;
 
-fn run_git(dir: &std::path::Path, args: &[&str]) {
-    let status = Command::new("git")
-        .current_dir(dir)
-        .args(args)
-        .status()
-        .unwrap();
-    assert!(status.success(), "git {:?} failed", args);
-}
-
-fn git_output(dir: &std::path::Path, args: &[&str]) -> String {
-    let output = Command::new("git")
-        .current_dir(dir)
-        .args(args)
-        .output()
-        .unwrap();
-    assert!(output.status.success(), "git {:?} failed", args);
-    String::from_utf8_lossy(&output.stdout).trim().to_string()
-}
-
-fn gb_command() -> std::process::Command {
-    assert_cmd::cargo::CommandCargoExt::cargo_bin("gb").unwrap()
-}
+use support::gb_cmd::gb_command;
+use support::git_repo::{git_output, run_git};
+use support::mock_http::{spawn_server, CapturedRequest};
 
 fn serve_json_once(
     expected_request_line: &str,
     expected_auth: &str,
     body: &str,
-) -> (u16, thread::JoinHandle<()>) {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
+) -> (u16, thread::JoinHandle<CapturedRequest>) {
     let expected_request_line = expected_request_line.to_string();
     let expected_auth = expected_auth.to_ascii_lowercase();
-    let body = body.to_string();
+    let (port, server) = spawn_server("200 OK", body);
 
-    let server = thread::spawn(move || {
-        let (mut stream, _) = listener.accept().unwrap();
-        let mut request = Vec::new();
-        let mut buf = [0_u8; 1024];
-        loop {
-            let read = stream.read(&mut buf).unwrap();
-            if read == 0 {
-                break;
-            }
-            request.extend_from_slice(&buf[..read]);
-            if request.windows(4).any(|w| w == b"\r\n\r\n") {
-                break;
-            }
-        }
-
-        let request = String::from_utf8(request).unwrap();
-        assert!(request.starts_with(&expected_request_line));
-        assert!(request.to_ascii_lowercase().contains(&expected_auth));
-
-        let response = format!(
-            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
-            body.len(),
-            body
-        );
-        stream.write_all(response.as_bytes()).unwrap();
+    let handle = thread::spawn(move || {
+        let request = server.join().unwrap();
+        let request_line = format!("{} {} HTTP/1.1", request.method, request.target);
+        assert_eq!(request_line, expected_request_line);
+        let auth = request
+            .headers
+            .get("authorization")
+            .map(|value| format!("authorization: {}", value).to_ascii_lowercase())
+            .unwrap_or_default();
+        assert!(auth.contains(&expected_auth));
+        request
     });
 
-    (port, server)
+    (port, handle)
 }
 
 #[test]
