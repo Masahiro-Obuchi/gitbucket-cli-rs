@@ -15,16 +15,32 @@ $ gb pr create -t "Add feature X" --head feature/x -B main
 
 ## Installation
 
+### Install with Cargo
+
+```bash
+cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-cli-rs --locked gb
+```
+
+To install a specific version tag:
+
+```bash
+cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-cli-rs --tag v0.1.0 --locked gb
+```
+
 ### Build from source
 
 ```bash
-git clone https://github.com/your-org/gitbucket-cli-rs.git
+git clone https://github.com/Masahiro-Obuchi/gitbucket-cli-rs.git
 cd gitbucket-cli-rs
 cargo build --release
 cp target/release/gb ~/.local/bin/
 ```
 
-**Requirements:** Rust 1.70+ and `git`
+### Prebuilt binaries
+
+Tagged releases publish prebuilt binaries to GitHub Releases for supported platforms.
+
+**Requirements:** Rust 1.70+ and `git` when installing with Cargo or building from source
 
 ## Quick start
 
