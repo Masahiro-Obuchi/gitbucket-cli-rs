@@ -28,6 +28,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 Useful focused runs:
 
 ```bash
+cargo test --test config_command
 cargo test --test config_resolution
 cargo test --test api_auth_repo_flows
 cargo test --test api_issue_pr_flows
@@ -61,6 +62,8 @@ These cover pure logic and formatting behavior.
 
 These execute the real CLI binary as a subprocess.
 
+- `tests/config_command.rs`
+  local config command behavior, canonical saved-host lookup, and config-only error handling
 - `tests/config_resolution.rs`
   invalid `--state` handling, host/token/repo/protocol precedence, config selection behavior
 - `tests/state_requests.rs`
@@ -128,8 +131,11 @@ cargo test --test e2e_smoke -- --ignored --nocapture
 Bootstrap writes these environment variables to `.tmp/e2e/runtime.env`:
 
 - `GB_E2E_HOST`
+- `GB_E2E_USER`
+- `GB_E2E_PASSWORD`
 - `GB_E2E_TOKEN`
 - `GB_E2E_REPO`
+- `GB_E2E_FORK_SOURCE`
 - `GB_E2E_PROTOCOL`
 - `GB_E2E_BASE_URL`
 
