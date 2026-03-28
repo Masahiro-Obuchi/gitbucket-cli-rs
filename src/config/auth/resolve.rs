@@ -100,15 +100,20 @@ impl AuthConfig {
         sorted_hostnames(&self.hosts).into_iter().next()
     }
 
-    pub(super) fn find_host(&self, hostname: &str) -> Option<&HostConfig> {
-        if let Some(host) = self.hosts.get(hostname) {
-            return Some(host);
+    pub fn stored_hostname(&self, hostname: &str) -> Option<String> {
+        if self.hosts.contains_key(hostname) {
+            return Some(hostname.to_string());
         }
 
         let canonical = canonical_hostname(hostname)?;
-        self.hosts.iter().find_map(|(key, host)| {
-            (canonical_hostname(key).as_deref() == Some(canonical.as_str())).then_some(host)
+        self.hosts.keys().find_map(|key| {
+            (canonical_hostname(key).as_deref() == Some(canonical.as_str())).then(|| key.clone())
         })
+    }
+
+    pub(super) fn find_host(&self, hostname: &str) -> Option<&HostConfig> {
+        let key = self.stored_hostname(hostname)?;
+        self.hosts.get(&key)
     }
 }
 

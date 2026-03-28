@@ -25,7 +25,7 @@ It follows the command design style of GitHub CLI (`gh`) and uses the GitBucket 
 | `gh browse` | `gb browse` | ✅ Implemented | Opens browser |
 | `gh label` | `gb label` | 📋 Planned | Phase 2 |
 | `gh api` | `gb api` | 📋 Planned | Phase 1 next |
-| `gh config` | `gb config` | 📋 Planned | Phase 1 next |
+| `gh config` | `gb config` | ✅ Implemented | Local config inspection and updates |
 | `gh completion` | `gb completion` | 📋 Planned | Phase 3 |
 | `gh gist` / `gh project` / `gh codespace` | — | ❌ Out of scope | No corresponding GitBucket feature/API |
 | `gh run` / `gh workflow` / `gh cache` | — | ❌ Out of scope | No Actions-like CI feature in GitBucket core |
@@ -129,7 +129,88 @@ gb auth token [OPTIONS]
 
 ---
 
-### 3.3 `gb repo` — repository operations
+### 3.3 `gb config` — local configuration
+
+`gb config` manages the local CLI configuration file and saved host metadata.
+It operates on stored values only and does not read `GB_HOST`, `GB_TOKEN`, or other runtime overrides.
+
+#### `gb config path`
+
+```text
+gb config path
+```
+
+Print the resolved path to `config.toml`.
+
+#### `gb config list`
+
+```text
+gb config list [--json]
+```
+
+Behavior:
+
+- Prints the config file path
+- Prints the stored `default_host` when set
+- Lists saved host entries with `user`, `protocol`, and whether a token is configured
+- Redacts token values; use `gb auth token` when the raw token is needed
+
+#### `gb config get default-host`
+
+```text
+gb config get default-host
+```
+
+Print the stored `default_host` value.
+
+#### `gb config get host`
+
+```text
+gb config get host --host <HOST> [--field <FIELD>] [--json]
+```
+
+| Option | Description |
+| --- | --- |
+| `--host <HOST>` | Host or base URL to inspect |
+| `--field <FIELD>` | `user`, `protocol`, or `has-token` |
+| `--json` | Output the full host summary as JSON |
+
+Host lookup is canonical, so equivalent forms such as `https://host/path`, `host/path`, and `https://host/path/api/v3` resolve to the same saved entry.
+
+#### `gb config set default-host`
+
+```text
+gb config set default-host <HOST>
+```
+
+Set the stored default host. The target host must already exist in saved config.
+
+#### `gb config set host`
+
+```text
+gb config set host --host <HOST> [--user <USER>] [--protocol <PROTOCOL>] [--default]
+```
+
+| Option | Description |
+| --- | --- |
+| `--host <HOST>` | Host or base URL to update |
+| `--user <USER>` | Username stored for GitBucket web-session fallbacks |
+| `--protocol <PROTOCOL>` | Stored protocol (`http` or `https`) |
+| `--default` | Also make this host the stored default host |
+
+The target host must already exist in saved config.
+
+#### `gb config unset default-host`
+
+```text
+gb config unset default-host
+```
+
+Clear the stored `default_host` value.
+
+---
+
+### 3.4 `gb repo` — repository operations
 
 #### `gb repo list`
 
@@ -224,7 +305,7 @@ Implementation detail: if GitBucket returns `404` for the REST fork endpoint, `g
 
 ---
 
-### 3.4 `gb issue` — issue operations
+### 3.5 `gb issue` — issue operations
 
 #### `gb issue list`
 
@@ -303,7 +384,7 @@ gb issue comment <NUMBER> [OPTIONS]
 
 ---
 
-### 3.5 `gb pr` — pull request operations
+### 3.6 `gb pr` — pull request operations
 
 #### `gb pr list`
 
@@ -413,7 +494,7 @@ gb pr comment <NUMBER> [OPTIONS]
 
 ---
 
-### 3.6 `gb browse`
+### 3.7 `gb browse`
 
 Open the repository page in your browser.
 
@@ -678,7 +759,6 @@ Pull request:
 
 ### Phase 1 next
 
-- `gb config`
 - `gb api`
 - Keep strengthening test and E2E coverage around the current command set
 
@@ -691,7 +771,7 @@ Pull request:
 ### Phase 3
 
 - `gb completion`
-- Re-evaluate webhook and collaborator operations after `gb api` and `gb config`
+- Re-evaluate webhook and collaborator operations after `gb api`
 
 ### Phase 4
 
