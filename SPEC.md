@@ -24,8 +24,8 @@ It follows the command design style of GitHub CLI (`gh`) and uses the GitBucket 
 | `gh pr` | `gb pr` | ✅ Implemented | Basic PR workflows |
 | `gh browse` | `gb browse` | ✅ Implemented | Opens browser |
 | `gh label` | `gb label` | 📋 Planned | Phase 2 |
-| `gh api` | `gb api` | 📋 Planned | Phase 3 |
-| `gh config` | `gb config` | 📋 Planned | Phase 3 |
+| `gh api` | `gb api` | 📋 Planned | Phase 1 next |
+| `gh config` | `gb config` | 📋 Planned | Phase 1 next |
 | `gh completion` | `gb completion` | 📋 Planned | Phase 3 |
 | `gh gist` / `gh project` / `gh codespace` | — | ❌ Out of scope | No corresponding GitBucket feature/API |
 | `gh run` / `gh workflow` / `gh cache` | — | ❌ Out of scope | No Actions-like CI feature in GitBucket core |
@@ -35,9 +35,9 @@ It follows the command design style of GitHub CLI (`gh`) and uses the GitBucket 
 | Command | Description | Status |
 | --- | --- | --- |
 | `gb milestone` | Milestone management | 📋 Planned (Phase 2) |
-| `gb user` | User/admin workflows | 📋 Planned (Phase 2) |
-| `gb webhook` | Webhook management | 📋 Planned (Phase 3) |
-| `gb repo collaborator` | Collaborator management | 📋 Planned (Phase 3) |
+| `gb user` | User/admin workflows | 💤 Backlog |
+| `gb webhook` | Webhook management | 💤 Backlog |
+| `gb repo collaborator` | Collaborator management | 💤 Backlog |
 
 ---
 
@@ -676,6 +676,12 @@ Pull request:
 
 ## 10. Roadmap
 
+### Phase 1 next
+
+- `gb config`
+- `gb api`
+- Keep strengthening test and E2E coverage around the current command set
+
 ### Phase 2
 
 - `gb label`
@@ -684,10 +690,8 @@ Pull request:
 
 ### Phase 3
 
-- `gb api`
-- `gb config`
 - `gb completion`
-- Webhook and collaborator operations
+- Re-evaluate webhook and collaborator operations after `gb api` and `gb config`
 
 ### Phase 4
 
@@ -695,3 +699,9 @@ Pull request:
 - CI workflows
 - Packaging/release automation
 - Documentation refinements
+
+### Backlog / re-evaluate later
+
+- `gb user`
+- `gb webhook`
+- `gb repo collaborator`

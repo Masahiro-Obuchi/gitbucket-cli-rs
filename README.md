@@ -202,6 +202,28 @@ When `GB_TOKEN` is set, protocol selection uses this order:
 3. Matching stored host configuration
 4. Default `https`
 
+## Roadmap
+
+Current priority is to deepen the existing command set before adding many new top-level areas.
+
+Near term:
+
+- `gb config`
+- `gb api`
+- More test and Docker-backed E2E coverage
+
+After that:
+
+- `gb label`
+- `gb milestone`
+- Richer issue/PR metadata handling
+
+Lower priority / re-evaluate later:
+
+- `gb completion`
+- Webhook and collaborator operations
+- Admin-oriented user management flows
+
 ## Testing
 
 For the current automated test layout and recommended commands, see [TESTING.md](./TESTING.md).
