@@ -1,3 +1,4 @@
+pub mod api;
 pub mod auth;
 pub mod common;
 pub mod config;
@@ -28,6 +29,8 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
+    /// Call the GitBucket REST API directly
+    Api(api::ApiArgs),
     /// Authenticate with a GitBucket instance
     Auth(auth::AuthArgs),
     /// Work with repositories

@@ -13,6 +13,7 @@ async fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
+        Commands::Api(args) => cli::api::run(args, &cli.hostname).await,
         Commands::Auth(args) => cli::auth::run(args, &cli.hostname).await,
         Commands::Repo(args) => cli::repo::run(args, &cli.hostname, &cli.repo).await,
         Commands::Config(args) => cli::config::run(args).await,

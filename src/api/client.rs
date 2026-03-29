@@ -86,8 +86,7 @@ impl ApiClient {
         self.handle_response(resp).await
     }
 
-    /// Make a raw request (reserved for the future `gb api` command)
-    #[allow(dead_code)]
+    /// Make a raw request for the `gb api` command
     pub async fn raw_request(
         &self,
         method: Method,
@@ -105,7 +104,20 @@ impl ApiClient {
             req = req.json(body);
         }
         let resp = req.send().await?;
-        self.handle_response(resp).await
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        if status.is_success() {
+            if body.trim().is_empty() {
+                Ok(Value::Null)
+            } else {
+                parse_success_body(&body)
+            }
+        } else {
+            Err(GbError::Api {
+                status: status.as_u16(),
+                message: body,
+            })
+        }
     }
 
     /// Get the base URL for constructing web URLs
