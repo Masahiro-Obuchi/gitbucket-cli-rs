@@ -29,6 +29,7 @@ Useful focused runs:
 
 ```bash
 cargo test --test api_command
+cargo test --test completion_command
 cargo test --test config_command
 cargo test --test config_resolution
 cargo test --test label_command
@@ -69,6 +70,8 @@ These execute the real CLI binary as a subprocess.
   raw API command behavior, path normalization, JSON body handling, and empty success responses
 - `tests/config_command.rs`
   local config command behavior, canonical saved-host lookup, and config-only error handling
+- `tests/completion_command.rs`
+  shell completion generation for supported shells and completion help output
 - `tests/config_resolution.rs`
   invalid `--state` handling, host/token/repo/protocol precedence, config selection behavior
 - `tests/label_command.rs`

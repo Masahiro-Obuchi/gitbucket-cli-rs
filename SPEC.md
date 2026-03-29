@@ -26,7 +26,7 @@ It follows the command design style of GitHub CLI (`gh`) and uses the GitBucket 
 | `gh label` | `gb label` | ✅ Implemented | Label definition CRUD (no edit yet) |
 | `gh api` | `gb api` | ✅ Implemented | Raw REST API access |
 | `gh config` | `gb config` | ✅ Implemented | Local config inspection and updates |
-| `gh completion` | `gb completion` | 📋 Planned | Phase 3 |
+| `gh completion` | `gb completion` | ✅ Implemented | Shell completion generation |
 | `gh gist` / `gh project` / `gh codespace` | — | ❌ Out of scope | No corresponding GitBucket feature/API |
 | `gh run` / `gh workflow` / `gh cache` | — | ❌ Out of scope | No Actions-like CI feature in GitBucket core |
 
@@ -243,7 +243,37 @@ echo '{"state":"closed"}' | gb api repos/alice/project/issues/1 -X PATCH --input
 
 ---
 
-### 3.5 `gb repo` — repository operations
+### 3.5 `gb completion` — shell completion generation
+
+`gb completion` prints shell completion scripts to stdout.
+
+```text
+gb completion <SHELL>
+```
+
+Supported shells:
+
+- `bash`
+- `zsh`
+- `fish`
+- `powershell`
+
+Behavior:
+
+- Generates completions from the current CLI command tree
+- Writes the script to stdout
+- Does not install or source the script automatically
+
+Examples:
+
+```bash
+gb completion bash > ~/.local/share/bash-completion/completions/gb
+gb completion zsh > ~/.zfunc/_gb
+```
+
+---
+
+### 3.6 `gb repo` — repository operations
 
 #### `gb repo list`
 
@@ -338,7 +368,7 @@ Implementation detail: if GitBucket returns `404` for the REST fork endpoint, `g
 
 ---
 
-### 3.6 `gb label` — label operations
+### 3.7 `gb label` — label operations
 
 `gb label` manages repository label definitions in the target repository.
 
@@ -391,7 +421,7 @@ gb label delete <NAME> [OPTIONS]
 
 ---
 
-### 3.7 `gb milestone` — milestone operations
+### 3.8 `gb milestone` — milestone operations
 
 `gb milestone` manages repository milestones in the target repository.
 
@@ -475,7 +505,7 @@ Behavior:
 
 ---
 
-### 3.8 `gb issue` — issue operations
+### 3.9 `gb issue` — issue operations
 
 #### `gb issue list`
 
@@ -554,7 +584,7 @@ gb issue comment <NUMBER> [OPTIONS]
 
 ---
 
-### 3.9 `gb pr` — pull request operations
+### 3.10 `gb pr` — pull request operations
 
 #### `gb pr list`
 
@@ -664,7 +694,7 @@ gb pr comment <NUMBER> [OPTIONS]
 
 ---
 
-### 3.10 `gb browse`
+### 3.11 `gb browse`
 
 Open the repository page in your browser.
 
@@ -957,7 +987,6 @@ Milestone:
 
 ### Phase 3
 
-- `gb completion`
 - Re-evaluate webhook and collaborator operations after the current command set stabilizes
 
 ### Phase 4
