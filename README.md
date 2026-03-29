@@ -139,7 +139,7 @@ gb pr diff 5
 | `gb milestone view <NUMBER>`  | Show milestone details               |
 | `gb milestone create [TITLE]` | Create a milestone                   |
 | `gb milestone edit <NUMBER>`  | Edit a milestone                     |
-| `gb milestone delete <NUMBER>`| Delete a milestone                   |
+| `gb milestone delete <NUMBER>` | Delete a milestone                   |
 | `gb issue list`               | List issues                          |
 | `gb issue view <NUMBER>`      | Show issue details                   |
 | `gb issue create`             | Create an issue                      |
