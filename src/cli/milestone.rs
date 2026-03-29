@@ -243,16 +243,19 @@ async fn create(
                         .map(|value| value.form_value.as_str()),
                 )
                 .await?;
-            let milestones = client.list_milestones(&owner, &repo, "all").await?;
-            if let Some(milestone) = milestones
-                .iter()
-                .rev()
-                .find(|milestone| milestone.title == title)
-            {
-                println!(
-                    "✓ Created milestone #{}: {}",
-                    milestone.number, milestone.title
-                );
+            if let Ok(milestones) = client.list_milestones(&owner, &repo, "all").await {
+                if let Some(milestone) = milestones
+                    .iter()
+                    .rev()
+                    .find(|milestone| milestone.title == title)
+                {
+                    println!(
+                        "✓ Created milestone #{}: {}",
+                        milestone.number, milestone.title
+                    );
+                } else {
+                    println!("✓ Created milestone {}", title);
+                }
             } else {
                 println!("✓ Created milestone {}", title);
             }
