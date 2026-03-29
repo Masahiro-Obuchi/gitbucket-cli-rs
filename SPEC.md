@@ -228,7 +228,7 @@ Behavior:
 
 - Relative endpoints are resolved under `/api/v3`, so `user` becomes `/api/v3/user`
 - Paths prefixed with `/api/v3` are accepted without duplicating the prefix
-- Full URLs are passed through unchanged
+- Absolute URLs are allowed only when they stay under the configured GitBucket API base
 - Successful JSON responses are printed to stdout as pretty JSON
 - Empty success responses print `null`
 

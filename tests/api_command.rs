@@ -65,6 +65,51 @@ fn api_strips_api_prefix_from_endpoint() {
 }
 
 #[test]
+fn api_allows_absolute_url_within_same_api_base() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server("200 OK", r#"{"login":"alice"}"#);
+    let endpoint = format!("http://127.0.0.1:{port}/gitbucket/api/v3/user");
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["api", &endpoint])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(request.method, "GET");
+    assert_eq!(request.target, "/gitbucket/api/v3/user");
+}
+
+#[test]
+fn api_rejects_cross_host_absolute_url_before_request() {
+    let temp = tempdir().unwrap();
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", "gitbucket.example.com/gitbucket")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "https")
+        .args(["api", "https://evil.example.com/api/v3/user"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("configured GitBucket API base"),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn api_uses_post_by_default_when_input_is_present() {
     let temp = tempdir().unwrap();
     let body_path = temp.path().join("body.json");

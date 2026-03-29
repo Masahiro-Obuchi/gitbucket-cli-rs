@@ -4,13 +4,15 @@ use std::io::Read;
 use clap::Args;
 use reqwest::Method;
 use serde_json::Value;
+use url::Url;
 
-use crate::cli::common::{create_client, resolve_hostname};
+use crate::api::client::{normalize_base_url, ApiClient};
+use crate::cli::common::{resolve_host_config, resolve_hostname};
 use crate::error::{GbError, Result};
 
 #[derive(Args)]
 pub struct ApiArgs {
-    /// API endpoint path relative to /api/v3, or a full URL
+    /// API endpoint path relative to /api/v3, or a full URL under the configured GitBucket API base
     pub endpoint: String,
 
     /// HTTP method to use
@@ -24,9 +26,11 @@ pub struct ApiArgs {
 
 pub async fn run(args: ApiArgs, cli_hostname: &Option<String>) -> Result<()> {
     let hostname = resolve_hostname(cli_hostname)?;
-    let client = create_client(&hostname)?;
+    let host = resolve_host_config(&hostname)?;
+    let client = ApiClient::new(&hostname, &host.token, &host.protocol)?;
     let method = resolve_method(args.method.as_deref(), args.input.is_some())?;
-    let endpoint = normalize_endpoint(&args.endpoint);
+    let allowed_base_url = normalize_base_url(&hostname, &host.protocol)?;
+    let endpoint = normalize_endpoint(&args.endpoint, &allowed_base_url)?;
     let body = match args.input {
         Some(input) => Some(read_json_input(&input)?),
         None => None,
@@ -50,10 +54,11 @@ fn resolve_method(method: Option<&str>, has_input: bool) -> Result<Method> {
     }
 }
 
-fn normalize_endpoint(endpoint: &str) -> String {
+fn normalize_endpoint(endpoint: &str, allowed_base_url: &str) -> Result<String> {
     let trimmed = endpoint.trim();
     if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-        return trimmed.to_string();
+        validate_absolute_endpoint(trimmed, allowed_base_url)?;
+        return Ok(trimmed.to_string());
     }
 
     let without_api_prefix = trimmed
@@ -62,12 +67,43 @@ fn normalize_endpoint(endpoint: &str) -> String {
         .unwrap_or(trimmed);
 
     if without_api_prefix.is_empty() || without_api_prefix == "/" {
-        "/".into()
+        Ok("/".into())
     } else if without_api_prefix.starts_with('/') {
-        without_api_prefix.to_string()
+        Ok(without_api_prefix.to_string())
     } else {
-        format!("/{}", without_api_prefix)
+        Ok(format!("/{}", without_api_prefix))
     }
+}
+
+fn validate_absolute_endpoint(endpoint: &str, allowed_base_url: &str) -> Result<()> {
+    let endpoint_url = Url::parse(endpoint)?;
+    let allowed_url = Url::parse(allowed_base_url)?;
+
+    let same_origin = endpoint_url.scheme() == allowed_url.scheme()
+        && endpoint_url.host_str() == allowed_url.host_str()
+        && endpoint_url.port_or_known_default() == allowed_url.port_or_known_default();
+    let same_api_base = path_has_base_prefix(endpoint_url.path(), allowed_url.path());
+
+    if same_origin && same_api_base {
+        Ok(())
+    } else {
+        Err(GbError::Other(format!(
+            "Absolute URLs must stay within the configured GitBucket API base {}. Use a relative path like `user` or change --hostname if you intend a different instance.",
+            allowed_base_url
+        )))
+    }
+}
+
+fn path_has_base_prefix(path: &str, base: &str) -> bool {
+    let normalized_base = base.trim_end_matches('/');
+    if normalized_base.is_empty() {
+        return true;
+    }
+
+    path == normalized_base
+        || path
+            .strip_prefix(normalized_base)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
 }
 
 fn read_json_input(input: &str) -> Result<Value> {
@@ -94,7 +130,9 @@ fn print_response(value: &Value) -> Result<()> {
 mod tests {
     use reqwest::Method;
 
-    use super::{normalize_endpoint, resolve_method};
+    use super::{
+        normalize_endpoint, path_has_base_prefix, resolve_method, validate_absolute_endpoint,
+    };
 
     #[test]
     fn resolves_default_get_without_input() {
@@ -108,20 +146,65 @@ mod tests {
 
     #[test]
     fn normalizes_relative_endpoint() {
-        assert_eq!(normalize_endpoint("user"), "/user");
+        assert_eq!(
+            normalize_endpoint("user", "https://gitbucket.example.com/api/v3").unwrap(),
+            "/user"
+        );
     }
 
     #[test]
     fn strips_api_prefix_from_endpoint() {
-        assert_eq!(normalize_endpoint("/api/v3/user"), "/user");
-        assert_eq!(normalize_endpoint("api/v3/user"), "/user");
+        assert_eq!(
+            normalize_endpoint("/api/v3/user", "https://gitbucket.example.com/api/v3").unwrap(),
+            "/user"
+        );
+        assert_eq!(
+            normalize_endpoint("api/v3/user", "https://gitbucket.example.com/api/v3").unwrap(),
+            "/user"
+        );
     }
 
     #[test]
-    fn preserves_absolute_url_endpoint() {
+    fn preserves_absolute_url_within_same_api_base() {
         assert_eq!(
-            normalize_endpoint("https://gitbucket.example.com/gitbucket/api/v3/user"),
+            normalize_endpoint(
+                "https://gitbucket.example.com/gitbucket/api/v3/user",
+                "https://gitbucket.example.com/gitbucket/api/v3"
+            )
+            .unwrap(),
             "https://gitbucket.example.com/gitbucket/api/v3/user"
         );
+    }
+
+    #[test]
+    fn rejects_absolute_url_on_another_host() {
+        let error = validate_absolute_endpoint(
+            "https://evil.example.com/api/v3/user",
+            "https://gitbucket.example.com/api/v3",
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("configured GitBucket API base"));
+    }
+
+    #[test]
+    fn rejects_absolute_url_outside_the_configured_subpath() {
+        let error = validate_absolute_endpoint(
+            "https://gitbucket.example.com/other/api/v3/user",
+            "https://gitbucket.example.com/gitbucket/api/v3",
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("configured GitBucket API base"));
+    }
+
+    #[test]
+    fn path_prefix_check_requires_path_boundary() {
+        assert!(path_has_base_prefix(
+            "/gitbucket/api/v3/user",
+            "/gitbucket/api/v3"
+        ));
+        assert!(!path_has_base_prefix(
+            "/gitbucket/api/v3evil/user",
+            "/gitbucket/api/v3"
+        ));
     }
 }

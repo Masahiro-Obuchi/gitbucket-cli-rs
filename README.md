@@ -271,7 +271,7 @@ echo '{"state":"closed"}' | gb api repos/alice/my-app/issues/1 -X PATCH --input 
 ```
 
 `gb api` calls the GitBucket REST API directly using the configured host and token.
-It accepts endpoint paths relative to `/api/v3`, full API paths such as `/api/v3/user`, or full URLs.
+It accepts endpoint paths relative to `/api/v3`, full API paths such as `/api/v3/user`, or absolute URLs under the configured GitBucket API base.
 When `--input` is given and `-X/--method` is omitted, `gb api` defaults to `POST`.
 JSON responses are pretty-printed, and empty success responses print `null`.
 
