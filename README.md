@@ -105,6 +105,7 @@ gb pr diff 5
 | `gb auth status`              | Show current auth status             |
 | `gb auth token`               | Print access token                   |
 | `gb config`                   | Manage local CLI configuration       |
+| `gb api <ENDPOINT>`           | Call the GitBucket REST API directly |
 | `gb repo list [OWNER]`        | List repositories                    |
 | `gb repo view [OWNER/REPO]`   | Show repository details              |
 | `gb repo create [NAME]`       | Create a repository                  |
@@ -226,7 +227,6 @@ Current priority is to deepen the existing command set before adding many new to
 
 Near term:
 
-- `gb api`
 - More test and Docker-backed E2E coverage
 
 After that:
@@ -261,6 +261,20 @@ gb config unset default-host
 - setting or clearing `default_host`
 
 Token creation and token printing remain under `gb auth`.
+
+## API command
+
+```bash
+gb api user
+gb api /api/v3/user
+gb api repos/alice/my-app/issues --input body.json
+echo '{"state":"closed"}' | gb api repos/alice/my-app/issues/1 -X PATCH --input -
+```
+
+`gb api` calls the GitBucket REST API directly using the configured host and token.
+It accepts endpoint paths relative to `/api/v3`, full API paths such as `/api/v3/user`, or absolute URLs under the configured GitBucket API base.
+When `--input` is given and `-X/--method` is omitted, `gb api` defaults to `POST`.
+JSON responses are pretty-printed, and empty success responses print `null`.
 
 ## Testing
 
