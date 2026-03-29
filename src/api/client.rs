@@ -105,7 +105,7 @@ impl ApiClient {
         }
         let resp = req.send().await?;
         let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
+        let body = resp.text().await?;
         if status.is_success() {
             if body.trim().is_empty() {
                 Ok(Value::Null)
