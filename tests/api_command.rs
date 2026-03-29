@@ -65,6 +65,27 @@ fn api_strips_api_prefix_from_endpoint() {
 }
 
 #[test]
+fn api_preserves_similar_api_prefix_without_boundary() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server("200 OK", r#"{"ok":true}"#);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["api", "/api/v30/user"])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(request.target, "/gitbucket/api/v3/api/v30/user");
+}
+
+#[test]
 fn api_allows_absolute_url_within_same_api_base() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_server("200 OK", r#"{"login":"alice"}"#);

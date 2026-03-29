@@ -61,10 +61,7 @@ fn normalize_endpoint(endpoint: &str, allowed_base_url: &str) -> Result<String> 
         return Ok(trimmed.to_string());
     }
 
-    let without_api_prefix = trimmed
-        .strip_prefix("/api/v3")
-        .or_else(|| trimmed.strip_prefix("api/v3"))
-        .unwrap_or(trimmed);
+    let without_api_prefix = strip_api_prefix(trimmed).unwrap_or(trimmed);
 
     if without_api_prefix.is_empty() || without_api_prefix == "/" {
         Ok("/".into())
@@ -73,6 +70,21 @@ fn normalize_endpoint(endpoint: &str, allowed_base_url: &str) -> Result<String> 
     } else {
         Ok(format!("/{}", without_api_prefix))
     }
+}
+
+fn strip_api_prefix(endpoint: &str) -> Option<&str> {
+    strip_prefix_with_boundary(endpoint, "/api/v3")
+        .or_else(|| strip_prefix_with_boundary(endpoint, "api/v3"))
+}
+
+fn strip_prefix_with_boundary<'a>(value: &'a str, prefix: &str) -> Option<&'a str> {
+    value.strip_prefix(prefix).and_then(|rest| {
+        if rest.is_empty() || rest.starts_with('/') {
+            Some(rest)
+        } else {
+            None
+        }
+    })
 }
 
 fn validate_absolute_endpoint(endpoint: &str, allowed_base_url: &str) -> Result<()> {
@@ -131,7 +143,8 @@ mod tests {
     use reqwest::Method;
 
     use super::{
-        normalize_endpoint, path_has_base_prefix, resolve_method, validate_absolute_endpoint,
+        normalize_endpoint, path_has_base_prefix, resolve_method, strip_api_prefix,
+        validate_absolute_endpoint,
     };
 
     #[test]
@@ -161,6 +174,20 @@ mod tests {
         assert_eq!(
             normalize_endpoint("api/v3/user", "https://gitbucket.example.com/api/v3").unwrap(),
             "/user"
+        );
+    }
+
+    #[test]
+    fn does_not_strip_similar_api_prefixes_without_boundary() {
+        assert_eq!(strip_api_prefix("/api/v30/user"), None);
+        assert_eq!(strip_api_prefix("api/v30/user"), None);
+        assert_eq!(
+            normalize_endpoint("/api/v30/user", "https://gitbucket.example.com/api/v3").unwrap(),
+            "/api/v30/user"
+        );
+        assert_eq!(
+            normalize_endpoint("api/v30/user", "https://gitbucket.example.com/api/v3").unwrap(),
+            "/api/v30/user"
         );
     }
 
