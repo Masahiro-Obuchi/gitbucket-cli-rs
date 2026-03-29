@@ -84,7 +84,7 @@ gb label view bug
 gb label delete bug --yes
 ```
 
-### 4) Issue operations
+### 4) Milestone operations
 
 ```bash
 gb milestone list --state all
