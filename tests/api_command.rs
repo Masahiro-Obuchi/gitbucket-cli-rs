@@ -86,6 +86,27 @@ fn api_preserves_similar_api_prefix_without_boundary() {
 }
 
 #[test]
+fn api_strips_api_prefix_before_root_query() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server("200 OK", r#"{"ok":true}"#);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["api", "/api/v3?per_page=50"])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(request.target, "/gitbucket/api/v3?per_page=50");
+}
+
+#[test]
 fn api_allows_absolute_url_within_same_api_base() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_server("200 OK", r#"{"login":"alice"}"#);
@@ -204,6 +225,29 @@ fn api_reads_json_body_from_stdin() {
     assert_eq!(request.method, "PATCH");
     let body: Value = serde_json::from_str(&request.body).unwrap();
     assert_eq!(body["state"], "closed");
+}
+
+#[test]
+fn api_preserves_top_level_json_strings() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server("200 OK", r#""ok""#);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["api", "user"])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(request.method, "GET");
+    let payload: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(payload, Value::String("ok".into()));
 }
 
 #[test]

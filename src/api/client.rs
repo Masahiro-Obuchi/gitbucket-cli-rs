@@ -110,7 +110,7 @@ impl ApiClient {
             if body.trim().is_empty() {
                 Ok(Value::Null)
             } else {
-                parse_success_body(&body)
+                Ok(serde_json::from_str(&body)?)
             }
         } else {
             Err(GbError::Api {

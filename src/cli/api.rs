@@ -65,7 +65,7 @@ fn normalize_endpoint(endpoint: &str, allowed_base_url: &str) -> Result<String> 
 
     if without_api_prefix.is_empty() || without_api_prefix == "/" {
         Ok("/".into())
-    } else if without_api_prefix.starts_with('/') {
+    } else if without_api_prefix.starts_with('/') || without_api_prefix.starts_with('?') {
         Ok(without_api_prefix.to_string())
     } else {
         Ok(format!("/{}", without_api_prefix))
@@ -79,7 +79,7 @@ fn strip_api_prefix(endpoint: &str) -> Option<&str> {
 
 fn strip_prefix_with_boundary<'a>(value: &'a str, prefix: &str) -> Option<&'a str> {
     value.strip_prefix(prefix).and_then(|rest| {
-        if rest.is_empty() || rest.starts_with('/') {
+        if rest.is_empty() || rest.starts_with('/') || rest.starts_with('?') {
             Some(rest)
         } else {
             None
@@ -131,10 +131,7 @@ fn read_json_input(input: &str) -> Result<Value> {
 }
 
 fn print_response(value: &Value) -> Result<()> {
-    match value {
-        Value::String(text) => println!("{}", text),
-        other => println!("{}", serde_json::to_string_pretty(other)?),
-    }
+    println!("{}", serde_json::to_string_pretty(value)?);
     Ok(())
 }
 
@@ -188,6 +185,28 @@ mod tests {
         assert_eq!(
             normalize_endpoint("api/v30/user", "https://gitbucket.example.com/api/v3").unwrap(),
             "/api/v30/user"
+        );
+    }
+
+    #[test]
+    fn strips_api_prefix_before_root_query() {
+        assert_eq!(
+            strip_api_prefix("/api/v3?per_page=50"),
+            Some("?per_page=50")
+        );
+        assert_eq!(strip_api_prefix("api/v3?per_page=50"), Some("?per_page=50"));
+        assert_eq!(
+            normalize_endpoint(
+                "/api/v3?per_page=50",
+                "https://gitbucket.example.com/api/v3"
+            )
+            .unwrap(),
+            "?per_page=50"
+        );
+        assert_eq!(
+            normalize_endpoint("api/v3?per_page=50", "https://gitbucket.example.com/api/v3")
+                .unwrap(),
+            "?per_page=50"
         );
     }
 
