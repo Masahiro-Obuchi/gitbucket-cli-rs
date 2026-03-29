@@ -1,5 +1,8 @@
 # GitBucket CLI
 
+[![Rust](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/actions/workflows/rust.yml/badge.svg?branch=main)](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/actions/workflows/rust.yml)
+[![E2E](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/actions/workflows/e2e.yml/badge.svg?branch=main)](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/actions/workflows/e2e.yml)
+
 `gb` is a command-line interface for GitBucket.
 It is inspired by [GitHub CLI (`gh`)](https://cli.github.com/) and implemented in Rust.
 This is an unofficial community project and is not affiliated with the GitBucket project.
