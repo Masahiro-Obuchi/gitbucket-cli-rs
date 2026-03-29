@@ -87,6 +87,16 @@ gb label delete bug --yes
 ### 4) Issue operations
 
 ```bash
+gb milestone list --state all
+gb milestone create v1.0 --description "First release" --due-on 2026-04-01
+gb milestone view 1
+gb milestone edit 1 --state closed
+gb milestone delete 1 --yes
+```
+
+### 5) Issue operations
+
+```bash
 gb issue list --state all
 gb issue create -t "Bug report"
 gb issue view 1
@@ -94,7 +104,7 @@ gb issue close 1
 gb issue comment 1 -b "Fixed!"
 ```
 
-### 5) Pull request operations
+### 6) Pull request operations
 
 ```bash
 gb pr list --state closed
@@ -125,6 +135,11 @@ gb pr diff 5
 | `gb label view <NAME>`        | Show label details                   |
 | `gb label create [NAME]`      | Create a label                       |
 | `gb label delete <NAME>`      | Delete a label                       |
+| `gb milestone list`           | List milestones                      |
+| `gb milestone view <NUMBER>`  | Show milestone details               |
+| `gb milestone create [TITLE]` | Create a milestone                   |
+| `gb milestone edit <NUMBER>`  | Edit a milestone                     |
+| `gb milestone delete <NUMBER>`| Delete a milestone                   |
 | `gb issue list`               | List issues                          |
 | `gb issue view <NUMBER>`      | Show issue details                   |
 | `gb issue create`             | Create an issue                      |
@@ -244,7 +259,6 @@ Near term:
 
 After that:
 
-- `gb milestone`
 - Richer issue/PR metadata handling
 
 Lower priority / re-evaluate later:
@@ -301,6 +315,21 @@ gb label delete needs-review --yes
 `gb label` manages repository label definitions through the GitBucket REST API.
 It currently supports listing, viewing, creating, and deleting labels in the target repository.
 Colors accept 6-digit hex values with or without a leading `#`.
+
+## Milestone commands
+
+```bash
+gb milestone list
+gb milestone list --state all --json
+gb milestone view 7
+gb milestone create v1.0 --description "First release" --due-on 2026-04-01
+gb milestone edit 7 --title v1.0.1 --state closed
+gb milestone delete 7 --yes
+```
+
+`gb milestone` manages repository milestones.
+It currently supports listing, viewing, creating, editing, and deleting milestones in the target repository.
+`--due-on` accepts `YYYY-MM-DD` or RFC3339. When GitBucket returns `404` for milestone create or edit over REST, `gb` falls back to the GitBucket web UI flow and may prompt for `GB_USER` / `GB_PASSWORD`.
 
 ## Testing
 

@@ -32,6 +32,7 @@ cargo test --test api_command
 cargo test --test config_command
 cargo test --test config_resolution
 cargo test --test label_command
+cargo test --test milestone_command
 cargo test --test api_auth_repo_flows
 cargo test --test api_issue_pr_flows
 cargo test --test git_regressions
@@ -72,6 +73,8 @@ These execute the real CLI binary as a subprocess.
   invalid `--state` handling, host/token/repo/protocol precedence, config selection behavior
 - `tests/label_command.rs`
   mocked HTTP request paths, JSON output, color validation, and delete behavior for label flows
+- `tests/milestone_command.rs`
+  milestone list/view/create/edit/delete request shapes, due-date validation, and GitBucket web fallback behavior
 - `tests/state_requests.rs`
   `issue list` and `pr list` state query parameters
 - `tests/api_auth_repo_flows.rs`
@@ -83,7 +86,7 @@ These execute the real CLI binary as a subprocess.
 - `tests/git_regressions.rs`
   regression coverage for previously fixed CLI bugs, including git-heavy flows such as `repo clone`, `pr checkout`, and `pr diff`
 - `tests/e2e_smoke.rs`
-  ignored Docker-backed smoke tests for auth, config, raw API access, labels, and representative live GitBucket flows
+  ignored Docker-backed smoke tests for auth, config, raw API access, labels, milestones, and representative live GitBucket flows
 
 ## How To Choose A Test Type
 

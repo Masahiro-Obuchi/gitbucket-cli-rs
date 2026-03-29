@@ -34,7 +34,7 @@ It follows the command design style of GitHub CLI (`gh`) and uses the GitBucket 
 
 | Command | Description | Status |
 | --- | --- | --- |
-| `gb milestone` | Milestone management | 📋 Planned (Phase 2) |
+| `gb milestone` | Milestone management | ✅ Implemented | REST read + GitBucket-compatible write fallback |
 | `gb user` | User/admin workflows | 💤 Backlog |
 | `gb webhook` | Webhook management | 💤 Backlog |
 | `gb repo collaborator` | Collaborator management | 💤 Backlog |
@@ -391,7 +391,91 @@ gb label delete <NAME> [OPTIONS]
 
 ---
 
-### 3.7 `gb issue` — issue operations
+### 3.7 `gb milestone` — milestone operations
+
+`gb milestone` manages repository milestones in the target repository.
+
+#### `gb milestone list`
+
+```text
+gb milestone list [OPTIONS]
+```
+
+| Option | Short | Default | Description |
+| --- | --- | --- | --- |
+| `--state <STATE>` | `-s` | `open` | Filter: `open`, `closed`, `all` |
+| `--json` | — | `false` | Print JSON |
+
+Human output columns:
+
+- `#`
+- `STATE`
+- `TITLE`
+- `DUE`
+- `OPEN`
+- `CLOSED`
+
+#### `gb milestone view`
+
+```text
+gb milestone view <NUMBER>
+```
+
+Shows the milestone title, state, due date when present, issue counts, description, and URL when present.
+
+#### `gb milestone create`
+
+```text
+gb milestone create [TITLE] [OPTIONS]
+```
+
+| Option | Short | Description |
+| --- | --- | --- |
+| `--description <TEXT>` | `-d` | Optional milestone description |
+| `--due-on <DATE>` | — | Due date as `YYYY-MM-DD` or RFC3339 |
+
+Behavior:
+
+- Prompts for the title when omitted
+- Normalizes `--due-on` to GitBucket-compatible API/web values
+- Falls back to the GitBucket web milestone form when the REST create endpoint returns `404`
+
+#### `gb milestone edit`
+
+```text
+gb milestone edit <NUMBER> [OPTIONS]
+```
+
+| Option | Short | Description |
+| --- | --- | --- |
+| `--title <TEXT>` | `-t` | Updated title |
+| `--description <TEXT>` | `-d` | Updated description |
+| `--due-on <DATE>` | — | Updated due date as `YYYY-MM-DD`, RFC3339, or an empty string to clear |
+| `--state <STATE>` | `-s` | Updated state: `open` or `closed` |
+
+Behavior:
+
+- Requires at least one explicit change
+- Falls back to the GitBucket web milestone edit/state routes when the REST update endpoint returns `404`
+
+#### `gb milestone delete`
+
+```text
+gb milestone delete <NUMBER> [OPTIONS]
+```
+
+| Option | Description |
+| --- | --- |
+| `--yes` | Skip confirmation prompt |
+
+Behavior:
+
+- Tries `DELETE /repos/{owner}/{repo}/milestones/{number}` first
+- Falls back to the GitBucket web delete route when the REST delete endpoint returns `404`
+
+---
+
+### 3.8 `gb issue` — issue operations
 
 #### `gb issue list`
 
@@ -470,7 +554,7 @@ gb issue comment <NUMBER> [OPTIONS]
 
 ---
 
-### 3.8 `gb pr` — pull request operations
+### 3.9 `gb pr` — pull request operations
 
 #### `gb pr list`
 
@@ -580,7 +664,7 @@ gb pr comment <NUMBER> [OPTIONS]
 
 ---
 
-### 3.9 `gb browse`
+### 3.10 `gb browse`
 
 Open the repository page in your browser.
 
@@ -846,6 +930,19 @@ Label:
 - `POST /repos/{owner}/{repo}/labels`
 - `DELETE /repos/{owner}/{repo}/labels/{name}`
 
+Milestone:
+
+- `GET /repos/{owner}/{repo}/milestones?state={state}`
+- `GET /repos/{owner}/{repo}/milestones/{number}`
+- `POST /repos/{owner}/{repo}/milestones`
+- `PATCH /repos/{owner}/{repo}/milestones/{number}`
+- `DELETE /repos/{owner}/{repo}/milestones/{number}`
+- `POST /{owner}/{repo}/issues/milestones/new` (GitBucket web fallback)
+- `POST /{owner}/{repo}/issues/milestones/{number}/edit` (GitBucket web fallback)
+- `GET /{owner}/{repo}/issues/milestones/{number}/open` (GitBucket web fallback)
+- `GET /{owner}/{repo}/issues/milestones/{number}/close` (GitBucket web fallback)
+- `GET /{owner}/{repo}/issues/milestones/{number}/delete` (GitBucket web fallback)
+
 ---
 
 ## 10. Roadmap
@@ -856,7 +953,6 @@ Label:
 
 ### Phase 2
 
-- `gb milestone`
 - Expand issue/PR metadata handling
 
 ### Phase 3
