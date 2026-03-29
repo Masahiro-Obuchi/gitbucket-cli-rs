@@ -23,7 +23,7 @@ It follows the command design style of GitHub CLI (`gh`) and uses the GitBucket 
 | `gh issue` | `gb issue` | ✅ Implemented | Basic issue workflows |
 | `gh pr` | `gb pr` | ✅ Implemented | Basic PR workflows |
 | `gh browse` | `gb browse` | ✅ Implemented | Opens browser |
-| `gh label` | `gb label` | 📋 Planned | Phase 2 |
+| `gh label` | `gb label` | ✅ Implemented | Label definition CRUD (no edit yet) |
 | `gh api` | `gb api` | ✅ Implemented | Raw REST API access |
 | `gh config` | `gb config` | ✅ Implemented | Local config inspection and updates |
 | `gh completion` | `gb completion` | 📋 Planned | Phase 3 |
@@ -338,7 +338,60 @@ Implementation detail: if GitBucket returns `404` for the REST fork endpoint, `g
 
 ---
 
-### 3.6 `gb issue` — issue operations
+### 3.6 `gb label` — label operations
+
+`gb label` manages repository label definitions in the target repository.
+
+#### `gb label list`
+
+```text
+gb label list [--json]
+```
+
+Behavior:
+
+- Lists labels in the current repository
+- Human output prints `NAME`, `COLOR`, and `DESCRIPTION`
+- `--json` prints the raw API payload
+
+#### `gb label view`
+
+```text
+gb label view <NAME>
+```
+
+Shows the label name, color, description when present, and API URL when present.
+
+#### `gb label create`
+
+```text
+gb label create [NAME] [OPTIONS]
+```
+
+| Option | Short | Description |
+| --- | --- | --- |
+| `--color <HEX>` | `-c` | 6-digit hex color (prompted when omitted) |
+| `--description <TEXT>` | `-d` | Optional label description |
+
+Behavior:
+
+- Prompts for the label name when omitted
+- Accepts colors with or without a leading `#`
+- Normalizes colors to lowercase 6-digit hex before sending the API request
+
+#### `gb label delete`
+
+```text
+gb label delete <NAME> [OPTIONS]
+```
+
+| Option | Description |
+| --- | --- |
+| `--yes` | Skip confirmation prompt |
+
+---
+
+### 3.7 `gb issue` — issue operations
 
 #### `gb issue list`
 
@@ -417,7 +470,7 @@ gb issue comment <NUMBER> [OPTIONS]
 
 ---
 
-### 3.7 `gb pr` — pull request operations
+### 3.8 `gb pr` — pull request operations
 
 #### `gb pr list`
 
@@ -527,7 +580,7 @@ gb pr comment <NUMBER> [OPTIONS]
 
 ---
 
-### 3.8 `gb browse`
+### 3.9 `gb browse`
 
 Open the repository page in your browser.
 
@@ -786,6 +839,13 @@ Pull request:
 - `GET /repos/{owner}/{repo}/issues/{number}/comments` (PR comments)
 - `POST /repos/{owner}/{repo}/issues/{number}/comments` (PR comments)
 
+Label:
+
+- `GET /repos/{owner}/{repo}/labels`
+- `GET /repos/{owner}/{repo}/labels/{name}`
+- `POST /repos/{owner}/{repo}/labels`
+- `DELETE /repos/{owner}/{repo}/labels/{name}`
+
 ---
 
 ## 10. Roadmap
@@ -796,7 +856,6 @@ Pull request:
 
 ### Phase 2
 
-- `gb label`
 - `gb milestone`
 - Expand issue/PR metadata handling
 

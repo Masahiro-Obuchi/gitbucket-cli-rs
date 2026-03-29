@@ -1,15 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::label::Label;
 use super::user::User;
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Label {
-    pub name: String,
-    #[serde(default)]
-    pub color: Option<String>,
-    #[serde(default)]
-    pub url: Option<String>,
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Issue {

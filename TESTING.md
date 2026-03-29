@@ -31,6 +31,7 @@ Useful focused runs:
 cargo test --test api_command
 cargo test --test config_command
 cargo test --test config_resolution
+cargo test --test label_command
 cargo test --test api_auth_repo_flows
 cargo test --test api_issue_pr_flows
 cargo test --test git_regressions
@@ -69,6 +70,8 @@ These execute the real CLI binary as a subprocess.
   local config command behavior, canonical saved-host lookup, and config-only error handling
 - `tests/config_resolution.rs`
   invalid `--state` handling, host/token/repo/protocol precedence, config selection behavior
+- `tests/label_command.rs`
+  mocked HTTP request paths, JSON output, color validation, and delete behavior for label flows
 - `tests/state_requests.rs`
   `issue list` and `pr list` state query parameters
 - `tests/api_auth_repo_flows.rs`
@@ -80,7 +83,7 @@ These execute the real CLI binary as a subprocess.
 - `tests/git_regressions.rs`
   regression coverage for previously fixed CLI bugs, including git-heavy flows such as `repo clone`, `pr checkout`, and `pr diff`
 - `tests/e2e_smoke.rs`
-  ignored Docker-backed smoke tests for auth, config, raw API access, and representative live GitBucket flows
+  ignored Docker-backed smoke tests for auth, config, raw API access, labels, and representative live GitBucket flows
 
 ## How To Choose A Test Type
 

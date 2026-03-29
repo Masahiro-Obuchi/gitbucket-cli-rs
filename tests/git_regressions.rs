@@ -281,17 +281,16 @@ fn pr_checkout_prefers_matching_remote_when_api_clone_url_is_unusable() {
         ],
     );
 
-    let body = format!(
-        concat!(
-            "{{",
-            "\"number\":5,",
-            "\"title\":\"Feature\",",
-            "\"state\":\"open\",",
-            "\"head\":{{\"ref\":\"feature/demo\",\"repo\":{{\"name\":\"head\",\"full_name\":\"bob/head\",\"private\":true,\"clone_url\":\"git@gitbucket.example.com:bob/head.git\"}}}},",
-            "\"base\":{{\"ref\":\"main\",\"repo\":{{\"name\":\"base\",\"full_name\":\"alice/base\",\"private\":false,\"clone_url\":\"git@gitbucket.example.com:alice/base.git\"}}}}",
-            "}}"
-        ),
-    );
+    let body = concat!(
+        "{",
+        "\"number\":5,",
+        "\"title\":\"Feature\",",
+        "\"state\":\"open\",",
+        "\"head\":{\"ref\":\"feature/demo\",\"repo\":{\"name\":\"head\",\"full_name\":\"bob/head\",\"private\":true,\"clone_url\":\"git@gitbucket.example.com:bob/head.git\"}},",
+        "\"base\":{\"ref\":\"main\",\"repo\":{\"name\":\"base\",\"full_name\":\"alice/base\",\"private\":false,\"clone_url\":\"git@gitbucket.example.com:alice/base.git\"}}",
+        "}"
+    )
+    .to_string();
     let (port, server) = serve_json_once(
         "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
         "authorization: token test-token",
