@@ -2,17 +2,17 @@
 
 ## Current Implementation Status
 
-- Implemented top-level commands: `auth`, `repo`, `issue`, `pr`, `browse`, and `config`.
+- Implemented top-level commands: `auth`, `repo`, `issue`, `pr`, `browse`, `config`, and `api`.
 - Implemented auth flows: `login`, `logout`, `status`, and `token`.
 - Repository flows support list/view/create/clone/delete/fork.
 - Issue flows support list/view/create/close/reopen/comment.
 - Pull request flows support list/view/create/close/merge/checkout/diff/comment.
-- Planned but not yet implemented: `label`, `milestone`, `api`, and `completion`.
+- Planned but not yet implemented: `label`, `milestone`, and `completion`.
 
 ## Project Structure & Module Organization
 
 - `src/main.rs`: CLI entrypoint and command dispatch.
-- `src/cli/`: command implementations (`auth`, `config`, `repo`, `issue`, `pr`) and shared resolution logic in `common.rs`.
+- `src/cli/`: command implementations (`auth`, `api`, `config`, `repo`, `issue`, `pr`) and shared resolution logic in `common.rs`.
 - `src/api/`: GitBucket API client and endpoint wrappers.
 - `src/models/`: API request/response structs.
 - `src/config/`: local auth/config file handling.

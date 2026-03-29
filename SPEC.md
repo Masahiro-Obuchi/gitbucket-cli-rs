@@ -24,7 +24,7 @@ It follows the command design style of GitHub CLI (`gh`) and uses the GitBucket 
 | `gh pr` | `gb pr` | ✅ Implemented | Basic PR workflows |
 | `gh browse` | `gb browse` | ✅ Implemented | Opens browser |
 | `gh label` | `gb label` | 📋 Planned | Phase 2 |
-| `gh api` | `gb api` | 📋 Planned | Phase 1 next |
+| `gh api` | `gb api` | ✅ Implemented | Raw REST API access |
 | `gh config` | `gb config` | ✅ Implemented | Local config inspection and updates |
 | `gh completion` | `gb completion` | 📋 Planned | Phase 3 |
 | `gh gist` / `gh project` / `gh codespace` | — | ❌ Out of scope | No corresponding GitBucket feature/API |
@@ -210,7 +210,40 @@ Clear the stored `default_host` value.
 
 ---
 
-### 3.4 `gb repo` — repository operations
+### 3.4 `gb api` — raw REST API access
+
+`gb api` calls the GitBucket REST API directly using the configured host and token.
+It is intended as a low-level escape hatch for endpoints that do not yet have a dedicated top-level command.
+
+```text
+gb api <ENDPOINT> [OPTIONS]
+```
+
+| Option | Short | Description |
+| --- | --- | --- |
+| `--method <METHOD>` | `-X` | HTTP method to use (`GET` by default, or `POST` when `--input` is present) |
+| `--input <PATH>` | `-i` | JSON request body file path, or `-` to read JSON from stdin |
+
+Behavior:
+
+- Relative endpoints are resolved under `/api/v3`, so `user` becomes `/api/v3/user`
+- Paths prefixed with `/api/v3` are accepted without duplicating the prefix
+- Full URLs are passed through unchanged
+- Successful JSON responses are printed to stdout as pretty JSON
+- Empty success responses print `null`
+
+Examples:
+
+```bash
+gb api user
+gb api /api/v3/user
+gb api repos/alice/project/issues --input body.json
+echo '{"state":"closed"}' | gb api repos/alice/project/issues/1 -X PATCH --input -
+```
+
+---
+
+### 3.5 `gb repo` — repository operations
 
 #### `gb repo list`
 
@@ -305,7 +338,7 @@ Implementation detail: if GitBucket returns `404` for the REST fork endpoint, `g
 
 ---
 
-### 3.5 `gb issue` — issue operations
+### 3.6 `gb issue` — issue operations
 
 #### `gb issue list`
 
@@ -384,7 +417,7 @@ gb issue comment <NUMBER> [OPTIONS]
 
 ---
 
-### 3.6 `gb pr` — pull request operations
+### 3.7 `gb pr` — pull request operations
 
 #### `gb pr list`
 
@@ -494,7 +527,7 @@ gb pr comment <NUMBER> [OPTIONS]
 
 ---
 
-### 3.7 `gb browse`
+### 3.8 `gb browse`
 
 Open the repository page in your browser.
 
@@ -716,7 +749,7 @@ src/
 - Base API URL: normalized to `{scheme}://{host}{optional-path}/api/v3`
 - Auth header: `Authorization: token <PAT>`
 - Common methods: `get`, `post`, `patch`, `put`, `delete`
-- Planned extension helper: `raw_request` (for future `gb api`)
+- Raw request helper: `raw_request` (used by `gb api`)
 - `web_url(path)`: converts API base URL to browser base URL by stripping `/api/v3`
 
 ### 9.4 Current endpoint mapping
@@ -759,7 +792,6 @@ Pull request:
 
 ### Phase 1 next
 
-- `gb api`
 - Keep strengthening test and E2E coverage around the current command set
 
 ### Phase 2
@@ -771,7 +803,7 @@ Pull request:
 ### Phase 3
 
 - `gb completion`
-- Re-evaluate webhook and collaborator operations after `gb api`
+- Re-evaluate webhook and collaborator operations after the current command set stabilizes
 
 ### Phase 4
 

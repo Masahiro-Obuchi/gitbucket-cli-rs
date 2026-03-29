@@ -166,6 +166,26 @@ fn e2e_config_round_trip_against_live_instance() {
 
 #[test]
 #[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
+fn e2e_api_user_against_live_instance() {
+    let temp = tempdir().unwrap();
+    let user = required_env("GB_E2E_USER");
+
+    login(temp.path());
+
+    let stdout = run_and_assert_success(
+        gb_command()
+            .current_dir(temp.path())
+            .env("GB_CONFIG_DIR", temp.path())
+            .env("NO_COLOR", "1")
+            .args(["api", "/api/v3/user"]),
+    );
+
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(payload["login"], user);
+}
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
 fn e2e_repo_view_against_live_instance() {
     let temp = tempdir().unwrap();
     let repo = required_env("GB_E2E_REPO");

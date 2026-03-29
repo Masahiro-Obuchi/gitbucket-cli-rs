@@ -28,6 +28,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 Useful focused runs:
 
 ```bash
+cargo test --test api_command
 cargo test --test config_command
 cargo test --test config_resolution
 cargo test --test api_auth_repo_flows
@@ -62,6 +63,8 @@ These cover pure logic and formatting behavior.
 
 These execute the real CLI binary as a subprocess.
 
+- `tests/api_command.rs`
+  raw API command behavior, path normalization, JSON body handling, and empty success responses
 - `tests/config_command.rs`
   local config command behavior, canonical saved-host lookup, and config-only error handling
 - `tests/config_resolution.rs`
@@ -77,7 +80,7 @@ These execute the real CLI binary as a subprocess.
 - `tests/git_regressions.rs`
   regression coverage for previously fixed CLI bugs, including git-heavy flows such as `repo clone`, `pr checkout`, and `pr diff`
 - `tests/e2e_smoke.rs`
-  ignored Docker-backed smoke tests for a disposable GitBucket fixture
+  ignored Docker-backed smoke tests for auth, config, raw API access, and representative live GitBucket flows
 
 ## How To Choose A Test Type
 
