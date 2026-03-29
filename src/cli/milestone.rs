@@ -445,6 +445,9 @@ fn parse_due_on_value(value: &str) -> Result<NormalizedDueOn> {
 }
 
 fn due_on_to_form_date(value: &str) -> Result<String> {
+    if value.starts_with("0001-01-01") {
+        return Ok(String::new());
+    }
     Ok(parse_due_on_value(value)?.form_value)
 }
 
@@ -510,6 +513,18 @@ mod tests {
         assert_eq!(
             super::format_due_on(Some("2026-04-01T00:00:00Z")),
             "2026-04-01T00:00:00Z"
+        );
+    }
+
+    #[test]
+    fn due_on_to_form_date_hides_unset_sentinel() {
+        assert_eq!(
+            super::due_on_to_form_date("0001-01-01T00:00:00Z").unwrap(),
+            ""
+        );
+        assert_eq!(
+            super::due_on_to_form_date("2026-04-01T00:00:00Z").unwrap(),
+            "2026-04-01"
         );
     }
 

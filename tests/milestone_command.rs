@@ -387,6 +387,60 @@ fn milestone_edit_falls_back_to_gitbucket_web_session() {
 }
 
 #[test]
+fn milestone_edit_fallback_keeps_unset_due_date_empty() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /gitbucket/api/v3/repos/alice/project/milestones/7 HTTP/1.1",
+            "200 OK",
+            r#"{"number":7,"title":"v1.0","state":"open","description":"First release","due_on":"0001-01-01T00:00:00Z"}"#,
+        ),
+        ScriptedResponse::json(
+            "PATCH /gitbucket/api/v3/repos/alice/project/milestones/7 HTTP/1.1",
+            "404 Not Found",
+            r#"{"message":"Not Found"}"#,
+        ),
+        ScriptedResponse::html("POST /gitbucket/signin HTTP/1.1", "200 OK", "signed in")
+            .with_header("set-cookie", "JSESSIONID=session789; Path=/; HttpOnly"),
+        ScriptedResponse::html(
+            "POST /gitbucket/alice/project/issues/milestones/7/edit HTTP/1.1",
+            "200 OK",
+            "updated",
+        ),
+        ScriptedResponse::json(
+            "GET /gitbucket/api/v3/repos/alice/project/milestones/7 HTTP/1.1",
+            "200 OK",
+            r#"{"number":7,"title":"v1.1","state":"open","description":"First release","due_on":"0001-01-01T00:00:00Z"}"#,
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .env("GB_USER", "alice")
+        .env("GB_PASSWORD", "secret-pass")
+        .args(["milestone", "edit", "7", "--title", "v1.1"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(requests.len(), 5);
+    assert!(requests[3].body.contains("title=v1.1"));
+    assert!(requests[3].body.contains("dueDate="));
+    assert!(!requests[3].body.contains("dueDate=0001-01-01"));
+}
+
+#[test]
 fn milestone_delete_sends_delete_request_when_yes_is_used() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_server("204 No Content", "");
