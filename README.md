@@ -2,6 +2,7 @@
 
 `gb` is a command-line interface for GitBucket.
 It is inspired by [GitHub CLI (`gh`)](https://cli.github.com/) and implemented in Rust.
+This is an unofficial community project and is not affiliated with the GitBucket project.
 
 ```bash
 $ gb issue list
