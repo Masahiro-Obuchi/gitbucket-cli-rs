@@ -71,6 +71,34 @@ fn milestone_view_prints_details() {
 }
 
 #[test]
+fn milestone_view_hides_unset_due_date_sentinel() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server(
+        "200 OK",
+        r#"{"number":7,"title":"v1.0","state":"open","description":"First release","open_issues":3,"closed_issues":1,"due_on":"0001-01-01T00:00:00Z"}"#,
+    );
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["milestone", "view", "7"])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(output.status.success());
+    assert_eq!(request.method, "GET");
+    assert_eq!(request.target, "/api/v3/repos/alice/project/milestones/7");
+    assert!(!stdout.contains("Due:"), "stdout: {stdout}");
+}
+
+#[test]
 fn milestone_create_sends_expected_payload() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_server(

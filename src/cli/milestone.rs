@@ -170,7 +170,8 @@ async fn view(hostname: &Option<String>, cli_repo: &Option<String>, number: u64)
     println!("{}", format_state(&milestone.state));
     println!();
 
-    if let Some(due_on) = milestone.due_on.as_deref() {
+    let due_on = format_due_on(milestone.due_on.as_deref());
+    if !due_on.is_empty() {
         println!("Due: {}", due_on);
     }
     println!(
@@ -467,6 +468,7 @@ fn format_due_on(value: Option<&str>) -> String {
         None => String::new(),
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -500,6 +502,15 @@ mod tests {
     #[test]
     fn due_on_rejects_invalid_values() {
         assert!(normalize_due_on_for_create(Some("not-a-date".into())).is_err());
+    }
+
+    #[test]
+    fn format_due_on_hides_unset_sentinel() {
+        assert_eq!(super::format_due_on(Some("0001-01-01T00:00:00Z")), "");
+        assert_eq!(
+            super::format_due_on(Some("2026-04-01T00:00:00Z")),
+            "2026-04-01T00:00:00Z"
+        );
     }
 
     #[test]
