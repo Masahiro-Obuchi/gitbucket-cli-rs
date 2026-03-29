@@ -4,6 +4,7 @@ pub mod common;
 pub mod config;
 pub mod issue;
 pub mod label;
+pub mod milestone;
 pub mod pr;
 pub mod repo;
 
@@ -42,6 +43,8 @@ pub enum Commands {
     Issue(issue::IssueArgs),
     /// Work with labels
     Label(label::LabelArgs),
+    /// Work with milestones
+    Milestone(milestone::MilestoneArgs),
     /// Work with pull requests
     Pr(pr::PrArgs),
     /// Open the repository in a web browser

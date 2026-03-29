@@ -19,6 +19,7 @@ async fn main() {
         Commands::Config(args) => cli::config::run(args).await,
         Commands::Issue(args) => cli::issue::run(args, &cli.hostname, &cli.repo).await,
         Commands::Label(args) => cli::label::run(args, &cli.hostname, &cli.repo).await,
+        Commands::Milestone(args) => cli::milestone::run(args, &cli.hostname, &cli.repo).await,
         Commands::Pr(args) => cli::pr::run(args, &cli.hostname, &cli.repo).await,
         Commands::Browse => browse(&cli.hostname, &cli.repo).await,
     };
