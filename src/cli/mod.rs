@@ -1,6 +1,7 @@
 pub mod api;
 pub mod auth;
 pub mod common;
+pub mod completion;
 pub mod config;
 pub mod issue;
 pub mod label;
@@ -39,6 +40,8 @@ pub enum Commands {
     Repo(repo::RepoArgs),
     /// Manage local CLI configuration
     Config(config::ConfigArgs),
+    /// Generate shell completion scripts
+    Completion(completion::CompletionArgs),
     /// Work with issues
     Issue(issue::IssueArgs),
     /// Work with labels
