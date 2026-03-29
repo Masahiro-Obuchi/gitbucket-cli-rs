@@ -3,6 +3,7 @@ pub mod auth;
 pub mod common;
 pub mod config;
 pub mod issue;
+pub mod label;
 pub mod pr;
 pub mod repo;
 
@@ -39,6 +40,8 @@ pub enum Commands {
     Config(config::ConfigArgs),
     /// Work with issues
     Issue(issue::IssueArgs),
+    /// Work with labels
+    Label(label::LabelArgs),
     /// Work with pull requests
     Pr(pr::PrArgs),
     /// Open the repository in a web browser

@@ -75,7 +75,16 @@ gb repo clone alice/my-app
 gb repo fork alice/my-app
 ```
 
-### 3) Issue operations
+### 3) Label operations
+
+```bash
+gb label list
+gb label create bug --color fc2929 --description "Broken behavior"
+gb label view bug
+gb label delete bug --yes
+```
+
+### 4) Issue operations
 
 ```bash
 gb issue list --state all
@@ -85,7 +94,7 @@ gb issue close 1
 gb issue comment 1 -b "Fixed!"
 ```
 
-### 4) Pull request operations
+### 5) Pull request operations
 
 ```bash
 gb pr list --state closed
@@ -112,6 +121,10 @@ gb pr diff 5
 | `gb repo clone <REPO>`        | Clone a repository                   |
 | `gb repo delete [OWNER/REPO]` | Delete a repository                  |
 | `gb repo fork [OWNER/REPO]`   | Fork a repository                    |
+| `gb label list`               | List labels                          |
+| `gb label view <NAME>`        | Show label details                   |
+| `gb label create [NAME]`      | Create a label                       |
+| `gb label delete <NAME>`      | Delete a label                       |
 | `gb issue list`               | List issues                          |
 | `gb issue view <NUMBER>`      | Show issue details                   |
 | `gb issue create`             | Create an issue                      |
@@ -231,7 +244,6 @@ Near term:
 
 After that:
 
-- `gb label`
 - `gb milestone`
 - Richer issue/PR metadata handling
 
@@ -275,6 +287,20 @@ echo '{"state":"closed"}' | gb api repos/alice/my-app/issues/1 -X PATCH --input 
 It accepts endpoint paths relative to `/api/v3`, full API paths such as `/api/v3/user`, or absolute URLs under the configured GitBucket API base.
 When `--input` is given and `-X/--method` is omitted, `gb api` defaults to `POST`.
 JSON responses are pretty-printed, and empty success responses print `null`.
+
+## Label commands
+
+```bash
+gb label list
+gb label list --json
+gb label view bug
+gb label create needs-review --color abcdef --description "Needs extra review"
+gb label delete needs-review --yes
+```
+
+`gb label` manages repository label definitions through the GitBucket REST API.
+It currently supports listing, viewing, creating, and deleting labels in the target repository.
+Colors accept 6-digit hex values with or without a leading `#`.
 
 ## Testing
 
