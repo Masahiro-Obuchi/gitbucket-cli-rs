@@ -2,17 +2,17 @@
 
 ## Current Implementation Status
 
-- Implemented top-level commands: `auth`, `repo`, `issue`, `pr`, and `browse`.
+- Implemented top-level commands: `auth`, `repo`, `issue`, `pr`, `browse`, and `config`.
 - Implemented auth flows: `login`, `logout`, `status`, and `token`.
 - Repository flows support list/view/create/clone/delete/fork.
 - Issue flows support list/view/create/close/reopen/comment.
 - Pull request flows support list/view/create/close/merge/checkout/diff/comment.
-- Planned but not yet implemented: `label`, `milestone`, `api`, `config`, and `completion`.
+- Planned but not yet implemented: `label`, `milestone`, `api`, and `completion`.
 
 ## Project Structure & Module Organization
 
 - `src/main.rs`: CLI entrypoint and command dispatch.
-- `src/cli/`: command implementations (`auth`, `repo`, `issue`, `pr`) and shared resolution logic in `common.rs`.
+- `src/cli/`: command implementations (`auth`, `config`, `repo`, `issue`, `pr`) and shared resolution logic in `common.rs`.
 - `src/api/`: GitBucket API client and endpoint wrappers.
 - `src/models/`: API request/response structs.
 - `src/config/`: local auth/config file handling.
@@ -45,7 +45,7 @@ Keep `README.md`, `SPEC.md`, and CLI help text aligned whenever command behavior
 - `--hostname/-H` and `GB_HOST` accept either a bare host or a full base URL.
 - Auth config is stored in `~/.config/gb/config.toml` (or `GB_CONFIG_DIR`) under `[hosts."<host-or-url>"]`.
 - Repository auto-resolution supports HTTPS, SSH, and GitBucket `/git/` clone URLs.
-- `issue list` and `pr list` currently accept `--state`, but the API request is not yet filtered by that option.
+- `issue list` and `pr list` support `--state open|closed|all` and pass that filter through to the API.
 
 ## Testing Guidelines
 

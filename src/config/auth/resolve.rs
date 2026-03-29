@@ -100,15 +100,25 @@ impl AuthConfig {
         sorted_hostnames(&self.hosts).into_iter().next()
     }
 
-    pub(super) fn find_host(&self, hostname: &str) -> Option<&HostConfig> {
-        if let Some(host) = self.hosts.get(hostname) {
-            return Some(host);
+    pub fn stored_hostname(&self, hostname: &str) -> Option<String> {
+        if self.hosts.contains_key(hostname) {
+            return Some(hostname.to_string());
         }
 
         let canonical = canonical_hostname(hostname)?;
-        self.hosts.iter().find_map(|(key, host)| {
-            (canonical_hostname(key).as_deref() == Some(canonical.as_str())).then_some(host)
-        })
+        let mut matches: Vec<String> = self
+            .hosts
+            .keys()
+            .filter(|key| canonical_hostname(key).as_deref() == Some(canonical.as_str()))
+            .cloned()
+            .collect();
+        matches.sort();
+        matches.into_iter().next()
+    }
+
+    pub(super) fn find_host(&self, hostname: &str) -> Option<&HostConfig> {
+        let key = self.stored_hostname(hostname)?;
+        self.hosts.get(&key)
     }
 }
 
@@ -116,4 +126,63 @@ pub(super) fn sorted_hostnames(hosts: &HashMap<String, HostConfig>) -> Vec<Strin
     let mut hostnames: Vec<String> = hosts.keys().cloned().collect();
     hostnames.sort();
     hostnames
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn host_config() -> HostConfig {
+        HostConfig {
+            token: "tok".to_string(),
+            user: "user".to_string(),
+            protocol: "https".to_string(),
+        }
+    }
+
+    fn config_with_hosts(keys: &[&str]) -> AuthConfig {
+        let mut hosts = HashMap::new();
+        for key in keys {
+            hosts.insert(key.to_string(), host_config());
+        }
+        AuthConfig {
+            hosts,
+            default_host: None,
+        }
+    }
+
+    #[test]
+    fn stored_hostname_exact_match() {
+        let config = config_with_hosts(&["example.com"]);
+        assert_eq!(
+            config.stored_hostname("example.com"),
+            Some("example.com".to_string())
+        );
+    }
+
+    #[test]
+    fn stored_hostname_canonical_match() {
+        let config = config_with_hosts(&["example.com"]);
+        assert_eq!(
+            config.stored_hostname("https://example.com"),
+            Some("example.com".to_string())
+        );
+    }
+
+    #[test]
+    fn stored_hostname_no_match() {
+        let config = config_with_hosts(&["example.com"]);
+        assert_eq!(config.stored_hostname("other.com"), None);
+    }
+
+    #[test]
+    fn stored_hostname_multiple_canonical_matches_returns_lexicographically_smallest() {
+        // Both "example.com" and "https://example.com" canonicalize to "example.com".
+        // The function should deterministically return the lexicographically smallest key.
+        let config = config_with_hosts(&["https://example.com", "example.com"]);
+        assert_eq!(
+            config.stored_hostname("example.com"),
+            Some("example.com".to_string())
+        );
+    }
 }

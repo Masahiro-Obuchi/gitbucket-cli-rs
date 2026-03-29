@@ -103,6 +103,7 @@ gb pr diff 5
 | `gb auth logout`              | Remove auth for a host               |
 | `gb auth status`              | Show current auth status             |
 | `gb auth token`               | Print access token                   |
+| `gb config`                   | Manage local CLI configuration       |
 | `gb repo list [OWNER]`        | List repositories                    |
 | `gb repo view [OWNER/REPO]`   | Show repository details              |
 | `gb repo create [NAME]`       | Create a repository                  |
@@ -224,7 +225,6 @@ Current priority is to deepen the existing command set before adding many new to
 
 Near term:
 
-- `gb config`
 - `gb api`
 - More test and Docker-backed E2E coverage
 
@@ -239,6 +239,27 @@ Lower priority / re-evaluate later:
 - `gb completion`
 - Webhook and collaborator operations
 - Admin-oriented user management flows
+
+## Configuration commands
+
+```bash
+gb config path
+gb config list
+gb config get default-host
+gb config get host --host gitbucket.example.com/gitbucket --field protocol
+gb config set host --host gitbucket.example.com/gitbucket --protocol http --default
+gb config unset default-host
+```
+
+`gb config` manages the local `config.toml` file. It currently supports:
+
+- printing the config file path
+- listing saved hosts and the stored default host
+- reading saved host `user` / `protocol` / `has-token` values
+- updating saved host `user` / `protocol` values
+- setting or clearing `default_host`
+
+Token creation and token printing remain under `gb auth`.
 
 ## Testing
 

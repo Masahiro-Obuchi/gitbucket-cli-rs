@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod common;
+pub mod config;
 pub mod issue;
 pub mod pr;
 pub mod repo;
@@ -31,6 +32,8 @@ pub enum Commands {
     Auth(auth::AuthArgs),
     /// Work with repositories
     Repo(repo::RepoArgs),
+    /// Manage local CLI configuration
+    Config(config::ConfigArgs),
     /// Work with issues
     Issue(issue::IssueArgs),
     /// Work with pull requests
