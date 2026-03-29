@@ -461,16 +461,12 @@ fn normalize_edit_state(state: Option<String>) -> Result<Option<String>> {
 }
 
 fn format_due_on(value: Option<&str>) -> String {
-    value
-        .map(|value| {
-            value
-                .strip_prefix("0001-01-01")
-                .unwrap_or(value)
-                .to_string()
-        })
-        .unwrap_or_default()
+    match value {
+        Some(v) if v.starts_with("0001-01-01") => String::new(),
+        Some(v) => v.to_string(),
+        None => String::new(),
+    }
 }
-
 #[cfg(test)]
 mod tests {
     use super::{
