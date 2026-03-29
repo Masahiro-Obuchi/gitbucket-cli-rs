@@ -273,9 +273,6 @@ async fn edit(
 ) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
-    let current = client.get_milestone(&owner, &repo, number).await?;
-
     let due_on = normalize_due_on_for_edit(due_on)?;
     let state = normalize_edit_state(state)?;
     if title.is_none()
@@ -288,6 +285,9 @@ async fn edit(
                 .into(),
         ));
     }
+
+    let client = create_client(&hostname)?;
+    let current = client.get_milestone(&owner, &repo, number).await?;
 
     let update_body = UpdateMilestone {
         title: title.clone(),

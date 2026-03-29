@@ -231,15 +231,11 @@ fn milestone_create_falls_back_to_gitbucket_web_session() {
 #[test]
 fn milestone_edit_requires_an_explicit_change() {
     let temp = tempdir().unwrap();
-    let (port, server) = spawn_server(
-        "200 OK",
-        r#"{"number":7,"title":"v1.0","state":"open","description":"First release"}"#,
-    );
 
     let output = gb_command()
         .current_dir(temp.path())
         .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_HOST", "127.0.0.1:9")
         .env("GB_REPO", "alice/project")
         .env("GB_TOKEN", "test-token")
         .env("GB_PROTOCOL", "http")
@@ -247,11 +243,7 @@ fn milestone_edit_requires_an_explicit_change() {
         .output()
         .unwrap();
 
-    let request = server.join().unwrap();
-
     assert!(!output.status.success());
-    assert_eq!(request.method, "GET");
-    assert_eq!(request.target, "/api/v3/repos/alice/project/milestones/7");
     assert!(
         String::from_utf8_lossy(&output.stderr).contains("No milestone changes requested."),
         "stderr: {}",
