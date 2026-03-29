@@ -317,3 +317,80 @@ fn e2e_repo_fork_against_live_instance() {
     assert!(stdout.contains(&fork_source), "stdout: {stdout}");
     assert!(stdout.contains(&format!("→ {user}/")), "stdout: {stdout}");
 }
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
+fn e2e_label_list_create_and_delete_against_live_instance() {
+    let temp = tempdir().unwrap();
+    let unique_suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    let label_name = format!("e2e-label-{}-{unique_suffix}", std::process::id());
+
+    login(temp.path());
+
+    let mut list_before = gb_command();
+    list_before
+        .current_dir(temp.path())
+        .args(["label", "list", "--json"]);
+    for (key, value) in e2e_env(temp.path()) {
+        list_before.env(key, value);
+    }
+    let list_before_stdout = run_and_assert_success(&mut list_before);
+    let labels_before: Value = serde_json::from_str(&list_before_stdout).unwrap();
+    assert!(
+        labels_before.is_array(),
+        "label output was not a JSON array: {labels_before}"
+    );
+
+    let mut create_command = gb_command();
+    create_command.current_dir(temp.path()).args([
+        "label",
+        "create",
+        &label_name,
+        "--color",
+        "123abc",
+        "--description",
+        "Created by E2E",
+    ]);
+    for (key, value) in e2e_env(temp.path()) {
+        create_command.env(key, value);
+    }
+    let create_stdout = run_and_assert_success(&mut create_command);
+    assert!(
+        create_stdout.contains(&label_name),
+        "stdout: {create_stdout}"
+    );
+
+    let mut list_after_create = gb_command();
+    list_after_create
+        .current_dir(temp.path())
+        .args(["label", "list", "--json"]);
+    for (key, value) in e2e_env(temp.path()) {
+        list_after_create.env(key, value);
+    }
+    let list_after_create_stdout = run_and_assert_success(&mut list_after_create);
+    let labels_after_create: Value = serde_json::from_str(&list_after_create_stdout).unwrap();
+    assert!(
+        labels_after_create
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|label| label["name"] == label_name),
+        "stdout: {list_after_create_stdout}"
+    );
+
+    let mut delete_command = gb_command();
+    delete_command
+        .current_dir(temp.path())
+        .args(["label", "delete", &label_name, "--yes"]);
+    for (key, value) in e2e_env(temp.path()) {
+        delete_command.env(key, value);
+    }
+    let delete_stdout = run_and_assert_success(&mut delete_command);
+    assert!(
+        delete_stdout.contains(&label_name),
+        "stdout: {delete_stdout}"
+    );
+}
