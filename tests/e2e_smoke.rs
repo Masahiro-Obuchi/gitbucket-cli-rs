@@ -394,3 +394,103 @@ fn e2e_label_list_create_and_delete_against_live_instance() {
         "stdout: {delete_stdout}"
     );
 }
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
+fn e2e_milestone_list_create_edit_and_delete_against_live_instance() {
+    let temp = tempdir().unwrap();
+    let unique_suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    let title = format!("e2e-milestone-{unique_suffix}");
+    let updated_title = format!("{title}-updated");
+
+    login(temp.path());
+
+    let mut create_command = gb_command();
+    create_command.current_dir(temp.path()).args([
+        "milestone",
+        "create",
+        &title,
+        "--description",
+        "Created by E2E",
+        "--due-on",
+        "2026-04-01",
+    ]);
+    for (key, value) in e2e_env(temp.path()) {
+        create_command.env(key, value);
+    }
+    let create_stdout = run_and_assert_success(&mut create_command);
+    assert!(create_stdout.contains(&title), "stdout: {create_stdout}");
+
+    let mut list_command = gb_command();
+    list_command
+        .current_dir(temp.path())
+        .args(["milestone", "list", "--state", "all", "--json"]);
+    for (key, value) in e2e_env(temp.path()) {
+        list_command.env(key, value);
+    }
+    let list_stdout = run_and_assert_success(&mut list_command);
+    let milestones: Value = serde_json::from_str(&list_stdout).unwrap();
+    let number = milestones
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|milestone| milestone["title"] == title)
+        .and_then(|milestone| milestone["number"].as_u64())
+        .unwrap_or_else(|| {
+            panic!("failed to find created milestone in list output: {list_stdout}")
+        });
+
+    let mut edit_command = gb_command();
+    edit_command.current_dir(temp.path()).args([
+        "milestone",
+        "edit",
+        &number.to_string(),
+        "--title",
+        &updated_title,
+        "--state",
+        "closed",
+        "--due-on",
+        "2026-04-02",
+    ]);
+    for (key, value) in e2e_env(temp.path()) {
+        edit_command.env(key, value);
+    }
+    let edit_stdout = run_and_assert_success(&mut edit_command);
+    assert!(
+        edit_stdout.contains(&updated_title),
+        "stdout: {edit_stdout}"
+    );
+
+    let mut view_command = gb_command();
+    view_command
+        .current_dir(temp.path())
+        .args(["milestone", "view", &number.to_string()]);
+    for (key, value) in e2e_env(temp.path()) {
+        view_command.env(key, value);
+    }
+    let view_stdout = run_and_assert_success(&mut view_command);
+    assert!(
+        view_stdout.contains(&updated_title),
+        "stdout: {view_stdout}"
+    );
+    assert!(view_stdout.contains("CLOSED"), "stdout: {view_stdout}");
+
+    let mut delete_command = gb_command();
+    delete_command.current_dir(temp.path()).args([
+        "milestone",
+        "delete",
+        &number.to_string(),
+        "--yes",
+    ]);
+    for (key, value) in e2e_env(temp.path()) {
+        delete_command.env(key, value);
+    }
+    let delete_stdout = run_and_assert_success(&mut delete_command);
+    assert!(
+        delete_stdout.contains(&format!("#{number}")),
+        "stdout: {delete_stdout}"
+    );
+}
