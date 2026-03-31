@@ -20,7 +20,7 @@ It follows the command design style of GitHub CLI (`gh`) and uses the GitBucket 
 | --- | --- | --- | --- |
 | `gh auth` | `gb auth` | ✅ Implemented | PAT-based authentication |
 | `gh repo` | `gb repo` | ✅ Implemented | Core repo operations |
-| `gh issue` | `gb issue` | ✅ Implemented | Basic issue workflows |
+| `gh issue` | `gb issue` | ✅ Implemented | Issue create/view/edit/comment/state workflows |
 | `gh pr` | `gb pr` | ✅ Implemented | Basic PR workflows |
 | `gh browse` | `gb browse` | ✅ Implemented | Opens browser |
 | `gh label` | `gb label` | ✅ Implemented | Label definition CRUD (no edit yet) |
@@ -541,6 +541,8 @@ gb issue view <NUMBER> [OPTIONS]
 | `--comments` | `-c` | Include comments |
 | `--web` | `-w` | Open in browser |
 
+Shows title, state, author, created date, labels, assignees, milestone when present, body, and optional comments.
+
 #### `gb issue create`
 
 Create an issue.
@@ -555,6 +557,33 @@ gb issue create [OPTIONS]
 | `--body <TEXT>` | `-b` | Issue body |
 | `--label <LABEL>` | `-l` | Repeatable label option |
 | `--assignee <USER>` | `-a` | Repeatable assignee option |
+
+#### `gb issue edit`
+
+Edit an issue.
+
+```text
+gb issue edit <NUMBER> [OPTIONS]
+```
+
+| Option | Description |
+| --- | --- |
+| `--title <TEXT>` | Updated title |
+| `--body <TEXT>` | Updated body |
+| `--add-label <LABEL>` | Add a label |
+| `--remove-label <LABEL>` | Remove a label |
+| `--add-assignee <USER>` | Add an assignee |
+| `--remove-assignee <USER>` | Remove an assignee |
+| `--milestone <NUMBER>` | Set the milestone |
+| `--remove-milestone` | Clear the current milestone |
+| `--state <STATE>` | Updated state: `open` or `closed` |
+
+Behavior:
+
+- Requires at least one explicit change
+- Fetches the current issue first so label/assignee changes can be merged safely
+- Rejects `--milestone` and `--remove-milestone` together before any API call
+- If GitBucket does not support REST issue editing and `gb` falls back to the web UI flow, title/body/milestone/state updates are supported; label and assignee edits still require REST issue edit support
 
 #### `gb issue close`
 

@@ -143,6 +143,11 @@ ensure_repo_deleted_with_token() {
 
   status=$(curl_json     "${response_file}"     -H "Accept: application/json"     -H "Authorization: token ${token}"     -X DELETE     "${GB_E2E_BASE_URL}/api/v3/repos/${repo_full_name}")
 
+  if [[ "${status}" == "204" || "${status}" == "404" ]]; then
+    rm -f "${response_file}"
+    return 0
+  fi
+
   if [[ "${status}" != "204" ]]; then
     echo "failed to delete existing repo ${repo_full_name} (HTTP ${status})" >&2
     cat "${response_file}" >&2

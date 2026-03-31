@@ -81,6 +81,17 @@ fn parse_pr_number(stdout: &str) -> u64 {
     number.unwrap_or_else(|| panic!("failed to parse PR number from stdout: {stdout}"))
 }
 
+fn parse_milestone_number(list_stdout: &str, title: &str) -> u64 {
+    let milestones: Value = serde_json::from_str(list_stdout).unwrap();
+    milestones
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|milestone| milestone["title"] == title)
+        .and_then(|milestone| milestone["number"].as_u64())
+        .unwrap_or_else(|| panic!("failed to find milestone '{title}' in output: {list_stdout}"))
+}
+
 fn unique_suffix() -> u128 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -162,11 +173,7 @@ fn clone_repo_to(temp: &Path, repo: &str, destination: &Path) {
     let output = std::process::Command::new("git")
         .current_dir(temp)
         .env("GIT_TERMINAL_PROMPT", "0")
-        .args([
-            "clone",
-            &clone_url,
-            destination.to_str().unwrap(),
-        ])
+        .args(["clone", &clone_url, destination.to_str().unwrap()])
         .output()
         .unwrap();
     assert!(
@@ -185,8 +192,18 @@ fn configure_git_identity(repo_dir: &Path) {
 fn ensure_remote_main(repo_dir: &Path) {
     configure_git_identity(repo_dir);
 
-    if try_git(repo_dir, &["rev-parse", "--verify", "refs/remotes/origin/main"]) {
-        run_git(repo_dir, &["checkout", "-B", "main", "origin/main"]);
+    if try_git(
+        repo_dir,
+        &["ls-remote", "--exit-code", "--heads", "origin", "main"],
+    ) {
+        run_git(
+            repo_dir,
+            &["fetch", "origin", "main:refs/remotes/origin/main"],
+        );
+        run_git(
+            repo_dir,
+            &["checkout", "-B", "main", "refs/remotes/origin/main"],
+        );
         return;
     }
 
@@ -194,7 +211,16 @@ fn ensure_remote_main(repo_dir: &Path) {
     run_git(repo_dir, &["add", "README.md"]);
     run_git(repo_dir, &["commit", "-m", "Seed main branch"]);
     run_git(repo_dir, &["branch", "-M", "main"]);
-    run_git(repo_dir, &["push", "-u", "origin", "main"]);
+    if !try_git(repo_dir, &["push", "-u", "origin", "main"]) {
+        run_git(
+            repo_dir,
+            &["fetch", "origin", "main:refs/remotes/origin/main"],
+        );
+        run_git(
+            repo_dir,
+            &["checkout", "-B", "main", "refs/remotes/origin/main"],
+        );
+    }
 }
 
 fn create_live_pr_fixture(temp: &Path, branch_prefix: &str) -> (u64, String, String) {
@@ -462,6 +488,114 @@ fn e2e_issue_close_and_reopen_against_live_instance() {
 
 #[test]
 #[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
+fn e2e_issue_edit_updates_metadata_against_live_instance() {
+    let temp = tempdir().unwrap();
+    let unique_suffix = unique_suffix();
+    let milestone_title = format!("e2e-issue-milestone-{unique_suffix}");
+
+    login(temp.path());
+
+    let create_issue_stdout = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &[
+            "issue",
+            "create",
+            "-t",
+            "issue edit before",
+            "-b",
+            "old body",
+        ],
+    );
+    let issue_number = parse_issue_number(&create_issue_stdout);
+
+    let milestone_stdout = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["milestone", "create", &milestone_title],
+    );
+    assert!(
+        milestone_stdout.contains(&milestone_title),
+        "stdout: {milestone_stdout}"
+    );
+
+    let list_milestones_stdout = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["milestone", "list", "--state", "all", "--json"],
+    );
+    let milestone_number = parse_milestone_number(&list_milestones_stdout, &milestone_title);
+
+    let edit_stdout = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &[
+            "issue",
+            "edit",
+            &issue_number.to_string(),
+            "--title",
+            "issue edit after",
+            "--body",
+            "new body",
+            "--milestone",
+            &milestone_number.to_string(),
+            "--state",
+            "closed",
+        ],
+    );
+    assert!(
+        edit_stdout.contains(&format!("Updated issue #{issue_number}: issue edit after")),
+        "stdout: {edit_stdout}"
+    );
+
+    let view_stdout = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["issue", "view", &issue_number.to_string()],
+    );
+    assert!(
+        view_stdout.contains("issue edit after"),
+        "stdout: {view_stdout}"
+    );
+    assert!(view_stdout.contains("CLOSED"), "stdout: {view_stdout}");
+    assert!(view_stdout.contains("new body"), "stdout: {view_stdout}");
+    assert!(
+        view_stdout.contains(&format!(
+            "Milestone: {milestone_title} (#{milestone_number})"
+        )),
+        "stdout: {view_stdout}"
+    );
+
+    let clear_stdout = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &[
+            "issue",
+            "edit",
+            &issue_number.to_string(),
+            "--remove-milestone",
+            "--state",
+            "open",
+        ],
+    );
+    assert!(
+        clear_stdout.contains(&format!("Updated issue #{issue_number}: issue edit after")),
+        "stdout: {clear_stdout}"
+    );
+
+    let view_after_clear = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["issue", "view", &issue_number.to_string()],
+    );
+    assert!(
+        !view_after_clear.contains("Milestone:"),
+        "stdout: {view_after_clear}"
+    );
+}
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
 fn e2e_repo_fork_against_live_instance() {
     let temp = tempdir().unwrap();
     let fork_source = required_env("GB_E2E_FORK_SOURCE");
@@ -696,7 +830,10 @@ fn e2e_pr_create_and_merge_against_live_instance() {
     let repo_dir = temp.path().join("verify-merge");
     clone_repo_to(temp.path(), &repo, &repo_dir);
     ensure_remote_main(&repo_dir);
-    assert!(repo_dir.join(&file_name).exists(), "file missing after merge");
+    assert!(
+        repo_dir.join(&file_name).exists(),
+        "file missing after merge"
+    );
 }
 
 #[test]
@@ -727,7 +864,10 @@ fn e2e_pr_checkout_against_live_instance() {
     assert_eq!(current_branch, format!("pr-{number}"));
 
     let main_after = git_output(&repo_dir, &["rev-parse", "main"]);
-    assert_eq!(main_before, main_after, "local main branch changed unexpectedly");
+    assert_eq!(
+        main_before, main_after,
+        "local main branch changed unexpectedly"
+    );
 }
 
 #[test]
@@ -743,11 +883,8 @@ fn e2e_pr_diff_against_live_instance() {
     clone_repo_to(temp.path(), &repo, &repo_dir);
     ensure_remote_main(&repo_dir);
 
-    let diff_stdout = gb_output_with_env(
-        temp.path(),
-        &repo_dir,
-        &["pr", "diff", &number.to_string()],
-    );
+    let diff_stdout =
+        gb_output_with_env(temp.path(), &repo_dir, &["pr", "diff", &number.to_string()]);
     assert!(diff_stdout.contains(&file_name), "stdout: {diff_stdout}");
 }
 
@@ -767,22 +904,20 @@ fn e2e_repo_clone_against_live_instance() {
     let clone_stdout = gb_output_with_env(
         temp.path(),
         temp.path(),
-        &[
-            "repo",
-            "clone",
-            &repo,
-            clone_target.to_str().unwrap(),
-        ],
+        &["repo", "clone", &repo, clone_target.to_str().unwrap()],
     );
     assert!(clone_target.join(".git").is_dir(), "repo was not cloned");
     assert!(clone_stdout.is_empty(), "stdout: {clone_stdout}");
 
-    let remote = git_output(
-        &clone_target,
-        &["remote", "get-url", "origin"],
+    let remote = git_output(&clone_target, &["remote", "get-url", "origin"]);
+    assert!(
+        remote.contains(&repo),
+        "origin remote did not reference repo: {remote}"
     );
-    assert!(remote.contains(&repo), "origin remote did not reference repo: {remote}");
-    assert!(clone_target.join("README.md").exists(), "README.md missing after clone");
+    assert!(
+        clone_target.join("README.md").exists(),
+        "README.md missing after clone"
+    );
 }
 
 #[test]
@@ -795,19 +930,22 @@ fn e2e_repo_delete_against_live_instance() {
 
     login(temp.path());
 
-    let create_stdout = gb_output_with_env(
-        temp.path(),
-        temp.path(),
-        &["repo", "create", &repo_name],
+    let create_stdout =
+        gb_output_with_env(temp.path(), temp.path(), &["repo", "create", &repo_name]);
+    assert!(
+        create_stdout.contains(&full_name),
+        "stdout: {create_stdout}"
     );
-    assert!(create_stdout.contains(&full_name), "stdout: {create_stdout}");
 
     let delete_stdout = gb_output_with_env(
         temp.path(),
         temp.path(),
         &["repo", "delete", &full_name, "--yes"],
     );
-    assert!(delete_stdout.contains(&full_name), "stdout: {delete_stdout}");
+    assert!(
+        delete_stdout.contains(&full_name),
+        "stdout: {delete_stdout}"
+    );
 
     let mut api_command = gb_command();
     api_command
