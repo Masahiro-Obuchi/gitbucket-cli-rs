@@ -486,27 +486,18 @@ async fn edit(
                 }
             }
 
-            let issue = client.get_issue(&owner, &repo, number).await.unwrap_or(
-                crate::models::issue::Issue {
-                    number,
-                    title: next_title,
-                    body: Some(next_body),
-                    state: update_body
-                        .state
-                        .clone()
-                        .unwrap_or_else(|| current.state.clone()),
-                    user: current.user.clone(),
-                    labels: current.labels.clone(),
-                    assignees: current.assignees.clone(),
-                    milestone: current.milestone.clone(),
-                    html_url: current.html_url.clone(),
-                    created_at: current.created_at.clone(),
-                    updated_at: current.updated_at.clone(),
-                    closed_at: current.closed_at.clone(),
-                    comments: current.comments,
-                },
-            );
-            println!("✓ Updated issue #{}: {}", issue.number, issue.title);
+            match client.get_issue(&owner, &repo, number).await {
+                Ok(issue) => {
+                    println!("✓ Updated issue #{}: {}", issue.number, issue.title);
+                }
+                Err(err) => {
+                    eprintln!(
+                        "Warning: failed to fetch updated issue #{} from API after web fallback: {}",
+                        number, err
+                    );
+                    println!("✓ Updated issue #{}: {}", number, next_title);
+                }
+            }
             Ok(())
         }
         Err(err) => Err(err),
