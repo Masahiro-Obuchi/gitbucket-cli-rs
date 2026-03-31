@@ -17,6 +17,7 @@ async fn main() {
         Commands::Auth(args) => cli::auth::run(args, &cli.hostname).await,
         Commands::Repo(args) => cli::repo::run(args, &cli.hostname, &cli.repo).await,
         Commands::Config(args) => cli::config::run(args).await,
+        Commands::Completion(args) => cli::completion::run(args).await,
         Commands::Issue(args) => cli::issue::run(args, &cli.hostname, &cli.repo).await,
         Commands::Label(args) => cli::label::run(args, &cli.hostname, &cli.repo).await,
         Commands::Milestone(args) => cli::milestone::run(args, &cli.hostname, &cli.repo).await,

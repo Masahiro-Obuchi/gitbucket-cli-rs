@@ -127,6 +127,7 @@ gb pr diff 5
 | `gb auth status`              | Show current auth status             |
 | `gb auth token`               | Print access token                   |
 | `gb config`                   | Manage local CLI configuration       |
+| `gb completion <SHELL>`       | Generate shell completion scripts    |
 | `gb api <ENDPOINT>`           | Call the GitBucket REST API directly |
 | `gb repo list [OWNER]`        | List repositories                    |
 | `gb repo view [OWNER/REPO]`   | Show repository details              |
@@ -266,7 +267,6 @@ After that:
 
 Lower priority / re-evaluate later:
 
-- `gb completion`
 - Webhook and collaborator operations
 - Admin-oriented user management flows
 
@@ -304,6 +304,19 @@ echo '{"state":"closed"}' | gb api repos/alice/my-app/issues/1 -X PATCH --input 
 It accepts endpoint paths relative to `/api/v3`, full API paths such as `/api/v3/user`, or absolute URLs under the configured GitBucket API base.
 When `--input` is given and `-X/--method` is omitted, `gb api` defaults to `POST`.
 JSON responses are pretty-printed, and empty success responses print `null`.
+
+## Completion command
+
+```bash
+gb completion bash > ~/.local/share/bash-completion/completions/gb
+gb completion zsh > ~/.zfunc/_gb
+gb completion fish > ~/.config/fish/completions/gb.fish
+gb completion powershell > gb.ps1
+```
+
+`gb completion` prints shell completion scripts to stdout.
+It currently supports `bash`, `zsh`, `fish`, and `powershell`.
+The command does not install the scripts for you; redirect the output to the appropriate location for your shell.
 
 ## Label commands
 

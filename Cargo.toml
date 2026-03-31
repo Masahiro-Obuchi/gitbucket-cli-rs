@@ -8,6 +8,7 @@ repository = "https://github.com/Masahiro-Obuchi/gitbucket-cli-rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive", "env"] }
+clap_complete = "4"
 reqwest = { version = "0.12", features = ["cookies", "json", "rustls-tls-native-roots"], default-features = false }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
