@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::label::Label;
+use super::milestone::Milestone;
 use super::user::User;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -16,6 +17,8 @@ pub struct Issue {
     pub labels: Vec<Label>,
     #[serde(default)]
     pub assignees: Vec<User>,
+    #[serde(default)]
+    pub milestone: Option<Milestone>,
     #[serde(default)]
     pub html_url: Option<String>,
     #[serde(default)]
@@ -49,4 +52,10 @@ pub struct UpdateIssue {
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub labels: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub assignees: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub milestone: Option<Option<u64>>,
 }
