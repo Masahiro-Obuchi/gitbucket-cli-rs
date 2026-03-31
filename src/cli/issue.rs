@@ -577,8 +577,8 @@ async fn comment(
 fn normalize_edit_state(state: Option<String>) -> Result<Option<String>> {
     match state {
         None => Ok(None),
-        Some(value) => match value.as_str() {
-            "open" | "closed" => Ok(Some(value)),
+        Some(value) => match value.to_ascii_lowercase().as_str() {
+            "open" | "closed" => Ok(Some(value.to_ascii_lowercase())),
             _ => Err(GbError::Other(
                 "Invalid issue state. Expected 'open' or 'closed'.".into(),
             )),
@@ -613,6 +613,14 @@ mod tests {
         );
         assert_eq!(
             normalize_edit_state(Some("closed".into())).unwrap(),
+            Some("closed".into())
+        );
+        assert_eq!(
+            normalize_edit_state(Some("OPEN".into())).unwrap(),
+            Some("open".into())
+        );
+        assert_eq!(
+            normalize_edit_state(Some("Closed".into())).unwrap(),
             Some("closed".into())
         );
     }
