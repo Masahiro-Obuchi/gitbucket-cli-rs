@@ -22,7 +22,7 @@ jobs:
       - name: Bootstrap Docker GitBucket fixture
         run: ./scripts/e2e/bootstrap.sh
       - name: Verify GitBucket E2E env file
-        run: test -f .tmp/e2e/runtime.env
+        run: test -s .tmp/e2e/runtime.env
       - name: Export GitBucket E2E env
         run: cat .tmp/e2e/runtime.env >> "$GITHUB_ENV"
       - name: Run Docker-backed E2E smoke tests
