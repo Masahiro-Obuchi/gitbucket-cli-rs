@@ -1,6 +1,8 @@
 use assert_cmd::cargo::CommandCargoExt;
 use serde_json::Value;
+use std::path::Path;
 use tempfile::tempdir;
+use url::Url;
 
 fn gb_command() -> std::process::Command {
     std::process::Command::cargo_bin("gb").unwrap()
@@ -68,6 +70,168 @@ fn parse_issue_number(stdout: &str) -> u64 {
         .and_then(|rest| rest.split(':').next())
         .and_then(|value| value.parse::<u64>().ok());
     number.unwrap_or_else(|| panic!("failed to parse issue number from stdout: {stdout}"))
+}
+
+fn parse_pr_number(stdout: &str) -> u64 {
+    let number = stdout
+        .split('#')
+        .nth(1)
+        .and_then(|rest| rest.split(':').next())
+        .and_then(|value| value.parse::<u64>().ok());
+    number.unwrap_or_else(|| panic!("failed to parse PR number from stdout: {stdout}"))
+}
+
+fn unique_suffix() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+}
+
+fn run_git(dir: &Path, args: &[&str]) {
+    let output = std::process::Command::new("git")
+        .current_dir(dir)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git {:?} failed\nstdout: {}\nstderr: {}",
+        args,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn try_git(dir: &Path, args: &[&str]) -> bool {
+    std::process::Command::new("git")
+        .current_dir(dir)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .args(args)
+        .status()
+        .unwrap()
+        .success()
+}
+
+fn git_output(dir: &Path, args: &[&str]) -> String {
+    let output = std::process::Command::new("git")
+        .current_dir(dir)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git {:?} failed\nstdout: {}\nstderr: {}",
+        args,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+fn gb_output_with_env(temp: &Path, current_dir: &Path, args: &[&str]) -> String {
+    let mut command = gb_command();
+    command.current_dir(current_dir).args(args);
+    for (key, value) in e2e_env(temp) {
+        command.env(key, value);
+    }
+    run_and_assert_success(&mut command)
+}
+
+fn authenticated_clone_url(temp: &Path, repo: &str) -> String {
+    let stdout = gb_output_with_env(temp, temp, &["api", &format!("repos/{repo}")]);
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    let clone_url = payload["clone_url"]
+        .as_str()
+        .unwrap_or_else(|| panic!("missing clone_url in payload: {stdout}"));
+    let user = required_env("GB_E2E_USER");
+    let password = required_env("GB_E2E_PASSWORD");
+
+    let mut url = Url::parse(clone_url).unwrap();
+    url.set_username(&user).unwrap();
+    url.set_password(Some(&password)).unwrap();
+    url.to_string()
+}
+
+fn clone_repo_to(temp: &Path, repo: &str, destination: &Path) {
+    let clone_url = authenticated_clone_url(temp, repo);
+    let output = std::process::Command::new("git")
+        .current_dir(temp)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .args([
+            "clone",
+            &clone_url,
+            destination.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git clone failed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn configure_git_identity(repo_dir: &Path) {
+    run_git(repo_dir, &["config", "user.name", "GB E2E"]);
+    run_git(repo_dir, &["config", "user.email", "gb-e2e@example.test"]);
+}
+
+fn ensure_remote_main(repo_dir: &Path) {
+    configure_git_identity(repo_dir);
+
+    if try_git(repo_dir, &["rev-parse", "--verify", "refs/remotes/origin/main"]) {
+        run_git(repo_dir, &["checkout", "-B", "main", "origin/main"]);
+        return;
+    }
+
+    std::fs::write(repo_dir.join("README.md"), "seed\n").unwrap();
+    run_git(repo_dir, &["add", "README.md"]);
+    run_git(repo_dir, &["commit", "-m", "Seed main branch"]);
+    run_git(repo_dir, &["branch", "-M", "main"]);
+    run_git(repo_dir, &["push", "-u", "origin", "main"]);
+}
+
+fn create_live_pr_fixture(temp: &Path, branch_prefix: &str) -> (u64, String, String) {
+    let repo = required_env("GB_E2E_REPO");
+    let suffix = unique_suffix();
+    let branch = format!("{branch_prefix}-{suffix}");
+    let file_name = format!("{branch}.txt");
+    let marker = format!("marker-{suffix}");
+    let repo_dir = temp.join(format!("work-{branch}"));
+
+    clone_repo_to(temp, &repo, &repo_dir);
+    ensure_remote_main(&repo_dir);
+
+    run_git(&repo_dir, &["checkout", "-B", &branch, "main"]);
+    std::fs::write(repo_dir.join(&file_name), format!("{marker}\n")).unwrap();
+    run_git(&repo_dir, &["add", &file_name]);
+    run_git(&repo_dir, &["commit", "-m", &format!("Add {branch}")]);
+    run_git(&repo_dir, &["push", "-u", "origin", &branch]);
+
+    let stdout = gb_output_with_env(
+        temp,
+        &repo_dir,
+        &[
+            "pr",
+            "create",
+            "-t",
+            &format!("E2E PR {branch}"),
+            "-b",
+            &format!("Created by E2E for {branch}"),
+            "--head",
+            &branch,
+            "--base",
+            "main",
+        ],
+    );
+
+    (parse_pr_number(&stdout), branch, file_name)
 }
 
 #[test]
@@ -492,5 +656,176 @@ fn e2e_milestone_list_create_edit_and_delete_against_live_instance() {
     assert!(
         delete_stdout.contains(&format!("#{number}")),
         "stdout: {delete_stdout}"
+    );
+}
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
+fn e2e_pr_create_and_merge_against_live_instance() {
+    let temp = tempdir().unwrap();
+    let repo = required_env("GB_E2E_REPO");
+
+    login(temp.path());
+
+    let (number, branch, file_name) = create_live_pr_fixture(temp.path(), "e2e-pr-merge");
+
+    let view_before = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["pr", "view", &number.to_string()],
+    );
+    assert!(view_before.contains(&branch), "stdout: {view_before}");
+
+    let merge_stdout = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["pr", "merge", &number.to_string()],
+    );
+    assert!(
+        merge_stdout.contains(&format!("Merged pull request #{number}")),
+        "stdout: {merge_stdout}"
+    );
+
+    let view_after = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["pr", "view", &number.to_string()],
+    );
+    assert!(view_after.contains("MERGED"), "stdout: {view_after}");
+
+    let repo_dir = temp.path().join("verify-merge");
+    clone_repo_to(temp.path(), &repo, &repo_dir);
+    ensure_remote_main(&repo_dir);
+    assert!(repo_dir.join(&file_name).exists(), "file missing after merge");
+}
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
+fn e2e_pr_checkout_against_live_instance() {
+    let temp = tempdir().unwrap();
+    let repo = required_env("GB_E2E_REPO");
+
+    login(temp.path());
+
+    let (number, _, _) = create_live_pr_fixture(temp.path(), "e2e-pr-checkout");
+    let repo_dir = temp.path().join("checkout-target");
+    clone_repo_to(temp.path(), &repo, &repo_dir);
+    ensure_remote_main(&repo_dir);
+    let main_before = git_output(&repo_dir, &["rev-parse", "main"]);
+
+    let checkout_stdout = gb_output_with_env(
+        temp.path(),
+        &repo_dir,
+        &["pr", "checkout", &number.to_string()],
+    );
+    assert!(
+        checkout_stdout.contains(&format!("pr-{number}")),
+        "stdout: {checkout_stdout}"
+    );
+
+    let current_branch = git_output(&repo_dir, &["branch", "--show-current"]);
+    assert_eq!(current_branch, format!("pr-{number}"));
+
+    let main_after = git_output(&repo_dir, &["rev-parse", "main"]);
+    assert_eq!(main_before, main_after, "local main branch changed unexpectedly");
+}
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
+fn e2e_pr_diff_against_live_instance() {
+    let temp = tempdir().unwrap();
+    let repo = required_env("GB_E2E_REPO");
+
+    login(temp.path());
+
+    let (number, _, file_name) = create_live_pr_fixture(temp.path(), "e2e-pr-diff");
+    let repo_dir = temp.path().join("diff-target");
+    clone_repo_to(temp.path(), &repo, &repo_dir);
+    ensure_remote_main(&repo_dir);
+
+    let diff_stdout = gb_output_with_env(
+        temp.path(),
+        &repo_dir,
+        &["pr", "diff", &number.to_string()],
+    );
+    assert!(diff_stdout.contains(&file_name), "stdout: {diff_stdout}");
+}
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
+fn e2e_repo_clone_against_live_instance() {
+    let temp = tempdir().unwrap();
+    let repo = required_env("GB_E2E_REPO");
+    let clone_target = temp.path().join("cloned-repo");
+
+    login(temp.path());
+
+    let seed_dir = temp.path().join("seed-for-clone");
+    clone_repo_to(temp.path(), &repo, &seed_dir);
+    ensure_remote_main(&seed_dir);
+
+    let clone_stdout = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &[
+            "repo",
+            "clone",
+            &repo,
+            clone_target.to_str().unwrap(),
+        ],
+    );
+    assert!(clone_target.join(".git").is_dir(), "repo was not cloned");
+    assert!(clone_stdout.is_empty(), "stdout: {clone_stdout}");
+
+    let remote = git_output(
+        &clone_target,
+        &["remote", "get-url", "origin"],
+    );
+    assert!(remote.contains(&repo), "origin remote did not reference repo: {remote}");
+    assert!(clone_target.join("README.md").exists(), "README.md missing after clone");
+}
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
+fn e2e_repo_delete_against_live_instance() {
+    let temp = tempdir().unwrap();
+    let user = required_env("GB_E2E_USER");
+    let repo_name = format!("e2e-delete-{}", unique_suffix());
+    let full_name = format!("{user}/{repo_name}");
+
+    login(temp.path());
+
+    let create_stdout = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["repo", "create", &repo_name],
+    );
+    assert!(create_stdout.contains(&full_name), "stdout: {create_stdout}");
+
+    let delete_stdout = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["repo", "delete", &full_name, "--yes"],
+    );
+    assert!(delete_stdout.contains(&full_name), "stdout: {delete_stdout}");
+
+    let mut api_command = gb_command();
+    api_command
+        .current_dir(temp.path())
+        .args(["api", &format!("repos/{full_name}")]);
+    for (key, value) in e2e_env(temp.path()) {
+        api_command.env(key, value);
+    }
+    let output = api_command.output().unwrap();
+    assert!(
+        !output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("404"),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
 }
