@@ -255,11 +255,12 @@ When `GB_TOKEN` is set, protocol selection uses this order:
 
 ## Roadmap
 
-Current priority is to deepen the existing command set before adding many new top-level areas.
+Current priority is to harden CI and Docker-backed verification around the existing command set before adding larger new areas.
 
 Near term:
 
-- More test and Docker-backed E2E coverage
+- Keep strengthening test and Docker-backed E2E coverage
+- Keep `cargo clippy --all-targets --all-features -- -D warnings` green in CI
 
 After that:
 

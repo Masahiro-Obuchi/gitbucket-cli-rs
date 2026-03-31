@@ -151,4 +151,5 @@ Bootstrap writes these environment variables to `.tmp/e2e/runtime.env`:
 - `GB_E2E_PROTOCOL`
 - `GB_E2E_BASE_URL`
 
-The dedicated GitHub Actions workflow in `.github/workflows/e2e.yml` uses the same bootstrap contract on `main` pushes.
+The dedicated GitHub Actions workflow in `.github/workflows/e2e.yml` uses the same bootstrap contract on `main` pushes, pull requests, and manual runs.
+The normal Rust workflow in `.github/workflows/rust.yml` runs `cargo check`, `cargo test`, and `cargo clippy --all-targets --all-features -- -D warnings`.

@@ -980,6 +980,7 @@ Milestone:
 ### Phase 1 next
 
 - Keep strengthening test and E2E coverage around the current command set
+- Keep `cargo clippy --all-targets --all-features -- -D warnings` green in CI
 
 ### Phase 2
 
@@ -992,7 +993,6 @@ Milestone:
 ### Phase 4
 
 - More tests (unit + integration)
-- CI workflows
 - Packaging/release automation
 - Documentation refinements
 
