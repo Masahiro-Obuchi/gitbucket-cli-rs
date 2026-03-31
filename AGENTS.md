@@ -5,7 +5,7 @@
 - Implemented top-level commands: `auth`, `repo`, `issue`, `pr`, `browse`, `config`, `api`, `label`, `milestone`, and `completion`.
 - Implemented auth flows: `login`, `logout`, `status`, and `token`.
 - Repository flows support list/view/create/clone/delete/fork.
-- Issue flows support list/view/create/close/reopen/comment.
+- Issue flows support list/view/create/edit/close/reopen/comment.
 - Pull request flows support list/view/create/close/merge/checkout/diff/comment.
 - Planned but not yet implemented: none.
 

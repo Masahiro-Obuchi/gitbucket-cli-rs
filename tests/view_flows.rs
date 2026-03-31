@@ -54,7 +54,7 @@ fn issue_view_with_comments_renders_details_and_comments() {
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/issues/7 HTTP/1.1",
             "200 OK",
-            r#"{"number":7,"title":"Bug report","body":"Body text","state":"open","user":{"login":"alice"},"labels":[{"name":"bug"},{"name":"urgent"}],"created_at":"2026-03-24T00:00:00Z"}"#,
+            r#"{"number":7,"title":"Bug report","body":"Body text","state":"open","user":{"login":"alice"},"labels":[{"name":"bug"},{"name":"urgent"}],"assignees":[{"login":"bob"},{"login":"carol"}],"milestone":{"number":3,"title":"v1.0","state":"open"},"created_at":"2026-03-24T00:00:00Z"}"#,
         ),
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/issues/7/comments HTTP/1.1",
@@ -95,6 +95,8 @@ fn issue_view_with_comments_renders_details_and_comments() {
     assert!(stdout.contains("Author: alice"));
     assert!(stdout.contains("Created: 2026-03-24T00:00:00Z"));
     assert!(stdout.contains("Labels: bug, urgent"));
+    assert!(stdout.contains("Assignees: bob, carol"));
+    assert!(stdout.contains("Milestone: v1.0 (#3)"));
     assert!(stdout.contains("Body text"));
     assert!(stdout.contains("--- Comments ---"));
     assert!(stdout.contains("bob (2026-03-25T00:00:00Z)"));

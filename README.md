@@ -103,6 +103,7 @@ gb milestone delete 1 --yes
 gb issue list --state all
 gb issue create -t "Bug report"
 gb issue view 1
+gb issue edit 1 --title "Updated bug report" --add-label urgent
 gb issue close 1
 gb issue comment 1 -b "Fixed!"
 ```
@@ -147,6 +148,7 @@ gb pr diff 5
 | `gb issue list`               | List issues                          |
 | `gb issue view <NUMBER>`      | Show issue details                   |
 | `gb issue create`             | Create an issue                      |
+| `gb issue edit <NUMBER>`      | Edit an issue                        |
 | `gb issue close <NUMBER>`     | Close an issue                       |
 | `gb issue reopen <NUMBER>`    | Reopen an issue                      |
 | `gb issue comment <NUMBER>`   | Add an issue comment                 |
@@ -202,7 +204,8 @@ Invalid values are rejected before the API call is made.
 ## GitBucket Web Fallbacks
 
 Some GitBucket actions are only exposed through the web UI, not the REST API.
-When `gb repo delete`, `gb repo fork`, `gb issue close`, or `gb issue reopen` hits that case, `gb` falls back to a short web sign-in flow and may prompt for your password.
+When `gb repo delete`, `gb repo fork`, `gb issue close`, `gb issue reopen`, or issue metadata updates hit that case, `gb` falls back to a short web sign-in flow and may prompt for your password.
+For `gb issue edit`, the web fallback currently covers title/body/milestone/state updates. Label and assignee edits still require REST issue edit support from the target GitBucket.
 Use `GB_USER` and `GB_PASSWORD` to preseed those prompts when needed.
 
 ## Pull Request Checkout And Diff

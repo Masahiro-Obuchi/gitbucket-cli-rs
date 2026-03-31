@@ -90,6 +90,60 @@ impl GitBucketWebSession {
         .await
     }
 
+    pub async fn edit_issue_title(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        title: &str,
+    ) -> Result<()> {
+        self.post_form(
+            &format!("/{owner}/{repo}/issues/edit_title/{number}"),
+            vec![("title", title.to_string())],
+            "edit the issue title",
+        )
+        .await
+    }
+
+    pub async fn edit_issue_content(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        title: &str,
+        content: &str,
+    ) -> Result<()> {
+        self.post_form(
+            &format!("/{owner}/{repo}/issues/edit/{number}"),
+            vec![
+                ("title", title.to_string()),
+                ("content", content.to_string()),
+            ],
+            "edit the issue",
+        )
+        .await
+    }
+
+    pub async fn update_issue_milestone(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        milestone_id: Option<u64>,
+    ) -> Result<()> {
+        self.post_form(
+            &format!("/{owner}/{repo}/issues/{number}/milestone"),
+            vec![(
+                "milestoneId",
+                milestone_id
+                    .map(|value| value.to_string())
+                    .unwrap_or_default(),
+            )],
+            "update the issue milestone",
+        )
+        .await
+    }
+
     pub async fn create_milestone(
         &self,
         owner: &str,

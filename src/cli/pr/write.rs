@@ -87,6 +87,9 @@ pub(super) async fn close(
         state: Some("closed".to_string()),
         title: None,
         body: None,
+        labels: None,
+        assignees: None,
+        milestone: None,
     };
     client.update_issue(&owner, &repo, number, &body).await?;
     println!("✓ Closed pull request #{}", number);
