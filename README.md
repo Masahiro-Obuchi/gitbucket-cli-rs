@@ -103,6 +103,7 @@ gb milestone delete 1 --yes
 gb issue list --state all
 gb issue create -t "Bug report"
 gb issue view 1
+gb issue view 1 --comments
 gb issue edit 1 --title "Updated bug report" --add-label urgent
 gb issue close 1
 gb issue comment 1 -b "Fixed!"

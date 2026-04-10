@@ -542,6 +542,7 @@ gb issue view <NUMBER> [OPTIONS]
 | `--web` | `-w` | Open in browser |
 
 Shows title, state, author, created date, labels, assignees, milestone when present, body, and optional comments.
+Comments are hidden by default; pass `--comments` to include them in the CLI output.
 
 #### `gb issue create`
 
