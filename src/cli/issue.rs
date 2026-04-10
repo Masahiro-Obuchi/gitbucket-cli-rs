@@ -26,11 +26,11 @@ pub enum IssueCommand {
         #[arg(long)]
         json: bool,
     },
-    /// View an issue
+    /// View an issue (use --comments to include comments)
     View {
         /// Issue number
         number: u64,
-        /// Show comments
+        /// Include comments in the output
         #[arg(long, short)]
         comments: bool,
         /// Open in browser
