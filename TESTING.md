@@ -89,7 +89,7 @@ These execute the real CLI binary as a subprocess.
 - `tests/git_regressions.rs`
   regression coverage for previously fixed CLI bugs, including git-heavy flows such as `repo clone`, `pr checkout`, and `pr diff`
 - `tests/e2e_smoke.rs`
-  ignored Docker-backed smoke tests for auth, config, raw API access, labels, milestones, PR/git flows, and representative live GitBucket write operations
+  ignored Docker-backed smoke tests for auth, config, raw API access, labels, milestones, issue/PR comments, PR/git flows, and representative live GitBucket write operations
 
 ## How To Choose A Test Type
 
