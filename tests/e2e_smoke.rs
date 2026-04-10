@@ -63,6 +63,27 @@ fn e2e_env(temp: &std::path::Path) -> Vec<(&'static str, String)> {
     ]
 }
 
+fn create_live_issue(temp: &Path, title: &str, body: &str) -> u64 {
+    let stdout = gb_output_with_env(temp, temp, &["issue", "create", "-t", title, "-b", body]);
+    parse_issue_number(&stdout)
+}
+
+fn add_issue_comment(temp: &Path, number: u64, body: &str) -> String {
+    gb_output_with_env(
+        temp,
+        temp,
+        &["issue", "comment", &number.to_string(), "-b", body],
+    )
+}
+
+fn add_pr_comment(temp: &Path, number: u64, body: &str) -> String {
+    gb_output_with_env(
+        temp,
+        temp,
+        &["pr", "comment", &number.to_string(), "-b", body],
+    )
+}
+
 fn parse_issue_number(stdout: &str) -> u64 {
     let number = stdout
         .split('#')
@@ -450,20 +471,7 @@ fn e2e_issue_close_and_reopen_against_live_instance() {
 
     login(temp.path());
 
-    let mut create_command = gb_command();
-    create_command.current_dir(temp.path()).args([
-        "issue",
-        "create",
-        "-t",
-        "e2e issue",
-        "-b",
-        "body",
-    ]);
-    for (key, value) in e2e_env(temp.path()) {
-        create_command.env(key, value);
-    }
-    let create_stdout = run_and_assert_success(&mut create_command);
-    let issue_number = parse_issue_number(&create_stdout);
+    let issue_number = create_live_issue(temp.path(), "e2e issue", "body");
 
     let mut close_command = gb_command();
     close_command
@@ -484,6 +492,54 @@ fn e2e_issue_close_and_reopen_against_live_instance() {
     }
     let reopen_stdout = run_and_assert_success(&mut reopen_command);
     assert!(reopen_stdout.contains(&format!("Reopened issue #{issue_number}")));
+}
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
+fn e2e_issue_comment_and_view_comments_against_live_instance() {
+    let temp = tempdir().unwrap();
+    let comment_body = format!("issue comment body {}", unique_suffix());
+
+    login(temp.path());
+
+    let issue_number = create_live_issue(temp.path(), "issue comment target", "body");
+    let comment_stdout = add_issue_comment(temp.path(), issue_number, &comment_body);
+    assert!(
+        comment_stdout.contains(&format!("Added comment to issue #{issue_number}")),
+        "stdout: {comment_stdout}"
+    );
+
+    let view_without_comments = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["issue", "view", &issue_number.to_string()],
+    );
+    assert!(
+        !view_without_comments.contains("--- Comments ---"),
+        "stdout: {view_without_comments}"
+    );
+    assert!(
+        !view_without_comments.contains(&comment_body),
+        "stdout: {view_without_comments}"
+    );
+
+    let view_with_comments = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["issue", "view", &issue_number.to_string(), "--comments"],
+    );
+    assert!(
+        view_with_comments.contains("--- Comments ---"),
+        "stdout: {view_with_comments}"
+    );
+    assert!(
+        view_with_comments.contains(&comment_body),
+        "stdout: {view_with_comments}"
+    );
+    assert!(
+        view_with_comments.contains(&required_env("GB_E2E_USER")),
+        "stdout: {view_with_comments}"
+    );
 }
 
 #[test]
@@ -833,6 +889,58 @@ fn e2e_pr_create_and_merge_against_live_instance() {
     assert!(
         repo_dir.join(&file_name).exists(),
         "file missing after merge"
+    );
+}
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
+fn e2e_pr_comment_and_view_comments_against_live_instance() {
+    let temp = tempdir().unwrap();
+    let comment_body = format!("pr comment body {}", unique_suffix());
+
+    login(temp.path());
+
+    let (number, branch, _) = create_live_pr_fixture(temp.path(), "e2e-pr-comment");
+    let comment_stdout = add_pr_comment(temp.path(), number, &comment_body);
+    assert!(
+        comment_stdout.contains(&format!("Added comment to PR #{number}")),
+        "stdout: {comment_stdout}"
+    );
+
+    let view_without_comments = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["pr", "view", &number.to_string()],
+    );
+    assert!(
+        view_without_comments.contains(&branch),
+        "stdout: {view_without_comments}"
+    );
+    assert!(
+        !view_without_comments.contains("--- Comments ---"),
+        "stdout: {view_without_comments}"
+    );
+    assert!(
+        !view_without_comments.contains(&comment_body),
+        "stdout: {view_without_comments}"
+    );
+
+    let view_with_comments = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["pr", "view", &number.to_string(), "--comments"],
+    );
+    assert!(
+        view_with_comments.contains("--- Comments ---"),
+        "stdout: {view_with_comments}"
+    );
+    assert!(
+        view_with_comments.contains(&comment_body),
+        "stdout: {view_with_comments}"
+    );
+    assert!(
+        view_with_comments.contains(&required_env("GB_E2E_USER")),
+        "stdout: {view_with_comments}"
     );
 }
 
