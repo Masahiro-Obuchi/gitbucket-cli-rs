@@ -12,7 +12,7 @@ fn issue_view_help_mentions_comments_flag_behavior() {
         stdout.contains("View an issue (use --comments to include comments)"),
         "stdout: {stdout}"
     );
-    assert!(stdout.contains("--comments"), "stdout: {stdout}");
+    assert!(stdout.contains("-c, --comments"), "stdout: {stdout}");
     assert!(
         stdout.contains("Include comments in the output"),
         "stdout: {stdout}"
