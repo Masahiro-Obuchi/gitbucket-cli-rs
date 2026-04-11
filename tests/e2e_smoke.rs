@@ -186,16 +186,7 @@ fn authenticated_clone_url(temp: &Path, repo: &str) -> String {
 
     let mut url = Url::parse(&base_url).unwrap();
     let api_url = Url::parse(clone_url).unwrap();
-    let base_segments: Vec<&str> = url
-        .path()
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .collect();
-    let base_prefix = if base_segments.len() <= 2 {
-        String::new()
-    } else {
-        format!("/{}", base_segments[..base_segments.len() - 2].join("/"))
-    };
+    let base_prefix = url.path().trim_end_matches('/').to_string();
     let api_path = api_url.path();
     let normalized_api_path = if api_path.starts_with('/') {
         api_path.to_string()
