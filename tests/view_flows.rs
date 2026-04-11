@@ -43,7 +43,7 @@ fn repo_view_renders_repository_details() {
     assert!(stdout.contains("Visibility: Public"));
     assert!(stdout.contains("Default branch: trunk"));
     assert!(stdout.contains("URL: https://gitbucket.example.com/alice/demo"));
-    assert!(stdout.contains(&format!("Clone: http://127.0.0.1:{port}/alice/demo.git")));
+    assert!(stdout.contains("Clone: https://gitbucket.example.com/alice/demo.git"));
     assert!(stdout.contains("Stars: 3  Forks: 1  Issues: 2"));
 }
 

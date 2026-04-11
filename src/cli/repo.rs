@@ -117,19 +117,38 @@ fn public_repo_prefix(path: &str) -> String {
     format!("/{}", segments[..segments.len() - 2].join("/"))
 }
 
+fn is_internal_gitbucket_clone_host(url: &Url) -> bool {
+    matches!(url.host_str(), Some("gitbucket"))
+}
+
+fn same_origin(left: &Url, right: &Url) -> bool {
+    left.scheme() == right.scheme()
+        && left.host_str() == right.host_str()
+        && left.port_or_known_default() == right.port_or_known_default()
+}
+
 fn accessible_clone_url(api_clone_url: Option<&str>, fallback_url: &str) -> String {
     let Some(api_clone_url) = api_clone_url else {
         return fallback_url.to_string();
     };
 
-    let Ok(mut public_url) = Url::parse(fallback_url) else {
+    let Ok(public_url) = Url::parse(fallback_url) else {
         return api_clone_url.to_string();
     };
     let Ok(api_url) = Url::parse(api_clone_url) else {
         return api_clone_url.to_string();
     };
 
+    if !is_internal_gitbucket_clone_host(&api_url) && !same_origin(&api_url, &public_url) {
+        return api_clone_url.to_string();
+    }
+
     let public_prefix = public_repo_prefix(public_url.path());
+    let mut clone_url = if is_internal_gitbucket_clone_host(&api_url) {
+        public_url
+    } else {
+        api_url.clone()
+    };
     let api_path = api_url.path();
     let normalized_api_path = if api_path.starts_with('/') {
         api_path.to_string()
@@ -144,10 +163,10 @@ fn accessible_clone_url(api_clone_url: Option<&str>, fallback_url: &str) -> Stri
         format!("{public_prefix}{normalized_api_path}")
     };
 
-    public_url.set_path(&combined_path);
-    public_url.set_query(api_url.query());
-    public_url.set_fragment(api_url.fragment());
-    public_url.to_string()
+    clone_url.set_path(&combined_path);
+    clone_url.set_query(api_url.query());
+    clone_url.set_fragment(api_url.fragment());
+    clone_url.to_string()
 }
 
 async fn list(hostname: &Option<String>, owner: Option<String>, json: bool) -> Result<()> {
@@ -439,6 +458,14 @@ mod tests {
             accessible_clone_url(Some(clone_url), fallback_url),
             clone_url
         );
+    }
+
+    #[test]
+    fn accessible_clone_url_preserves_external_clone_origin() {
+        let clone_url = "https://clone.gitbucket.example.com/git/alice/demo.git";
+        let fallback_url = "https://gitbucket.example.com/gitbucket/alice/demo.git";
+
+        assert_eq!(accessible_clone_url(Some(clone_url), fallback_url), clone_url);
     }
 
     #[test]
