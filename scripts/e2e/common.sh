@@ -8,7 +8,25 @@ COMPOSE_FILE="${REPO_ROOT}/docker/e2e/compose.yaml"
 COMPOSE_PROJECT_NAME="${GB_E2E_COMPOSE_PROJECT:-gb-e2e}"
 GB_E2E_ROOT="${GB_E2E_ROOT:-${REPO_ROOT}/.tmp/e2e}"
 GB_E2E_HTTP_PORT="${GB_E2E_HTTP_PORT:-18080}"
-GB_E2E_BASE_URL="${GB_E2E_BASE_URL:-http://127.0.0.1:${GB_E2E_HTTP_PORT}}"
+normalize_path_prefix() {
+  local value=${1:-}
+
+  if [[ -z "${value}" || "${value}" == "/" ]]; then
+    printf '%s' ""
+    return 0
+  fi
+
+  if [[ "${value}" != /* ]]; then
+    value="/${value}"
+  fi
+
+  value="${value%/}"
+  printf '%s' "${value}"
+}
+
+GB_E2E_PATH_PREFIX="$(normalize_path_prefix "${GB_E2E_PATH_PREFIX:-}")"
+GB_E2E_HOST="${GB_E2E_HOST:-127.0.0.1:${GB_E2E_HTTP_PORT}${GB_E2E_PATH_PREFIX}}"
+GB_E2E_BASE_URL="${GB_E2E_BASE_URL:-http://${GB_E2E_HOST}}"
 GB_E2E_DATA_DIR="${GB_E2E_DATA_DIR:-${GB_E2E_ROOT}/gitbucket-data}"
 GB_E2E_ENV_FILE="${GB_E2E_ENV_FILE:-${GB_E2E_ROOT}/runtime.env}"
 GB_E2E_USER="${GB_E2E_USER:-gb-e2e-user}"
@@ -25,6 +43,8 @@ export COMPOSE_FILE
 export COMPOSE_PROJECT_NAME
 export GB_E2E_ROOT
 export GB_E2E_HTTP_PORT
+export GB_E2E_PATH_PREFIX
+export GB_E2E_HOST
 export GB_E2E_BASE_URL
 export GB_E2E_DATA_DIR
 export GB_E2E_ENV_FILE

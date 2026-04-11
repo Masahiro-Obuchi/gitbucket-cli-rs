@@ -1,10 +1,16 @@
 services:
   gitbucket:
     image: ghcr.io/gitbucket/gitbucket:4.44.0
+    volumes:
+      - gitbucket-data:/gitbucket
+  proxy:
+    image: nginx:1.27-alpine
+    depends_on:
+      - gitbucket
     ports:
       - "${GB_E2E_HTTP_PORT:-18080}:8080"
     volumes:
-      - gitbucket-data:/gitbucket
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
 volumes:
   gitbucket-data:
