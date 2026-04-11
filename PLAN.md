@@ -40,7 +40,7 @@ Verification target:
 
 ## Next Phases
 
-### Phase 3: Issue Edit Constraint E2E
+### Phase 1: Issue Edit Constraint E2E
 
 Goal:
 
@@ -53,7 +53,7 @@ Candidate tests:
 - `issue edit --milestone` and `--remove-milestone` succeed against live GitBucket.
 - label/assignee edit attempts fail clearly when REST support is unavailable and only web fallback remains.
 
-### Phase 4: Raw API Live Write E2E
+### Phase 2: Raw API Live Write E2E
 
 Goal:
 
@@ -61,11 +61,11 @@ Goal:
 
 Candidate tests:
 
-- `gb api METHOD endpoint --input file.json` sends a live write request successfully.
+- `gb api <endpoint> -X <METHOD> --input file.json` sends a live write request successfully.
 - `gb api` handles empty success bodies.
 - `gb api` preserves valid top-level JSON values.
 
-### Phase 5: Representative Failure-Path E2E
+### Phase 3: Representative Failure-Path E2E
 
 Goal:
 
