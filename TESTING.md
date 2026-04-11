@@ -140,9 +140,21 @@ cargo test --test e2e_smoke -- --ignored --nocapture
 ./scripts/e2e/down.sh
 ```
 
+Path-prefixed deployments can be exercised with the same flow by setting `GB_E2E_PATH_PREFIX` before bootstrap:
+
+```bash
+GB_E2E_PATH_PREFIX=/gitbucket ./scripts/e2e/bootstrap.sh
+set -a
+source .tmp/e2e/runtime.env
+set +a
+cargo test --test e2e_smoke -- --ignored --nocapture
+./scripts/e2e/down.sh
+```
+
 Bootstrap writes these environment variables to `.tmp/e2e/runtime.env`:
 
 - `GB_E2E_HOST`
+- `GB_E2E_PATH_PREFIX`
 - `GB_E2E_USER`
 - `GB_E2E_PASSWORD`
 - `GB_E2E_TOKEN`
@@ -151,5 +163,5 @@ Bootstrap writes these environment variables to `.tmp/e2e/runtime.env`:
 - `GB_E2E_PROTOCOL`
 - `GB_E2E_BASE_URL`
 
-The dedicated GitHub Actions workflow in `.github/workflows/e2e.yml` uses the same bootstrap contract on `main` pushes, pull requests, and manual runs.
+The dedicated GitHub Actions workflow in `.github/workflows/e2e.yml` uses the same bootstrap contract on `main` pushes, pull requests, and manual runs, and exercises both root-path and `/gitbucket` path-prefixed deployments.
 The normal Rust workflow in `.github/workflows/rust.yml` runs `cargo check`, `cargo test`, and `cargo clippy --all-targets --all-features -- -D warnings`.

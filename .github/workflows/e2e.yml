@@ -13,6 +13,18 @@ env:
 jobs:
   e2e-smoke:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - name: root
+            path_prefix: ""
+          - name: subpath
+            path_prefix: "/gitbucket"
+    env:
+      GB_E2E_ROOT: .tmp/e2e-${{ matrix.scenario.name }}
+      GB_E2E_PATH_PREFIX: ${{ matrix.scenario.path_prefix }}
+      GB_E2E_COMPOSE_PROJECT: gb-e2e-${{ matrix.scenario.name }}
 
     steps:
       - uses: actions/checkout@v4
@@ -22,14 +34,14 @@ jobs:
       - name: Bootstrap Docker GitBucket fixture
         run: ./scripts/e2e/bootstrap.sh
       - name: Verify GitBucket E2E env file
-        run: test -s .tmp/e2e/runtime.env
+        run: test -s "${GB_E2E_ROOT}/runtime.env"
       - name: Export GitBucket E2E env
-        run: cat .tmp/e2e/runtime.env >> "$GITHUB_ENV"
+        run: cat "${GB_E2E_ROOT}/runtime.env" >> "$GITHUB_ENV"
       - name: Run Docker-backed E2E smoke tests
         run: cargo test --locked --test e2e_smoke -- --ignored --nocapture
       - name: Show GitBucket logs on failure
         if: failure()
-        run: docker compose -p gb-e2e -f docker/e2e/compose.yaml logs --no-color
+        run: docker compose -p "${GB_E2E_COMPOSE_PROJECT}" -f docker/e2e/compose.yaml logs --no-color
       - name: Tear down Docker GitBucket fixture
         if: always()
         run: ./scripts/e2e/down.sh

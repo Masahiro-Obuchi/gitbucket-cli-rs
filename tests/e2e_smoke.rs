@@ -180,10 +180,38 @@ fn authenticated_clone_url(temp: &Path, repo: &str) -> String {
     let clone_url = payload["clone_url"]
         .as_str()
         .unwrap_or_else(|| panic!("missing clone_url in payload: {stdout}"));
+    let base_url = required_env("GB_E2E_BASE_URL");
     let user = required_env("GB_E2E_USER");
     let password = required_env("GB_E2E_PASSWORD");
 
-    let mut url = Url::parse(clone_url).unwrap();
+    let mut url = Url::parse(&base_url).unwrap();
+    let api_url = Url::parse(clone_url).unwrap();
+    let base_segments: Vec<&str> = url
+        .path()
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    let base_prefix = if base_segments.len() <= 2 {
+        String::new()
+    } else {
+        format!("/{}", base_segments[..base_segments.len() - 2].join("/"))
+    };
+    let api_path = api_url.path();
+    let normalized_api_path = if api_path.starts_with('/') {
+        api_path.to_string()
+    } else {
+        format!("/{api_path}")
+    };
+    let combined_path =
+        if base_prefix.is_empty() || normalized_api_path.starts_with(&format!("{base_prefix}/")) {
+            normalized_api_path
+        } else {
+            format!("{base_prefix}{normalized_api_path}")
+        };
+
+    url.set_path(&combined_path);
+    url.set_query(api_url.query());
+    url.set_fragment(api_url.fragment());
     url.set_username(&user).unwrap();
     url.set_password(Some(&password)).unwrap();
     url.to_string()
