@@ -222,10 +222,9 @@ main() {
   ensure_validation_user
 
   if [[ -f "${GB_E2E_ENV_FILE}" ]]; then
-    # shellcheck disable=SC1090
-    source "${GB_E2E_ENV_FILE}"
-    if [[ -n "${GB_E2E_TOKEN:-}" ]] && validate_saved_token "${GB_E2E_TOKEN}"; then
-      token="${GB_E2E_TOKEN}"
+    saved_token=$(grep '^GB_E2E_TOKEN=' "${GB_E2E_ENV_FILE}" | cut -d= -f2- || true)
+    if [[ -n "${saved_token}" ]] && validate_saved_token "${saved_token}"; then
+      token="${saved_token}"
     fi
   fi
 
