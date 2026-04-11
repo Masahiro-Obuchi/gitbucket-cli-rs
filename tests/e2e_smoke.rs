@@ -30,6 +30,19 @@ stderr: {}",
     String::from_utf8_lossy(&output.stdout).into_owned()
 }
 
+fn run_and_assert_failure(command: &mut std::process::Command) -> String {
+    let output = command.output().unwrap();
+
+    assert!(
+        !output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
 fn login(temp: &std::path::Path) {
     let host = required_env("GB_E2E_HOST");
     let token = required_env("GB_E2E_TOKEN");
@@ -647,6 +660,59 @@ fn e2e_issue_edit_updates_metadata_against_live_instance() {
     assert!(
         !view_after_clear.contains("Milestone:"),
         "stdout: {view_after_clear}"
+    );
+}
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
+fn e2e_issue_edit_label_and_assignee_constraints_against_live_instance() {
+    let temp = tempdir().unwrap();
+    let user = required_env("GB_E2E_USER");
+
+    login(temp.path());
+
+    let issue_number = create_live_issue(
+        temp.path(),
+        "issue edit unsupported fields",
+        "body for unsupported field checks",
+    );
+
+    let mut label_command = gb_command();
+    label_command.current_dir(temp.path()).args([
+        "issue",
+        "edit",
+        &issue_number.to_string(),
+        "--add-label",
+        "urgent",
+    ]);
+    for (key, value) in e2e_env(temp.path()) {
+        label_command.env(key, value);
+    }
+    let label_stderr = run_and_assert_failure(&mut label_command);
+    assert!(
+        label_stderr.contains(
+            "does not support editing issue labels or assignees through the web fallback"
+        ),
+        "stderr: {label_stderr}"
+    );
+
+    let mut assignee_command = gb_command();
+    assignee_command.current_dir(temp.path()).args([
+        "issue",
+        "edit",
+        &issue_number.to_string(),
+        "--add-assignee",
+        &user,
+    ]);
+    for (key, value) in e2e_env(temp.path()) {
+        assignee_command.env(key, value);
+    }
+    let assignee_stderr = run_and_assert_failure(&mut assignee_command);
+    assert!(
+        assignee_stderr.contains(
+            "does not support editing issue labels or assignees through the web fallback"
+        ),
+        "stderr: {assignee_stderr}"
     );
 }
 
