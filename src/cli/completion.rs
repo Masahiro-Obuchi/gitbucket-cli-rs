@@ -35,9 +35,7 @@ pub async fn run(args: CompletionArgs) -> Result<()> {
         CompletionShell::Bash => generate(Bash, &mut command, &bin_name, &mut stdout),
         CompletionShell::Zsh => generate(Zsh, &mut command, &bin_name, &mut stdout),
         CompletionShell::Fish => generate(Fish, &mut command, &bin_name, &mut stdout),
-        CompletionShell::PowerShell => {
-            generate(PowerShell, &mut command, &bin_name, &mut stdout)
-        }
+        CompletionShell::PowerShell => generate(PowerShell, &mut command, &bin_name, &mut stdout),
     }
 
     Ok(())
