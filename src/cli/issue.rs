@@ -566,7 +566,9 @@ async fn comment(
     let comment_body = CreateComment { body: body_text };
     if edit_last {
         let user = client.current_user().await?;
-        let comments = client.list_issue_comments(&owner, &repo, number).await?;
+        let comments = client
+            .list_all_issue_comments(&owner, &repo, number)
+            .await?;
         let comment = comments
             .iter()
             .filter(|comment| {

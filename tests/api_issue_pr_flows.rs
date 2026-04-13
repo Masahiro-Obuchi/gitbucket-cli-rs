@@ -593,7 +593,7 @@ fn issue_comment_edit_last_updates_authenticated_users_latest_comment() {
             r#"{"login":"alice"}"#,
         ),
         ScriptedResponse::json(
-            "GET /api/v3/repos/alice/project/issues/7/comments HTTP/1.1",
+            "GET /api/v3/repos/alice/project/issues/7/comments?per_page=100 HTTP/1.1",
             "200 OK",
             r#"[
                 {"id":10,"body":"Older","user":{"login":"alice"}},
@@ -632,7 +632,7 @@ fn issue_comment_edit_last_updates_authenticated_users_latest_comment() {
     assert_eq!(requests[1].method, "GET");
     assert_eq!(
         requests[1].target,
-        "/api/v3/repos/alice/project/issues/7/comments"
+        "/api/v3/repos/alice/project/issues/7/comments?per_page=100"
     );
     assert_eq!(requests[2].method, "PATCH");
     assert_eq!(
@@ -640,6 +640,81 @@ fn issue_comment_edit_last_updates_authenticated_users_latest_comment() {
         "/api/v3/repos/alice/project/issues/comments/12"
     );
     let body: Value = serde_json::from_str(&requests[2].body).unwrap();
+    assert_eq!(body["body"], "Edited");
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("Edited comment 12 on issue #7"),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
+fn issue_comment_edit_last_checks_paginated_comments_before_updating() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/user HTTP/1.1",
+            "200 OK",
+            r#"{"login":"alice"}"#,
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/issues/7/comments?per_page=100 HTTP/1.1",
+            "200 OK",
+            r#"[{"id":10,"body":"Older","user":{"login":"alice"}}]"#,
+        )
+        .with_header(
+            "link",
+            r#"</repos/alice/project/issues/7/comments?page=2&per_page=100>; rel="next""#,
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/issues/7/comments?page=2&per_page=100 HTTP/1.1",
+            "200 OK",
+            r#"[{"id":12,"body":"Latest","user":{"login":"alice"}}]"#,
+        ),
+        ScriptedResponse::json(
+            "PATCH /api/v3/repos/alice/project/issues/comments/12 HTTP/1.1",
+            "200 OK",
+            r#"{"id":12,"body":"Edited"}"#,
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["issue", "comment", "7", "--edit-last", "--body", "Edited"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(requests.len(), 4);
+    assert_eq!(requests[0].method, "GET");
+    assert_eq!(requests[0].target, "/api/v3/user");
+    assert_eq!(requests[1].method, "GET");
+    assert_eq!(
+        requests[1].target,
+        "/api/v3/repos/alice/project/issues/7/comments?per_page=100"
+    );
+    assert_eq!(requests[2].method, "GET");
+    assert_eq!(
+        requests[2].target,
+        "/api/v3/repos/alice/project/issues/7/comments?page=2&per_page=100"
+    );
+    assert_eq!(requests[3].method, "PATCH");
+    assert_eq!(
+        requests[3].target,
+        "/api/v3/repos/alice/project/issues/comments/12"
+    );
+    let body: Value = serde_json::from_str(&requests[3].body).unwrap();
     assert_eq!(body["body"], "Edited");
     assert!(
         String::from_utf8_lossy(&output.stdout).contains("Edited comment 12 on issue #7"),

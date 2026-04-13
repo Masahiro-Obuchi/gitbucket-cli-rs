@@ -37,6 +37,30 @@ impl ApiClient {
         self.handle_response(resp).await
     }
 
+    /// Make a GET request and return response headers with the deserialized body.
+    pub(crate) async fn get_with_headers<T: DeserializeOwned>(
+        &self,
+        path_or_url: &str,
+    ) -> Result<(T, HeaderMap)> {
+        let url = if path_or_url.starts_with("http://") || path_or_url.starts_with("https://") {
+            path_or_url.to_string()
+        } else {
+            format!("{}{}", self.base_url, path_or_url)
+        };
+        let resp = self.client.get(&url).send().await?;
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let body = resp.text().await.unwrap_or_default();
+        if status.is_success() {
+            Ok((parse_success_body(&body)?, headers))
+        } else {
+            Err(GbError::Api {
+                status: status.as_u16(),
+                message: body,
+            })
+        }
+    }
+
     /// Make a POST request with a JSON body
     pub async fn post<T: DeserializeOwned, B: serde::Serialize>(
         &self,
