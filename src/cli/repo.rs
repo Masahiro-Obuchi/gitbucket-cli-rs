@@ -465,7 +465,10 @@ mod tests {
         let clone_url = "https://clone.gitbucket.example.com/git/alice/demo.git";
         let fallback_url = "https://gitbucket.example.com/gitbucket/alice/demo.git";
 
-        assert_eq!(accessible_clone_url(Some(clone_url), fallback_url), clone_url);
+        assert_eq!(
+            accessible_clone_url(Some(clone_url), fallback_url),
+            clone_url
+        );
     }
 
     #[test]

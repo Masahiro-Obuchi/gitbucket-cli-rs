@@ -273,7 +273,10 @@ fn milestone_create_web_fallback_succeeds_when_follow_up_list_fails() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert_eq!(requests.len(), 4);
-    assert!(stdout.contains("Created milestone v1.0"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("Created milestone v1.0"),
+        "stdout: {stdout}"
+    );
 }
 
 #[test]

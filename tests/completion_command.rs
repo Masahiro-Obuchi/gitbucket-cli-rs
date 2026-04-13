@@ -9,7 +9,10 @@ fn completion_bash_prints_script() {
 
     assert!(output.status.success());
     assert!(stdout.contains("_gb()"), "stdout: {stdout}");
-    assert!(stdout.contains("complete -F _gb -o bashdefault -o default gb"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("complete -F _gb -o bashdefault -o default gb"),
+        "stdout: {stdout}"
+    );
 }
 
 #[test]
@@ -40,16 +43,25 @@ fn completion_powershell_prints_script() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     assert!(output.status.success());
-    assert!(stdout.contains("Register-ArgumentCompleter"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("Register-ArgumentCompleter"),
+        "stdout: {stdout}"
+    );
 }
 
 #[test]
 fn completion_help_lists_supported_shells() {
-    let output = gb_command().args(["completion", "--help"]).output().unwrap();
+    let output = gb_command()
+        .args(["completion", "--help"])
+        .output()
+        .unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     assert!(output.status.success());
-    assert!(stdout.contains("Generate shell completion scripts"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("Generate shell completion scripts"),
+        "stdout: {stdout}"
+    );
     assert!(stdout.contains("bash"), "stdout: {stdout}");
     assert!(stdout.contains("zsh"), "stdout: {stdout}");
     assert!(stdout.contains("fish"), "stdout: {stdout}");
