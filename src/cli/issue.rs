@@ -94,13 +94,16 @@ pub enum IssueCommand {
         /// Issue number
         number: u64,
     },
-    /// Add a comment to an issue
+    /// Add or edit a comment on an issue
     Comment {
         /// Issue number
         number: u64,
         /// Comment body
         #[arg(long, short)]
         body: Option<String>,
+        /// Edit your last comment instead of adding a new one
+        #[arg(long)]
+        edit_last: bool,
     },
 }
 
@@ -152,9 +155,11 @@ pub async fn run(
         }
         IssueCommand::Close { number } => close(cli_hostname, cli_repo, number).await,
         IssueCommand::Reopen { number } => reopen(cli_hostname, cli_repo, number).await,
-        IssueCommand::Comment { number, body } => {
-            comment(cli_hostname, cli_repo, number, body).await
-        }
+        IssueCommand::Comment {
+            number,
+            body,
+            edit_last,
+        } => comment(cli_hostname, cli_repo, number, body, edit_last).await,
     }
 }
 
@@ -547,6 +552,7 @@ async fn comment(
     cli_repo: &Option<String>,
     number: u64,
     body: Option<String>,
+    edit_last: bool,
 ) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = resolve_repo(cli_repo)?;
@@ -558,10 +564,35 @@ async fn comment(
     };
 
     let comment_body = CreateComment { body: body_text };
-    client
-        .create_issue_comment(&owner, &repo, number, &comment_body)
-        .await?;
-    println!("✓ Added comment to issue #{}", number);
+    if edit_last {
+        let user = client.current_user().await?;
+        let comments = client.list_issue_comments(&owner, &repo, number).await?;
+        let comment = comments
+            .iter()
+            .rev()
+            .find(|comment| {
+                comment
+                    .user
+                    .as_ref()
+                    .is_some_and(|comment_user| comment_user.login == user.login)
+            })
+            .ok_or_else(|| {
+                GbError::Other(format!(
+                    "No comments by {} found on issue #{}",
+                    user.login, number
+                ))
+            })?;
+
+        client
+            .update_issue_comment(&owner, &repo, comment.id, &comment_body)
+            .await?;
+        println!("✓ Edited comment {} on issue #{}", comment.id, number);
+    } else {
+        client
+            .create_issue_comment(&owner, &repo, number, &comment_body)
+            .await?;
+        println!("✓ Added comment to issue #{}", number);
+    }
     Ok(())
 }
 

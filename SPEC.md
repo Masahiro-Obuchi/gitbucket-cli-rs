@@ -611,6 +611,7 @@ gb issue comment <NUMBER> [OPTIONS]
 | Option | Short | Description |
 | --- | --- | --- |
 | `--body <TEXT>` | `-b` | Comment body (prompted when omitted) |
+| `--edit-last` |  | Edit your last comment instead of adding a new one |
 
 ---
 
@@ -973,6 +974,7 @@ Issue:
 - `PATCH /repos/{owner}/{repo}/issues/{number}`
 - `GET /repos/{owner}/{repo}/issues/{number}/comments`
 - `POST /repos/{owner}/{repo}/issues/{number}/comments`
+- `PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}`
 
 Pull request:
 

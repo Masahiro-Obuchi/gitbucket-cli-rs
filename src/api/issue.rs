@@ -65,4 +65,19 @@ impl ApiClient {
         )
         .await
     }
+
+    /// Update an issue comment
+    pub async fn update_issue_comment(
+        &self,
+        owner: &str,
+        repo: &str,
+        comment_id: u64,
+        body: &CreateComment,
+    ) -> Result<Comment> {
+        self.patch(
+            &format!("/repos/{}/{}/issues/comments/{}", owner, repo, comment_id),
+            body,
+        )
+        .await
+    }
 }

@@ -107,6 +107,7 @@ gb issue view 1 --comments
 gb issue edit 1 --title "Updated bug report" --add-label urgent
 gb issue close 1
 gb issue comment 1 -b "Fixed!"
+gb issue comment 1 --edit-last -b "Actually fixed!"
 ```
 
 ### 6) Pull request operations
@@ -152,7 +153,7 @@ gb pr diff 5
 | `gb issue edit <NUMBER>`      | Edit an issue                        |
 | `gb issue close <NUMBER>`     | Close an issue                       |
 | `gb issue reopen <NUMBER>`    | Reopen an issue                      |
-| `gb issue comment <NUMBER>`   | Add an issue comment                 |
+| `gb issue comment <NUMBER>`   | Add or edit an issue comment         |
 | `gb pr list`                  | List pull requests                   |
 | `gb pr view <NUMBER>`         | Show PR details                      |
 | `gb pr create`                | Create a pull request                |
