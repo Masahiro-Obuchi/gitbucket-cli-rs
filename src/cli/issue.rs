@@ -569,13 +569,13 @@ async fn comment(
         let comments = client.list_issue_comments(&owner, &repo, number).await?;
         let comment = comments
             .iter()
-            .rev()
-            .find(|comment| {
+            .filter(|comment| {
                 comment
                     .user
                     .as_ref()
                     .is_some_and(|comment_user| comment_user.login == user.login)
             })
+            .max_by_key(|comment| comment.id)
             .ok_or_else(|| {
                 GbError::Other(format!(
                     "No comments by {} found on issue #{}",

@@ -626,6 +626,19 @@ fn issue_comment_edit_last_updates_authenticated_users_latest_comment() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    assert_eq!(requests.len(), 3);
+    assert_eq!(requests[0].method, "GET");
+    assert_eq!(requests[0].target, "/api/v3/user");
+    assert_eq!(requests[1].method, "GET");
+    assert_eq!(
+        requests[1].target,
+        "/api/v3/repos/alice/project/issues/7/comments"
+    );
+    assert_eq!(requests[2].method, "PATCH");
+    assert_eq!(
+        requests[2].target,
+        "/api/v3/repos/alice/project/issues/comments/12"
+    );
     let body: Value = serde_json::from_str(&requests[2].body).unwrap();
     assert_eq!(body["body"], "Edited");
     assert!(
