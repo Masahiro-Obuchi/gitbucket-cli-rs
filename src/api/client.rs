@@ -42,15 +42,7 @@ impl ApiClient {
         &self,
         path_or_url: &str,
     ) -> Result<(T, HeaderMap)> {
-        let url = if path_or_url.starts_with("http://") || path_or_url.starts_with("https://") {
-            path_or_url.to_string()
-        } else {
-            format!(
-                "{}{}",
-                self.base_url,
-                normalize_relative_api_path(path_or_url, &self.base_url)
-            )
-        };
+        let url = normalize_path_or_url(path_or_url, &self.base_url)?;
         let resp = self.client.get(&url).send().await?;
         let status = resp.status();
         let headers = resp.headers().clone();
@@ -168,6 +160,38 @@ impl ApiClient {
     }
 }
 
+fn normalize_path_or_url(path_or_url: &str, base_url: &str) -> Result<String> {
+    if path_or_url.starts_with("http://") || path_or_url.starts_with("https://") {
+        validate_absolute_api_url(path_or_url, base_url)?;
+        Ok(path_or_url.to_string())
+    } else {
+        Ok(format!(
+            "{}{}",
+            base_url,
+            normalize_relative_api_path(path_or_url, base_url)
+        ))
+    }
+}
+
+fn validate_absolute_api_url(url: &str, base_url: &str) -> Result<()> {
+    let target = Url::parse(url)?;
+    let base = Url::parse(base_url)?;
+
+    let same_origin = target.scheme() == base.scheme()
+        && target.host_str() == base.host_str()
+        && target.port_or_known_default() == base.port_or_known_default();
+    let same_api_base = path_has_base_prefix(target.path(), base.path());
+
+    if same_origin && same_api_base {
+        Ok(())
+    } else {
+        Err(GbError::Other(format!(
+            "Refusing to follow pagination URL outside configured GitBucket API base {}",
+            base_url
+        )))
+    }
+}
+
 fn normalize_relative_api_path<'a>(path: &'a str, base_url: &str) -> &'a str {
     if !path.starts_with('/') {
         return path;
@@ -201,6 +225,18 @@ fn ensure_request_path(path: &str) -> &str {
     } else {
         ""
     }
+}
+
+fn path_has_base_prefix(path: &str, base: &str) -> bool {
+    let normalized_base = base.trim_end_matches('/');
+    if normalized_base.is_empty() {
+        return true;
+    }
+
+    path == normalized_base
+        || path
+            .strip_prefix(normalized_base)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
 }
 
 fn parse_success_body<T: DeserializeOwned>(body: &str) -> Result<T> {
@@ -263,8 +299,8 @@ mod tests {
     use serde::Deserialize;
 
     use super::{
-        normalize_base_url, normalize_relative_api_path, normalize_web_base_url,
-        parse_success_body, ApiClient,
+        normalize_base_url, normalize_path_or_url, normalize_relative_api_path,
+        normalize_web_base_url, parse_success_body, ApiClient,
     };
 
     #[derive(Debug, Deserialize, PartialEq)]
@@ -355,6 +391,56 @@ mod tests {
             ),
             "/repos/alice/project/issues/7/comments?page=2"
         );
+    }
+
+    #[test]
+    fn accepts_absolute_pagination_url_inside_api_base() {
+        let normalized = normalize_path_or_url(
+            "https://gitbucket.example.com/gitbucket/api/v3/repos/alice/project/issues/7/comments?page=2",
+            "https://gitbucket.example.com/gitbucket/api/v3",
+        )
+        .unwrap();
+
+        assert_eq!(
+            normalized,
+            "https://gitbucket.example.com/gitbucket/api/v3/repos/alice/project/issues/7/comments?page=2"
+        );
+    }
+
+    #[test]
+    fn rejects_absolute_pagination_url_on_different_host() {
+        let err = normalize_path_or_url(
+            "https://attacker.example/repos/alice/project/issues/7/comments?page=2",
+            "https://gitbucket.example.com/api/v3",
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("outside configured GitBucket API base"));
+    }
+
+    #[test]
+    fn rejects_absolute_pagination_url_outside_subpath_api_base() {
+        let err = normalize_path_or_url(
+            "https://gitbucket.example.com/api/v3/repos/alice/project/issues/7/comments?page=2",
+            "https://gitbucket.example.com/gitbucket/api/v3",
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("outside configured GitBucket API base"));
+    }
+
+    #[test]
+    fn rejects_absolute_pagination_url_with_api_prefix_boundary_mismatch() {
+        let err = normalize_path_or_url(
+            "https://gitbucket.example.com/api/v30/repos/alice/project/issues/7/comments?page=2",
+            "https://gitbucket.example.com/api/v3",
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(err.contains("outside configured GitBucket API base"));
     }
 
     #[test]

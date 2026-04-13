@@ -724,6 +724,56 @@ fn issue_comment_edit_last_checks_paginated_comments_before_updating() {
 }
 
 #[test]
+fn issue_comment_edit_last_rejects_external_pagination_link() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/user HTTP/1.1",
+            "200 OK",
+            r#"{"login":"alice"}"#,
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/issues/7/comments?per_page=100 HTTP/1.1",
+            "200 OK",
+            r#"[{"id":10,"body":"Older","user":{"login":"alice"}}]"#,
+        )
+        .with_header(
+            "link",
+            r#"<http://attacker.example/api/v3/repos/alice/project/issues/7/comments?page=2&per_page=100>; rel="next""#,
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["issue", "comment", "7", "--edit-last", "--body", "Edited"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(!output.status.success());
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0].method, "GET");
+    assert_eq!(requests[0].target, "/api/v3/user");
+    assert_eq!(requests[1].method, "GET");
+    assert_eq!(
+        requests[1].target,
+        "/api/v3/repos/alice/project/issues/7/comments?per_page=100"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("Refusing to follow pagination URL outside configured GitBucket API base"),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn pr_comment_sends_expected_payload() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_server("200 OK", r#"{"id":12,"body":"Please rebase"}"#);
