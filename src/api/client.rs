@@ -45,7 +45,11 @@ impl ApiClient {
         let url = if path_or_url.starts_with("http://") || path_or_url.starts_with("https://") {
             path_or_url.to_string()
         } else {
-            format!("{}{}", self.base_url, path_or_url)
+            format!(
+                "{}{}",
+                self.base_url,
+                normalize_relative_api_path(path_or_url, &self.base_url)
+            )
         };
         let resp = self.client.get(&url).send().await?;
         let status = resp.status();
@@ -164,6 +168,41 @@ impl ApiClient {
     }
 }
 
+fn normalize_relative_api_path<'a>(path: &'a str, base_url: &str) -> &'a str {
+    if !path.starts_with('/') {
+        return path;
+    }
+
+    let Ok(base) = Url::parse(base_url) else {
+        return path;
+    };
+    let api_path = base.path().trim_end_matches('/');
+    if let Some(stripped) = strip_prefix_with_boundary(path, api_path) {
+        return ensure_request_path(stripped);
+    }
+    if let Some(stripped) = strip_prefix_with_boundary(path, "/api/v3") {
+        return ensure_request_path(stripped);
+    }
+
+    path
+}
+
+fn strip_prefix_with_boundary<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
+    path.strip_prefix(prefix).filter(|rest| {
+        rest.is_empty() || rest.starts_with('/') || rest.starts_with('?') || rest.starts_with('#')
+    })
+}
+
+fn ensure_request_path(path: &str) -> &str {
+    if path.is_empty() {
+        ""
+    } else if path.starts_with('/') || path.starts_with('?') || path.starts_with('#') {
+        path
+    } else {
+        ""
+    }
+}
+
 fn parse_success_body<T: DeserializeOwned>(body: &str) -> Result<T> {
     let value: Value = serde_json::from_str(body)?;
 
@@ -223,7 +262,10 @@ pub(crate) fn normalize_web_base_url(hostname: &str, protocol: &str) -> Result<S
 mod tests {
     use serde::Deserialize;
 
-    use super::{normalize_base_url, normalize_web_base_url, parse_success_body, ApiClient};
+    use super::{
+        normalize_base_url, normalize_relative_api_path, normalize_web_base_url,
+        parse_success_body, ApiClient,
+    };
 
     #[derive(Debug, Deserialize, PartialEq)]
     struct WrappedValue {
@@ -280,6 +322,39 @@ mod tests {
     fn normalizes_web_base_url() {
         let base = normalize_web_base_url("gitbucket.example.com/gitbucket", "https").unwrap();
         assert_eq!(base, "https://gitbucket.example.com/gitbucket");
+    }
+
+    #[test]
+    fn normalizes_api_root_relative_pagination_path() {
+        assert_eq!(
+            normalize_relative_api_path(
+                "/api/v3/repos/alice/project/issues/7/comments?page=2",
+                "https://gitbucket.example.com/api/v3"
+            ),
+            "/repos/alice/project/issues/7/comments?page=2"
+        );
+    }
+
+    #[test]
+    fn normalizes_subpath_api_root_relative_pagination_path() {
+        assert_eq!(
+            normalize_relative_api_path(
+                "/gitbucket/api/v3/repos/alice/project/issues/7/comments?page=2",
+                "https://gitbucket.example.com/gitbucket/api/v3"
+            ),
+            "/repos/alice/project/issues/7/comments?page=2"
+        );
+    }
+
+    #[test]
+    fn leaves_plain_root_relative_paths_unchanged() {
+        assert_eq!(
+            normalize_relative_api_path(
+                "/repos/alice/project/issues/7/comments?page=2",
+                "https://gitbucket.example.com/api/v3"
+            ),
+            "/repos/alice/project/issues/7/comments?page=2"
+        );
     }
 
     #[test]

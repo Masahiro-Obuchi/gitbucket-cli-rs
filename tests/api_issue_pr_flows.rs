@@ -664,7 +664,7 @@ fn issue_comment_edit_last_checks_paginated_comments_before_updating() {
         )
         .with_header(
             "link",
-            r#"</repos/alice/project/issues/7/comments?page=2&per_page=100>; rel="next""#,
+            r#"</api/v3/repos/alice/project/issues/7/comments?page=2&per_page=100>; rel="next""#,
         ),
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/issues/7/comments?page=2&per_page=100 HTTP/1.1",
