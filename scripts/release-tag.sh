@@ -25,8 +25,8 @@ fi
 
 TAG="$1"
 
-if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-  echo "error: tag must look like v0.1.0 or v0.1.0-rc.1" >&2
+if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z._-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+  echo "error: tag must look like v0.1.0, v0.1.0-rc_1, or v0.1.0+build.5" >&2
   exit 1
 fi
 
@@ -45,7 +45,24 @@ if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
   exit 1
 fi
 
-MANIFEST_VERSION="$(cargo pkgid | sed -E 's/.*#.*@([^ ]+)$/\1/')"
+MANIFEST_VERSION="$(
+  cargo metadata --no-deps --format-version 1 | python3 -c '
+import json
+import sys
+
+metadata = json.load(sys.stdin)
+packages = {pkg["id"]: pkg for pkg in metadata.get("packages", [])}
+resolve = metadata.get("resolve") or {}
+root_id = resolve.get("root")
+
+if root_id and root_id in packages:
+    print(packages[root_id]["version"])
+elif len(packages) == 1:
+    print(next(iter(packages.values()))["version"])
+else:
+    sys.exit("error: unable to determine root Cargo package version from cargo metadata")
+'
+)"
 TAG_VERSION="${TAG#v}"
 
 if [[ "${MANIFEST_VERSION}" != "${TAG_VERSION}" ]]; then

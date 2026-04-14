@@ -23,7 +23,14 @@ v0.1.0
 1. Choose the next version.
 2. Update `Cargo.toml` and refresh `Cargo.lock` if the package version changed.
 3. Update user-facing release notes or README content when behavior changed.
-4. Create the release tag with the helper script:
+4. Commit all version and documentation changes:
+
+```bash
+git add Cargo.toml Cargo.lock README.md  # include any other updated files
+git commit -m "chore: release v0.1.0"
+```
+
+5. Create the release tag with the helper script:
 
 ```bash
 scripts/release-tag.sh v0.1.0
@@ -31,7 +38,7 @@ scripts/release-tag.sh v0.1.0
 
 This command validates the tag format, checks the Cargo version, verifies a clean working tree, runs the release checks, and creates the local tag.
 
-5. Push the release tag:
+6. Push the release tag:
 
 ```bash
 git push origin v0.1.0
