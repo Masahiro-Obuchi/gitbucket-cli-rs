@@ -283,7 +283,8 @@ protocol = "https"
 
     assert!(!output.status.success());
     assert!(
-        String::from_utf8_lossy(&output.stderr).contains("Protocol must be `http` or `https`."),
+        String::from_utf8_lossy(&output.stderr)
+            .contains("invalid value 'ssh' for '--protocol <PROTOCOL>'"),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );

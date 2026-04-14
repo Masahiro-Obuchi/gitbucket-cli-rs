@@ -23,6 +23,7 @@ pub enum RepoCommand {
     /// List repositories
     List {
         /// Owner (user or group). If omitted, lists your repositories.
+        #[arg(value_name = "OWNER")]
         owner: Option<String>,
         /// Output as JSON
         #[arg(long)]
@@ -30,7 +31,8 @@ pub enum RepoCommand {
     },
     /// View repository details
     View {
-        /// Repository in OWNER/REPO format
+        /// Repository in OWNER/REPO format (defaults to -R or git remote)
+        #[arg(value_name = "OWNER/REPO")]
         repo: Option<String>,
         /// Open in browser
         #[arg(long, short)]
@@ -38,7 +40,7 @@ pub enum RepoCommand {
     },
     /// Create a new repository
     Create {
-        /// Repository name
+        /// Repository name (prompts when omitted)
         name: Option<String>,
         /// Description
         #[arg(long, short)]
@@ -50,12 +52,13 @@ pub enum RepoCommand {
         #[arg(long)]
         add_readme: bool,
         /// Group to create under
-        #[arg(long = "group", alias = "org")]
+        #[arg(long = "group", visible_alias = "org")]
         group: Option<String>,
     },
     /// Clone a repository
     Clone {
         /// Repository to clone (OWNER/REPO or full URL)
+        #[arg(value_name = "OWNER/REPO|URL")]
         repo: String,
         /// Directory to clone into
         directory: Option<String>,
@@ -65,15 +68,17 @@ pub enum RepoCommand {
         /// Skip confirmation
         #[arg(long)]
         yes: bool,
-        /// Repository in OWNER/REPO format
+        /// Repository in OWNER/REPO format (or -R/--repo)
+        #[arg(value_name = "OWNER/REPO")]
         repo: Option<String>,
     },
     /// Fork a repository
     Fork {
-        /// Repository to fork (OWNER/REPO)
+        /// Repository to fork (OWNER/REPO, or -R/--repo)
+        #[arg(value_name = "OWNER/REPO")]
         repo: Option<String>,
         /// Group to fork into (defaults to your user)
-        #[arg(long = "group", alias = "org")]
+        #[arg(long = "group", visible_alias = "org")]
         group: Option<String>,
     },
 }

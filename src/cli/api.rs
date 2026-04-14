@@ -13,14 +13,15 @@ use crate::error::{GbError, Result};
 #[derive(Args)]
 pub struct ApiArgs {
     /// API endpoint path relative to /api/v3, or a full URL under the configured GitBucket API base
+    #[arg(value_name = "ENDPOINT")]
     pub endpoint: String,
 
-    /// HTTP method to use
-    #[arg(short = 'X', long)]
+    /// HTTP method to use (defaults to GET, or POST when --input is used)
+    #[arg(short = 'X', long, value_name = "METHOD")]
     pub method: Option<String>,
 
     /// JSON request body file path, or `-` to read from stdin
-    #[arg(short = 'i', long)]
+    #[arg(short = 'i', long, value_name = "FILE|-")]
     pub input: Option<String>,
 }
 

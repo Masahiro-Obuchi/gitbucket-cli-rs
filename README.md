@@ -200,7 +200,7 @@ gb issue view 1 --web
 
 ## State Filters
 
-`gb issue list` and `gb pr list` support `--state open`, `--state closed`, and `--state all`.
+`gb issue list`, `gb pr list`, and `gb milestone list` support `--state open`, `--state closed`, and `--state all`.
 Invalid values are rejected before the API call is made.
 
 ## GitBucket Web Fallbacks
@@ -209,6 +209,13 @@ Some GitBucket actions are only exposed through the web UI, not the REST API.
 When `gb repo delete`, `gb repo fork`, `gb issue close`, `gb issue reopen`, or issue metadata updates hit that case, `gb` falls back to a short web sign-in flow and may prompt for your password.
 For `gb issue edit`, the web fallback currently covers title/body/milestone/state updates. Label and assignee edits still require REST issue edit support from the target GitBucket.
 Use `GB_USER` and `GB_PASSWORD` to preseed those prompts when needed.
+
+Issue label and assignee options can be repeated or comma-separated:
+
+```bash
+gb issue create -t "Bug report" --label bug,urgent --assignee alice
+gb issue edit 1 --add-label needs-review --remove-assignee bob
+```
 
 ## Pull Request Checkout And Diff
 

@@ -29,13 +29,9 @@ fn issue_create_sends_labels_assignees_and_body() {
             "-b",
             "Body text",
             "-l",
-            "bug",
-            "-l",
-            "urgent",
+            "bug,urgent",
             "-a",
-            "alice",
-            "-a",
-            "bob",
+            "alice,bob",
         ])
         .output()
         .unwrap();
@@ -366,7 +362,7 @@ fn issue_edit_rejects_invalid_state() {
     assert!(!output.status.success());
     assert!(
         String::from_utf8_lossy(&output.stderr)
-            .contains("Invalid issue state. Expected 'open' or 'closed'."),
+            .contains("invalid value 'all' for '--state <STATE>'"),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );

@@ -20,7 +20,13 @@ pub enum IssueCommand {
     /// List issues
     List {
         /// Filter by state (open, closed, all)
-        #[arg(long, short, default_value = "open")]
+        #[arg(
+            long,
+            short,
+            default_value = "open",
+            value_parser = ["open", "closed", "all"],
+            ignore_case = true
+        )]
         state: String,
         /// Output as JSON
         #[arg(long)]
@@ -39,17 +45,17 @@ pub enum IssueCommand {
     },
     /// Create a new issue
     Create {
-        /// Issue title
+        /// Issue title (prompts when omitted)
         #[arg(long, short)]
         title: Option<String>,
-        /// Issue body
+        /// Issue body (prompts when omitted)
         #[arg(long, short)]
         body: Option<String>,
-        /// Labels (comma-separated)
-        #[arg(long, short)]
+        /// Label name (repeatable or comma-separated)
+        #[arg(long, short, value_delimiter = ',')]
         label: Vec<String>,
-        /// Assignees (comma-separated)
-        #[arg(long, short)]
+        /// Assignee username (repeatable or comma-separated)
+        #[arg(long, short, value_delimiter = ',')]
         assignee: Vec<String>,
     },
     /// Edit an issue
@@ -62,17 +68,17 @@ pub enum IssueCommand {
         /// New issue body
         #[arg(long, short)]
         body: Option<String>,
-        /// Add labels
-        #[arg(long = "add-label")]
+        /// Add label name (repeatable or comma-separated)
+        #[arg(long = "add-label", value_delimiter = ',')]
         add_label: Vec<String>,
-        /// Remove labels
-        #[arg(long = "remove-label")]
+        /// Remove label name (repeatable or comma-separated)
+        #[arg(long = "remove-label", value_delimiter = ',')]
         remove_label: Vec<String>,
-        /// Add assignees
-        #[arg(long = "add-assignee")]
+        /// Add assignee username (repeatable or comma-separated)
+        #[arg(long = "add-assignee", value_delimiter = ',')]
         add_assignee: Vec<String>,
-        /// Remove assignees
-        #[arg(long = "remove-assignee")]
+        /// Remove assignee username (repeatable or comma-separated)
+        #[arg(long = "remove-assignee", value_delimiter = ',')]
         remove_assignee: Vec<String>,
         /// Set milestone number
         #[arg(long)]
@@ -81,7 +87,7 @@ pub enum IssueCommand {
         #[arg(long)]
         remove_milestone: bool,
         /// Update issue state (open or closed)
-        #[arg(long)]
+        #[arg(long, value_parser = ["open", "closed"], ignore_case = true)]
         state: Option<String>,
     },
     /// Close an issue
@@ -98,7 +104,7 @@ pub enum IssueCommand {
     Comment {
         /// Issue number
         number: u64,
-        /// Comment body
+        /// Comment body (prompts when omitted)
         #[arg(long, short)]
         body: Option<String>,
         /// Edit your last comment instead of adding a new one

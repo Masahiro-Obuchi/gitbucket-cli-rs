@@ -24,7 +24,13 @@ pub enum MilestoneCommand {
     /// List milestones
     List {
         /// Filter by state (open, closed, all)
-        #[arg(long, short, default_value = "open")]
+        #[arg(
+            long,
+            short,
+            default_value = "open",
+            value_parser = ["open", "closed", "all"],
+            ignore_case = true
+        )]
         state: String,
         /// Output as JSON
         #[arg(long)]
@@ -37,7 +43,7 @@ pub enum MilestoneCommand {
     },
     /// Create a milestone
     Create {
-        /// Milestone title
+        /// Milestone title (prompts when omitted)
         title: Option<String>,
         /// Optional milestone description
         #[arg(long, short)]
@@ -60,7 +66,7 @@ pub enum MilestoneCommand {
         #[arg(long = "due-on")]
         due_on: Option<String>,
         /// Updated state (open or closed)
-        #[arg(long, short)]
+        #[arg(long, short, value_parser = ["open", "closed"], ignore_case = true)]
         state: Option<String>,
     },
     /// Delete a milestone

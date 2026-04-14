@@ -14,28 +14,28 @@ pub struct AuthArgs {
 pub enum AuthCommand {
     /// Authenticate with a GitBucket instance
     Login {
-        /// GitBucket host or URL (e.g., gitbucket.example.com or https://gitbucket.example.com/gitbucket)
-        #[arg(long, short = 'H')]
+        /// GitBucket host or base URL
+        #[arg(long, short = 'H', value_name = "HOST_OR_URL")]
         hostname: Option<String>,
-        /// Personal access token
-        #[arg(long, short)]
+        /// Personal access token (prompts when omitted)
+        #[arg(long, short, value_name = "TOKEN")]
         token: Option<String>,
-        /// Protocol (https or http)
-        #[arg(long, default_value = "https")]
+        /// Protocol for bare hosts
+        #[arg(long, default_value = "https", value_parser = ["https", "http"])]
         protocol: String,
     },
     /// Remove authentication for a GitBucket instance
     Logout {
-        /// Host or URL to logout from
-        #[arg(long, short = 'H')]
+        /// Host or base URL to log out from
+        #[arg(long, short = 'H', value_name = "HOST_OR_URL")]
         hostname: Option<String>,
     },
     /// Display the authentication status
     Status,
     /// Print the auth token for a host or URL
     Token {
-        /// Host or URL
-        #[arg(long, short = 'H')]
+        /// Host or base URL
+        #[arg(long, short = 'H', value_name = "HOST_OR_URL")]
         hostname: Option<String>,
     },
 }
