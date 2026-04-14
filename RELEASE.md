@@ -42,7 +42,7 @@ git push origin v0.1.0
 
 The `Release` workflow validates the tag, builds release binaries for Linux, macOS Intel, macOS Apple Silicon, and Windows, generates `SHA256SUMS`, and publishes a GitHub Release.
 
-## Re-running A Release
+## Re-running a Release
 
 Use the `Release` workflow's manual dispatch with an existing tag when the release job needs to be re-run without creating a new tag.
 

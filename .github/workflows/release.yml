@@ -41,14 +41,10 @@ jobs:
 
       - name: Validate release tag
         run: |
-          case "${RELEASE_TAG}" in
-            v[0-9]*.[0-9]*.[0-9]*)
-              ;;
-            *)
-              echo "Release tags must look like v0.1.0 or v0.1.0-rc.1" >&2
-              exit 1
-              ;;
-          esac
+          if ! [[ "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9._-]+)?(\+[a-zA-Z0-9._-]+)?$ ]]; then
+            echo "Release tags must look like v0.1.0 or v0.1.0-rc.1" >&2
+            exit 1
+          fi
 
           manifest_version="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "gb") | .version')"
           tag_version="${RELEASE_TAG#v}"
@@ -141,10 +137,11 @@ jobs:
         with:
           path: dist
 
-      - name: Generate checksums
+      - name: Flatten artifacts and generate checksums
         run: |
+          find dist -mindepth 2 -type f -name 'gb-*' -exec mv {} dist/ \;
           cd dist
-          find . -type f -name 'gb-*' -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+          sha256sum gb-* | sort > SHA256SUMS
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
@@ -153,6 +150,6 @@ jobs:
           draft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || false }}
           prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
           files: |
-            dist/**/gb-*
+            dist/gb-*
             dist/SHA256SUMS
           generate_release_notes: true
