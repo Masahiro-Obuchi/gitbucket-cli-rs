@@ -60,7 +60,8 @@ if root_id and root_id in packages:
 elif len(packages) == 1:
     print(next(iter(packages.values()))["version"])
 else:
-    sys.exit("error: unable to determine root Cargo package version from cargo metadata")
+    print("error: unable to determine root Cargo package version from cargo metadata", file=sys.stderr)
+    sys.exit(1)
 '
 )"
 TAG_VERSION="${TAG#v}"
