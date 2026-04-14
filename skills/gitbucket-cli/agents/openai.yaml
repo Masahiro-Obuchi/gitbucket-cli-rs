@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitBucket CLI"
+  short_description: "Operate GitBucket with the gb CLI"
+  default_prompt: "Use $gitbucket-cli to work with this GitBucket repository through gb."

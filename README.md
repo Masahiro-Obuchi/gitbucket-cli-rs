@@ -198,6 +198,16 @@ gb issue list --json
 gb issue view 1 --web
 ```
 
+## Codex Skill Sample
+
+This repository includes a sample Codex Skill for AI agents that need to operate GitBucket with `gb`:
+
+```text
+skills/gitbucket-cli/
+```
+
+The skill keeps agent-facing workflow guidance separate from the full user documentation in this README and `SPEC.md`.
+
 ## State Filters
 
 `gb issue list`, `gb pr list`, and `gb milestone list` support `--state open`, `--state closed`, and `--state all`.
