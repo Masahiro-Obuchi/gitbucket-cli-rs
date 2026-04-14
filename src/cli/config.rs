@@ -45,8 +45,8 @@ pub enum ConfigGetKey {
     DefaultHost,
     /// Get configuration for a saved host
     Host {
-        /// Host or base URL to inspect
-        #[arg(long = "host")]
+        /// Saved host or base URL to inspect
+        #[arg(long = "host", value_name = "HOST_OR_URL")]
         host: String,
         /// Specific field to print
         #[arg(long)]
@@ -61,19 +61,20 @@ pub enum ConfigGetKey {
 pub enum ConfigSetKey {
     /// Set the stored default host
     DefaultHost {
-        /// Host or base URL to make default
+        /// Saved host or base URL to make default
+        #[arg(value_name = "HOST_OR_URL")]
         hostname: String,
     },
     /// Update fields for an existing saved host
     Host {
-        /// Host or base URL to update
-        #[arg(long = "host")]
+        /// Saved host or base URL to update
+        #[arg(long = "host", value_name = "HOST_OR_URL")]
         host: String,
         /// Username to store for web-session fallbacks
         #[arg(long)]
         user: Option<String>,
         /// Protocol to store for this host
-        #[arg(long)]
+        #[arg(long, value_parser = ["https", "http"])]
         protocol: Option<String>,
         /// Also make this host the stored default
         #[arg(long)]

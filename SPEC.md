@@ -556,8 +556,8 @@ gb issue create [OPTIONS]
 | --- | --- | --- |
 | `--title <TEXT>` | `-t` | Issue title (prompted when omitted) |
 | `--body <TEXT>` | `-b` | Issue body |
-| `--label <LABEL>` | `-l` | Repeatable label option |
-| `--assignee <USER>` | `-a` | Repeatable assignee option |
+| `--label <LABEL>` | `-l` | Repeatable or comma-separated label option |
+| `--assignee <USER>` | `-a` | Repeatable or comma-separated assignee option |
 
 #### `gb issue edit`
 
@@ -571,10 +571,10 @@ gb issue edit <NUMBER> [OPTIONS]
 | --- | --- |
 | `--title <TEXT>` | Updated title |
 | `--body <TEXT>` | Updated body |
-| `--add-label <LABEL>` | Add a label |
-| `--remove-label <LABEL>` | Remove a label |
-| `--add-assignee <USER>` | Add an assignee |
-| `--remove-assignee <USER>` | Remove an assignee |
+| `--add-label <LABEL>` | Add a label; repeatable or comma-separated |
+| `--remove-label <LABEL>` | Remove a label; repeatable or comma-separated |
+| `--add-assignee <USER>` | Add an assignee; repeatable or comma-separated |
+| `--remove-assignee <USER>` | Remove an assignee; repeatable or comma-separated |
 | `--milestone <NUMBER>` | Set the milestone |
 | `--remove-milestone` | Clear the current milestone |
 | `--state <STATE>` | Updated state: `open` or `closed` |
@@ -842,7 +842,7 @@ If parsing fails, `RepoNotFound` is returned.
 
 ### 6.2 JSON output
 
-Available on list commands (`repo list`, `issue list`, `pr list`) using `--json`.
+Available on list commands (`repo list`, `issue list`, `pr list`, `label list`, `milestone list`, `config list`) using `--json`.
 
 ### 6.3 Browser output
 

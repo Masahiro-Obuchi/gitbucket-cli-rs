@@ -15,6 +15,7 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "gb",
     about = "GitBucket CLI - Work seamlessly with GitBucket from the command line",
+    after_help = "Run `gb <command> --help` for command-specific options.",
     version
 )]
 pub struct Cli {
@@ -22,10 +23,16 @@ pub struct Cli {
     pub command: Commands,
 
     /// GitBucket host or base URL
-    #[arg(long, short = 'H', global = true, env = "GB_HOST")]
+    #[arg(
+        long,
+        short = 'H',
+        global = true,
+        env = "GB_HOST",
+        value_name = "HOST_OR_URL"
+    )]
     pub hostname: Option<String>,
 
-    /// Repository in OWNER/REPO format
+    /// Target repository in OWNER/REPO format
     #[arg(long, short = 'R', global = true, env = "GB_REPO")]
     pub repo: Option<String>,
 }

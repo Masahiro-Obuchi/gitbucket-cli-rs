@@ -16,7 +16,13 @@ pub enum PrCommand {
     /// List pull requests
     List {
         /// Filter by state (open, closed, all)
-        #[arg(long, short, default_value = "open")]
+        #[arg(
+            long,
+            short,
+            default_value = "open",
+            value_parser = ["open", "closed", "all"],
+            ignore_case = true
+        )]
         state: String,
         /// Output as JSON
         #[arg(long)]
@@ -35,16 +41,16 @@ pub enum PrCommand {
     },
     /// Create a pull request
     Create {
-        /// PR title
+        /// PR title (prompts when omitted)
         #[arg(long, short)]
         title: Option<String>,
-        /// PR body
+        /// PR body (prompts when omitted)
         #[arg(long, short)]
         body: Option<String>,
-        /// Head branch
+        /// Head branch (defaults to current branch)
         #[arg(long)]
         head: Option<String>,
-        /// Base branch
+        /// Base branch (prompts with main as the default when omitted)
         #[arg(long, short = 'B')]
         base: Option<String>,
     },
@@ -75,7 +81,7 @@ pub enum PrCommand {
     Comment {
         /// PR number
         number: u64,
-        /// Comment body
+        /// Comment body (prompts when omitted)
         #[arg(long, short)]
         body: Option<String>,
     },

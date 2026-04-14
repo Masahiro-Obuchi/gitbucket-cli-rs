@@ -29,9 +29,9 @@ pub enum LabelCommand {
     },
     /// Create a new label
     Create {
-        /// Label name
+        /// Label name (prompts when omitted)
         name: Option<String>,
-        /// Label color as 6-digit hex
+        /// Label color as 6-digit hex, with or without '#'
         #[arg(long, short)]
         color: Option<String>,
         /// Optional label description

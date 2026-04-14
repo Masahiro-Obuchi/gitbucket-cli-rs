@@ -105,7 +105,8 @@ fn issue_list_rejects_invalid_state_before_api_call() {
 
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("Invalid state 'draft'. Expected one of: open, closed, all"));
+    assert!(stderr.contains("invalid value 'draft' for '--state <STATE>'"));
+    assert!(stderr.contains("[possible values: open, closed, all]"));
 }
 
 #[test]
@@ -124,7 +125,8 @@ fn pr_list_rejects_invalid_state_before_api_call() {
 
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("Invalid state 'draft'. Expected one of: open, closed, all"));
+    assert!(stderr.contains("invalid value 'draft' for '--state <STATE>'"));
+    assert!(stderr.contains("[possible values: open, closed, all]"));
 }
 
 #[test]

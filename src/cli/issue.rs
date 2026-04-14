@@ -20,7 +20,13 @@ pub enum IssueCommand {
     /// List issues
     List {
         /// Filter by state (open, closed, all)
-        #[arg(long, short, default_value = "open")]
+        #[arg(
+            long,
+            short,
+            default_value = "open",
+            value_parser = ["open", "closed", "all"],
+            ignore_case = true
+        )]
         state: String,
         /// Output as JSON
         #[arg(long)]
@@ -39,17 +45,17 @@ pub enum IssueCommand {
     },
     /// Create a new issue
     Create {
-        /// Issue title
+        /// Issue title (prompts when omitted)
         #[arg(long, short)]
         title: Option<String>,
-        /// Issue body
+        /// Issue body (prompts when omitted)
         #[arg(long, short)]
         body: Option<String>,
-        /// Labels (comma-separated)
-        #[arg(long, short)]
+        /// Label name (repeatable or comma-separated)
+        #[arg(long, short, value_delimiter = ',')]
         label: Vec<String>,
-        /// Assignees (comma-separated)
-        #[arg(long, short)]
+        /// Assignee username (repeatable or comma-separated)
+        #[arg(long, short, value_delimiter = ',')]
         assignee: Vec<String>,
     },
     /// Edit an issue
@@ -62,17 +68,17 @@ pub enum IssueCommand {
         /// New issue body
         #[arg(long, short)]
         body: Option<String>,
-        /// Add labels
-        #[arg(long = "add-label")]
+        /// Add label name (repeatable or comma-separated)
+        #[arg(long = "add-label", value_delimiter = ',')]
         add_label: Vec<String>,
-        /// Remove labels
-        #[arg(long = "remove-label")]
+        /// Remove label name (repeatable or comma-separated)
+        #[arg(long = "remove-label", value_delimiter = ',')]
         remove_label: Vec<String>,
-        /// Add assignees
-        #[arg(long = "add-assignee")]
+        /// Add assignee username (repeatable or comma-separated)
+        #[arg(long = "add-assignee", value_delimiter = ',')]
         add_assignee: Vec<String>,
-        /// Remove assignees
-        #[arg(long = "remove-assignee")]
+        /// Remove assignee username (repeatable or comma-separated)
+        #[arg(long = "remove-assignee", value_delimiter = ',')]
         remove_assignee: Vec<String>,
         /// Set milestone number
         #[arg(long)]
@@ -81,7 +87,7 @@ pub enum IssueCommand {
         #[arg(long)]
         remove_milestone: bool,
         /// Update issue state (open or closed)
-        #[arg(long)]
+        #[arg(long, value_parser = ["open", "closed"], ignore_case = true)]
         state: Option<String>,
     },
     /// Close an issue
@@ -98,7 +104,7 @@ pub enum IssueCommand {
     Comment {
         /// Issue number
         number: u64,
-        /// Comment body
+        /// Comment body (prompts when omitted)
         #[arg(long, short)]
         body: Option<String>,
         /// Edit your last comment instead of adding a new one
@@ -124,7 +130,17 @@ pub async fn run(
             body,
             label,
             assignee,
-        } => create(cli_hostname, cli_repo, title, body, label, assignee).await,
+        } => {
+            create(
+                cli_hostname,
+                cli_repo,
+                title,
+                body,
+                normalize_str_vec(label),
+                normalize_str_vec(assignee),
+            )
+            .await
+        }
         IssueCommand::Edit {
             number,
             title,
@@ -143,10 +159,10 @@ pub async fn run(
                 number,
                 title,
                 body,
-                add_label,
-                remove_label,
-                add_assignee,
-                remove_assignee,
+                normalize_str_vec(add_label),
+                normalize_str_vec(remove_label),
+                normalize_str_vec(add_assignee),
+                normalize_str_vec(remove_assignee),
                 milestone,
                 remove_milestone,
                 state,
@@ -598,6 +614,14 @@ async fn comment(
     Ok(())
 }
 
+fn normalize_str_vec(values: Vec<String>) -> Vec<String> {
+    values
+        .into_iter()
+        .map(|v| v.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
 fn normalize_edit_state(state: Option<String>) -> Result<Option<String>> {
     match state {
         None => Ok(None),
@@ -627,7 +651,7 @@ fn merge_named_values(
 
 #[cfg(test)]
 mod tests {
-    use super::{merge_named_values, normalize_edit_state};
+    use super::{merge_named_values, normalize_edit_state, normalize_str_vec};
 
     #[test]
     fn normalize_edit_state_accepts_open_and_closed() {
@@ -663,5 +687,21 @@ mod tests {
         );
 
         assert_eq!(merged, vec!["urgent", "enhancement"]);
+    }
+
+    #[test]
+    fn normalize_str_vec_trims_whitespace_and_drops_empty() {
+        assert_eq!(
+            normalize_str_vec(vec!["bug".into(), " urgent".into(), "".into()]),
+            vec!["bug", "urgent"]
+        );
+        assert_eq!(
+            normalize_str_vec(vec!["  alice  ".into(), "  ".into(), "bob".into()]),
+            vec!["alice", "bob"]
+        );
+        assert_eq!(
+            normalize_str_vec(vec!["".into(), "  ".into()]),
+            Vec::<String>::new()
+        );
     }
 }
