@@ -5,15 +5,69 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish, for example v0.1.0"
+        required: true
+        type: string
+      draft:
+        description: "Create or update the GitHub release as a draft"
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Validate release tag
+        run: |
+          if ! [[ "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9._-]+)?(\+[a-zA-Z0-9._-]+)?$ ]]; then
+            echo "Release tags must look like v0.1.0 or v0.1.0-rc.1" >&2
+            exit 1
+          fi
+
+          manifest_version="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "gb") | .version')"
+          tag_version="${RELEASE_TAG#v}"
+
+          if [ "${manifest_version}" != "${tag_version}" ]; then
+            echo "Cargo.toml version (${manifest_version}) does not match release tag (${RELEASE_TAG})." >&2
+            exit 1
+          fi
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check
+        run: cargo check --locked
+
+      - name: Run tests
+        run: cargo test --locked
+
+      - name: Run clippy
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
   build:
+    needs: preflight
     strategy:
       fail-fast: false
       matrix:
@@ -39,6 +93,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
@@ -52,7 +108,8 @@ jobs:
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/${{ matrix.bin }} dist/
-          tar -C dist -czf gb-${{ github.ref_name }}-${{ matrix.target }}.tar.gz ${{ matrix.bin }}
+          cp README.md LICENSE dist/
+          tar -C dist -czf gb-${RELEASE_TAG}-${{ matrix.target }}.tar.gz ${{ matrix.bin }} README.md LICENSE
 
       - name: Package Windows archive
         if: matrix.archive == 'zip'
@@ -60,14 +117,15 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/${{ matrix.bin }}" dist/
-          Compress-Archive -Path "dist/${{ matrix.bin }}" -DestinationPath "gb-${{ github.ref_name }}-${{ matrix.target }}.zip" -Force
+          Copy-Item README.md,LICENSE dist/
+          Compress-Archive -Path "dist/${{ matrix.bin }}","dist/README.md","dist/LICENSE" -DestinationPath "gb-${env:RELEASE_TAG}-${{ matrix.target }}.zip" -Force
 
       - name: Upload packaged artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
           path: |
-            gb-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive }}
+            gb-${{ env.RELEASE_TAG }}-${{ matrix.target }}.${{ matrix.archive }}
 
   release:
     needs: build
@@ -79,8 +137,19 @@ jobs:
         with:
           path: dist
 
+      - name: Flatten artifacts and generate checksums
+        run: |
+          find dist -mindepth 2 -type f -name 'gb-*' -exec mv {} dist/ \;
+          cd dist
+          sha256sum gb-* | sort > SHA256SUMS
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/**/*
+          tag_name: ${{ env.RELEASE_TAG }}
+          draft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || false }}
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
+          files: |
+            dist/gb-*
+            dist/SHA256SUMS
           generate_release_notes: true

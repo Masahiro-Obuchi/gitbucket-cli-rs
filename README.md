@@ -43,6 +43,7 @@ cp target/release/gb ~/.local/bin/
 ### Prebuilt binaries
 
 Tagged releases publish prebuilt binaries to GitHub Releases for supported platforms.
+See [RELEASE.md](RELEASE.md) for the release process.
 
 **Requirements:** Rust 1.70+ and `git` when installing with Cargo or building from source
 
