@@ -53,6 +53,55 @@ fn issue_create_sends_labels_assignees_and_body() {
 }
 
 #[test]
+fn issue_create_supports_repeated_label_and_assignee_flags() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server(
+        "200 OK",
+        r#"{"number":8,"title":"Another bug","state":"open","labels":[],"assignees":[]}"#,
+    );
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args([
+            "issue",
+            "create",
+            "-t",
+            "Another bug",
+            "-b",
+            "Some body",
+            "-l",
+            "bug",
+            "-l",
+            "urgent",
+            "-a",
+            "alice",
+            "-a",
+            "bob",
+        ])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(request.method, "POST");
+    assert_eq!(request.target, "/api/v3/repos/alice/project/issues");
+    let body: Value = serde_json::from_str(&request.body).unwrap();
+    assert_eq!(body["title"], "Another bug");
+    assert_eq!(body["labels"], serde_json::json!(["bug", "urgent"]));
+    assert_eq!(body["assignees"], serde_json::json!(["alice", "bob"]));
+}
+
+#[test]
 fn issue_edit_sends_expected_payload() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_scripted_server(vec![

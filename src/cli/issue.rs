@@ -130,7 +130,17 @@ pub async fn run(
             body,
             label,
             assignee,
-        } => create(cli_hostname, cli_repo, title, body, label, assignee).await,
+        } => {
+            create(
+                cli_hostname,
+                cli_repo,
+                title,
+                body,
+                normalize_str_vec(label),
+                normalize_str_vec(assignee),
+            )
+            .await
+        }
         IssueCommand::Edit {
             number,
             title,
@@ -149,10 +159,10 @@ pub async fn run(
                 number,
                 title,
                 body,
-                add_label,
-                remove_label,
-                add_assignee,
-                remove_assignee,
+                normalize_str_vec(add_label),
+                normalize_str_vec(remove_label),
+                normalize_str_vec(add_assignee),
+                normalize_str_vec(remove_assignee),
                 milestone,
                 remove_milestone,
                 state,
@@ -604,6 +614,14 @@ async fn comment(
     Ok(())
 }
 
+fn normalize_str_vec(values: Vec<String>) -> Vec<String> {
+    values
+        .into_iter()
+        .map(|v| v.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
 fn normalize_edit_state(state: Option<String>) -> Result<Option<String>> {
     match state {
         None => Ok(None),
@@ -633,7 +651,7 @@ fn merge_named_values(
 
 #[cfg(test)]
 mod tests {
-    use super::{merge_named_values, normalize_edit_state};
+    use super::{merge_named_values, normalize_edit_state, normalize_str_vec};
 
     #[test]
     fn normalize_edit_state_accepts_open_and_closed() {
@@ -669,5 +687,21 @@ mod tests {
         );
 
         assert_eq!(merged, vec!["urgent", "enhancement"]);
+    }
+
+    #[test]
+    fn normalize_str_vec_trims_whitespace_and_drops_empty() {
+        assert_eq!(
+            normalize_str_vec(vec!["bug".into(), " urgent".into(), "".into()]),
+            vec!["bug", "urgent"]
+        );
+        assert_eq!(
+            normalize_str_vec(vec!["  alice  ".into(), "  ".into(), "bob".into()]),
+            vec!["alice", "bob"]
+        );
+        assert_eq!(
+            normalize_str_vec(vec!["".into(), "  ".into()]),
+            Vec::<String>::new()
+        );
     }
 }

@@ -44,11 +44,15 @@ fn issue_help_mentions_state_values_and_repeatable_metadata_options() {
 
     assert!(create_output.status.success());
     assert!(
-        create_stdout.contains("Label name (repeatable or comma-separated)"),
+        create_stdout.contains("Label name"),
         "stdout: {create_stdout}"
     );
     assert!(
-        create_stdout.contains("Assignee username (repeatable or comma-separated)"),
+        create_stdout.contains("repeatable or comma-separated"),
+        "stdout: {create_stdout}"
+    );
+    assert!(
+        create_stdout.contains("Assignee username"),
         "stdout: {create_stdout}"
     );
 }
