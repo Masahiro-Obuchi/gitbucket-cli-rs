@@ -28,7 +28,7 @@ When `-R` is omitted, `gb` can infer the repository from `git remote get-url ori
 gb issue list --state open
 gb issue view 12 --comments
 gb issue create -t "Bug report" -b "Steps to reproduce..."
-gb issue edit 12 --add-label bug --assignee alice
+gb issue edit 12 --add-label bug --add-assignee alice
 gb issue comment 12 -b "I reproduced this on the staging instance."
 gb issue close 12
 gb issue reopen 12

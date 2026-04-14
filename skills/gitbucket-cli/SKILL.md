@@ -10,7 +10,7 @@ Use `gb` for GitBucket work. Do not assume `gh` can operate against GitBucket.
 ## Before Running Commands
 
 1. Confirm the target is GitBucket.
-2. Resolve the host from `--hostname`, `GB_HOST`, saved config, or the current repository remote.
+2. Resolve the host from `--hostname`, `GB_HOST`, or saved config (run `gb auth login` if none is set).
 3. Resolve the repository from `--repo`, `GB_REPO`, or `git remote get-url origin`.
 4. Preserve path-prefixed base URLs such as `https://gitbucket.example.com/gitbucket`.
 5. Prefer `gb <command> --help` for exact options before constructing uncommon commands.
