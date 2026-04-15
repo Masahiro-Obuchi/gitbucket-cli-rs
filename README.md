@@ -124,46 +124,46 @@ gb pr diff 5
 
 ## Command reference
 
-| Command                       | Description                          |
-| ----------------------------- | ------------------------------------ |
-| `gb auth login`               | Authenticate to a GitBucket instance |
-| `gb auth logout`              | Remove auth for a host               |
-| `gb auth status`              | Show current auth status             |
-| `gb auth token`               | Print access token                   |
-| `gb config`                   | Manage local CLI configuration       |
-| `gb completion <SHELL>`       | Generate shell completion scripts    |
-| `gb api <ENDPOINT>`           | Call the GitBucket REST API directly |
-| `gb repo list [OWNER]`        | List repositories                    |
-| `gb repo view [OWNER/REPO]`   | Show repository details              |
-| `gb repo create [NAME]`       | Create a repository                  |
-| `gb repo clone <REPO>`        | Clone a repository                   |
-| `gb repo delete [OWNER/REPO]` | Delete a repository                  |
-| `gb repo fork [OWNER/REPO]`   | Fork a repository                    |
-| `gb label list`               | List labels                          |
-| `gb label view <NAME>`        | Show label details                   |
-| `gb label create [NAME]`      | Create a label                       |
-| `gb label delete <NAME>`      | Delete a label                       |
-| `gb milestone list`           | List milestones                      |
-| `gb milestone view <NUMBER>`  | Show milestone details               |
-| `gb milestone create [TITLE]` | Create a milestone                   |
-| `gb milestone edit <NUMBER>`  | Edit a milestone                     |
+| Command                        | Description                          |
+| ------------------------------ | ------------------------------------ |
+| `gb auth login`                | Authenticate to a GitBucket instance |
+| `gb auth logout`               | Remove auth for a host               |
+| `gb auth status`               | Show current auth status             |
+| `gb auth token`                | Print access token                   |
+| `gb config`                    | Manage local CLI configuration       |
+| `gb completion <SHELL>`        | Generate shell completion scripts    |
+| `gb api <ENDPOINT>`            | Call the GitBucket REST API directly |
+| `gb repo list [OWNER]`         | List repositories                    |
+| `gb repo view [OWNER/REPO]`    | Show repository details              |
+| `gb repo create [NAME]`        | Create a repository                  |
+| `gb repo clone <REPO>`         | Clone a repository                   |
+| `gb repo delete [OWNER/REPO]`  | Delete a repository                  |
+| `gb repo fork [OWNER/REPO]`    | Fork a repository                    |
+| `gb label list`                | List labels                          |
+| `gb label view <NAME>`         | Show label details                   |
+| `gb label create [NAME]`       | Create a label                       |
+| `gb label delete <NAME>`       | Delete a label                       |
+| `gb milestone list`            | List milestones                      |
+| `gb milestone view <NUMBER>`   | Show milestone details               |
+| `gb milestone create [TITLE]`  | Create a milestone                   |
+| `gb milestone edit <NUMBER>`   | Edit a milestone                     |
 | `gb milestone delete <NUMBER>` | Delete a milestone                   |
-| `gb issue list`               | List issues                          |
-| `gb issue view <NUMBER>`      | Show issue details                   |
-| `gb issue create`             | Create an issue                      |
-| `gb issue edit <NUMBER>`      | Edit an issue                        |
-| `gb issue close <NUMBER>`     | Close an issue                       |
-| `gb issue reopen <NUMBER>`    | Reopen an issue                      |
-| `gb issue comment <NUMBER>`   | Add or edit an issue comment         |
-| `gb pr list`                  | List pull requests                   |
-| `gb pr view <NUMBER>`         | Show PR details                      |
-| `gb pr create`                | Create a pull request                |
-| `gb pr close <NUMBER>`        | Close a pull request                 |
-| `gb pr merge <NUMBER>`        | Merge a pull request                 |
-| `gb pr checkout <NUMBER>`     | Checkout a PR branch                 |
-| `gb pr diff <NUMBER>`         | Show PR diff                         |
-| `gb pr comment <NUMBER>`      | Add a PR comment                     |
-| `gb browse`                   | Open repository in browser           |
+| `gb issue list`                | List issues                          |
+| `gb issue view <NUMBER>`       | Show issue details                   |
+| `gb issue create`              | Create an issue                      |
+| `gb issue edit <NUMBER>`       | Edit an issue                        |
+| `gb issue close <NUMBER>`      | Close an issue                       |
+| `gb issue reopen <NUMBER>`     | Reopen an issue                      |
+| `gb issue comment <NUMBER>`    | Add or edit an issue comment         |
+| `gb pr list`                   | List pull requests                   |
+| `gb pr view <NUMBER>`          | Show PR details                      |
+| `gb pr create`                 | Create a pull request                |
+| `gb pr close <NUMBER>`         | Close a pull request                 |
+| `gb pr merge <NUMBER>`         | Merge a pull request                 |
+| `gb pr checkout <NUMBER>`      | Checkout a PR branch                 |
+| `gb pr diff <NUMBER>`          | Show PR diff                         |
+| `gb pr comment <NUMBER>`       | Add a PR comment                     |
+| `gb browse`                    | Open repository in browser           |
 
 ## Global options
 
@@ -199,9 +199,9 @@ gb issue list --json
 gb issue view 1 --web
 ```
 
-## Codex Skill Sample
+## Skill Sample
 
-This repository includes a sample Codex Skill for AI agents that need to operate GitBucket with `gb`:
+This repository includes a sample Skill for AI agents that need to operate GitBucket with `gb`:
 
 ```text
 skills/gitbucket-cli/
