@@ -15,6 +15,16 @@ Use `gb` for GitBucket work. Do not assume `gh` can operate against GitBucket.
 4. Preserve path-prefixed base URLs such as `https://gitbucket.example.com/gitbucket`.
 5. Prefer `gb <command> --help` for exact options before constructing uncommon commands.
 
+## Safety Boundaries
+
+Do not run irreversible or security-sensitive `gb` operations from this skill. Instead, explain the intended command and let the user run it manually.
+
+Never run these operations directly: deleting repositories, labels, or milestones; merging pull requests; exposing auth tokens; logging out; changing persistent config; or raw `gb api` calls that target administrative endpoints.
+
+You may run bounded state-changing operations only after the user explicitly approves the exact action in the current conversation. This includes closing pull requests, closing or reopening issues, and non-administrative mutating `gb api` calls when the method, endpoint, and payload are clearly shown first.
+
+Use read-only commands first to verify the exact host, repository, issue, pull request, label, or milestone before suggesting any dangerous command.
+
 ## Command Families
 
 - Auth: `gb auth login`, `gb auth logout`, `gb auth status`, `gb auth token`
