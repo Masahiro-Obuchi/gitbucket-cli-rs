@@ -19,9 +19,9 @@ Use `gb` for GitBucket work. Do not assume `gh` can operate against GitBucket.
 
 Do not run irreversible or security-sensitive `gb` operations from this skill. Instead, explain the intended command and let the user run it manually.
 
-Never run these operations directly: deleting repositories, labels, or milestones; exposing auth tokens; logging out; changing persistent config; or raw `gb api` calls that target administrative endpoints.
+Never run these operations directly: deleting repositories, labels, or milestones; merging pull requests; exposing auth tokens; logging out; changing persistent config; or raw `gb api` calls that target administrative endpoints.
 
-You may run bounded state-changing operations only after the user explicitly approves the exact action in the current conversation. This includes merging or closing pull requests, closing or reopening issues, and non-administrative mutating `gb api` calls when the method, endpoint, and payload are clearly shown first.
+You may run bounded state-changing operations only after the user explicitly approves the exact action in the current conversation. This includes closing pull requests, closing or reopening issues, and non-administrative mutating `gb api` calls when the method, endpoint, and payload are clearly shown first.
 
 Use read-only commands first to verify the exact host, repository, issue, pull request, label, or milestone before suggesting any dangerous command.
 
