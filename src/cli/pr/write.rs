@@ -262,6 +262,11 @@ fn qualified_head(head: String, head_owner: Option<String>) -> Result<String> {
     if owner.is_empty() {
         return Err(GbError::Other("--head-owner cannot be empty.".into()));
     }
+    if owner.contains(':') {
+        return Err(GbError::Other(
+            "--head-owner cannot contain ':'. Expected an unqualified owner name.".into(),
+        ));
+    }
     Ok(format!("{owner}:{head}"))
 }
 

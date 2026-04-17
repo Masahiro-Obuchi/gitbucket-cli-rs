@@ -1,5 +1,7 @@
 mod support;
 
+use tempfile::tempdir;
+
 use support::gb_cmd::gb_command;
 
 #[test]
@@ -37,5 +39,38 @@ fn pr_help_mentions_edit_and_comment_edit_last() {
     assert!(
         comment_stdout.contains("--edit-last"),
         "stdout: {comment_stdout}"
+    );
+}
+
+#[test]
+fn pr_create_rejects_head_owner_containing_colon() {
+    let temp = tempdir().unwrap();
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", "127.0.0.1:19999")
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args([
+            "pr",
+            "create",
+            "--head",
+            "feature",
+            "--head-owner",
+            "bob:team",
+            "--base",
+            "main",
+            "--title",
+            "Test PR",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--head-owner cannot contain ':'"),
+        "stderr: {stderr}"
     );
 }

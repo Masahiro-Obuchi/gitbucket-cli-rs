@@ -337,3 +337,37 @@ fn pr_view_falls_back_to_list_when_single_pr_response_is_empty() {
     assert!(stdout.contains("OPEN"));
     assert!(stdout.contains("feature/demo"));
 }
+
+#[test]
+fn issue_view_json_prints_issue_payload() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
+        "GET /api/v3/repos/alice/project/issues/7 HTTP/1.1",
+        "200 OK",
+        r#"{"number":7,"title":"Bug report","body":"Body text","state":"open","user":{"login":"alice"},"labels":[],"assignees":[],"created_at":"2026-03-24T00:00:00Z"}"#,
+    )]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["issue", "view", "7", "--json"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert_eq!(requests.len(), 1);
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(stdout["number"], 7);
+    assert_eq!(stdout["title"], "Bug report");
+    assert_eq!(stdout["state"], "open");
+}

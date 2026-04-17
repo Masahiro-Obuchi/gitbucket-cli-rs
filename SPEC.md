@@ -612,7 +612,7 @@ gb issue comment <NUMBER> [OPTIONS]
 | Option | Short | Description |
 | --- | --- | --- |
 | `--body <TEXT>` | `-b` | Comment body (prompted when omitted) |
-| `--edit-last` |  | Edit your last comment instead of adding a new one |
+| `--edit-last` | — | Edit your last comment instead of adding a new one |
 
 ---
 
@@ -746,7 +746,7 @@ gb pr comment <NUMBER> [OPTIONS]
 | Option | Short | Description |
 | --- | --- | --- |
 | `--body <TEXT>` | `-b` | Comment body (prompted when omitted) |
-| `--edit-last` |  | Edit your last comment instead of adding a new one |
+| `--edit-last` | — | Edit your last comment instead of adding a new one |
 
 ---
 
