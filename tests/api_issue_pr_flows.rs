@@ -464,6 +464,167 @@ fn pr_create_sends_expected_payload() {
 }
 
 #[test]
+fn pr_create_supports_head_owner_and_prints_resolved_refs() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server(
+        "200 OK",
+        r#"{
+            "number":5,
+            "title":"Add feature",
+            "state":"open",
+            "html_url":"http://127.0.0.1/pulls/5",
+            "head":{"ref":"feature/branch","repo":{"name":"project","full_name":"bob/project"}},
+            "base":{"ref":"main","repo":{"name":"project","full_name":"alice/project"}}
+        }"#,
+    );
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args([
+            "pr",
+            "create",
+            "-t",
+            "Add feature",
+            "-b",
+            "PR body",
+            "--head",
+            "feature/branch",
+            "--head-owner",
+            "bob",
+            "--base",
+            "main",
+        ])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let body: Value = serde_json::from_str(&request.body).unwrap();
+    assert_eq!(body["head"], "bob:feature/branch");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Head: bob/project:feature/branch"));
+    assert!(stdout.contains("Base: alice/project:main"));
+    assert!(
+        stdout.contains(&format!(
+            "URL: http://127.0.0.1:{port}/alice/project/pull/5"
+        )),
+        "stdout: {stdout}"
+    );
+}
+
+#[test]
+fn pr_create_json_prints_created_pull_request() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server(
+        "200 OK",
+        r#"{"number":5,"title":"Add feature","state":"open","head":{"ref":"feature/branch"},"base":{"ref":"main"}}"#,
+    );
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args([
+            "pr",
+            "create",
+            "-t",
+            "Add feature",
+            "-b",
+            "PR body",
+            "--head",
+            "feature/branch",
+            "--base",
+            "main",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+
+    let _request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(stdout["number"], 5);
+    assert_eq!(stdout["head"]["ref"], "feature/branch");
+    assert_eq!(stdout["base"]["ref"], "main");
+}
+
+#[test]
+fn pr_edit_updates_title_body_state_and_assignees() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/issues/5 HTTP/1.1",
+            "200 OK",
+            r#"{"number":5,"title":"Old","state":"open","labels":[],"assignees":[{"login":"alice"}]}"#,
+        ),
+        ScriptedResponse::json(
+            "PATCH /api/v3/repos/alice/project/issues/5 HTTP/1.1",
+            "200 OK",
+            r#"{"number":5,"title":"New","state":"closed","labels":[],"assignees":[{"login":"bob"}]}"#,
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args([
+            "pr",
+            "edit",
+            "5",
+            "--title",
+            "New",
+            "--body",
+            "Updated body",
+            "--add-assignee",
+            "bob",
+            "--remove-assignee",
+            "alice",
+            "--state",
+            "closed",
+        ])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[1].method, "PATCH");
+    assert_eq!(requests[1].target, "/api/v3/repos/alice/project/issues/5");
+    let body: Value = serde_json::from_str(&requests[1].body).unwrap();
+    assert_eq!(body["title"], "New");
+    assert_eq!(body["body"], "Updated body");
+    assert_eq!(body["state"], "closed");
+    assert_eq!(body["assignees"], serde_json::json!(["bob"]));
+}
+
+#[test]
 fn issue_close_sends_closed_state_patch() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_server(
@@ -848,6 +1009,63 @@ fn pr_comment_sends_expected_payload() {
     );
     let body: Value = serde_json::from_str(&request.body).unwrap();
     assert_eq!(body["body"], "Please rebase");
+}
+
+#[test]
+fn pr_comment_edit_last_updates_authenticated_users_latest_comment() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/user HTTP/1.1",
+            "200 OK",
+            r#"{"login":"alice"}"#,
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/issues/5/comments?per_page=100 HTTP/1.1",
+            "200 OK",
+            r#"[
+                {"id":10,"body":"Older","user":{"login":"alice"}},
+                {"id":12,"body":"Latest","user":{"login":"alice"}}
+            ]"#,
+        ),
+        ScriptedResponse::json(
+            "PATCH /api/v3/repos/alice/project/issues/comments/12 HTTP/1.1",
+            "200 OK",
+            r#"{"id":12,"body":"Edited"}"#,
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["pr", "comment", "5", "--edit-last", "--body", "Edited"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(requests.len(), 3);
+    assert_eq!(requests[2].method, "PATCH");
+    assert_eq!(
+        requests[2].target,
+        "/api/v3/repos/alice/project/issues/comments/12"
+    );
+    let body: Value = serde_json::from_str(&requests[2].body).unwrap();
+    assert_eq!(body["body"], "Edited");
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("Edited comment 12 on PR #5"),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
 }
 
 #[test]

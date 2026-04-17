@@ -15,6 +15,9 @@ $ gb issue list
 
 $ gb pr create -t "Add feature X" --head feature/x -B main
 ✓ Created pull request #5: Add feature X
+Head: alice/my-app:feature/x
+Base: alice/my-app:main
+URL: https://gitbucket.example.com/alice/my-app/pull/5
 ```
 
 ## Installation
@@ -116,10 +119,14 @@ gb issue comment 1 --edit-last -b "Actually fixed!"
 ```bash
 gb pr list --state closed
 gb pr create
+gb pr create -t "From fork" --head feature/x --head-owner alice -B main
 gb pr view 5
+gb pr view 5 --json
+gb pr edit 5 --add-assignee bob
 gb pr merge 5
 gb pr checkout 5
 gb pr diff 5
+gb pr comment 5 --edit-last -b "Updated note"
 ```
 
 ## Command reference
@@ -158,11 +165,12 @@ gb pr diff 5
 | `gb pr list`                   | List pull requests                   |
 | `gb pr view <NUMBER>`          | Show PR details                      |
 | `gb pr create`                 | Create a pull request                |
+| `gb pr edit <NUMBER>`          | Edit a pull request                  |
 | `gb pr close <NUMBER>`         | Close a pull request                 |
 | `gb pr merge <NUMBER>`         | Merge a pull request                 |
 | `gb pr checkout <NUMBER>`      | Checkout a PR branch                 |
 | `gb pr diff <NUMBER>`          | Show PR diff                         |
-| `gb pr comment <NUMBER>`       | Add a PR comment                     |
+| `gb pr comment <NUMBER>`       | Add or edit a PR comment             |
 | `gb browse`                    | Open repository in browser           |
 
 ## Global options
@@ -226,7 +234,10 @@ Issue label and assignee options can be repeated or comma-separated:
 ```bash
 gb issue create -t "Bug report" --label bug,urgent --assignee alice
 gb issue edit 1 --add-label needs-review --remove-assignee bob
+gb pr edit 5 --add-assignee alice,bob --remove-assignee carol
 ```
+
+`gb pr create --head` accepts a branch name for same-repository PRs. For cross-repository PRs, pass `OWNER:BRANCH` or use `--head-owner OWNER --head BRANCH`; after creation, the CLI prints the resolved `Head:` and `Base:` repositories and refs. `gb pr create --json` and `gb pr view --json` print the API payload for automation.
 
 ## Pull Request Checkout And Diff
 

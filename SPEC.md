@@ -21,7 +21,7 @@ It follows the command design style of GitHub CLI (`gh`) and uses the GitBucket 
 | `gh auth` | `gb auth` | ✅ Implemented | PAT-based authentication |
 | `gh repo` | `gb repo` | ✅ Implemented | Core repo operations |
 | `gh issue` | `gb issue` | ✅ Implemented | Issue create/view/edit/comment/state workflows |
-| `gh pr` | `gb pr` | ✅ Implemented | Basic PR workflows |
+| `gh pr` | `gb pr` | ✅ Implemented | PR create/view/edit/comment/state/merge/worktree workflows |
 | `gh browse` | `gb browse` | ✅ Implemented | Opens browser |
 | `gh label` | `gb label` | ✅ Implemented | Label definition CRUD (no edit yet) |
 | `gh api` | `gb api` | ✅ Implemented | Raw REST API access |
@@ -540,6 +540,7 @@ gb issue view <NUMBER> [OPTIONS]
 | --- | --- | --- |
 | `--comments` | `-c` | Include comments |
 | `--web` | `-w` | Open in browser |
+| `--json` | — | Print JSON |
 
 Shows title, state, author, created date, labels, assignees, milestone when present, body, and optional comments.
 Comments are hidden by default; pass `--comments` to include them in the CLI output.
@@ -648,6 +649,7 @@ gb pr view <NUMBER> [OPTIONS]
 | --- | --- | --- |
 | `--comments` | `-c` | Include comments |
 | `--web` | `-w` | Open in browser |
+| `--json` | — | Print JSON |
 
 #### `gb pr create`
 
@@ -661,8 +663,30 @@ gb pr create [OPTIONS]
 | --- | --- | --- |
 | `--title <TEXT>` | `-t` | PR title (prompted when omitted) |
 | `--body <TEXT>` | `-b` | PR body |
-| `--head <BRANCH>` | — | Head branch (uses current git branch when omitted) |
+| `--head <BRANCH>` | — | Head branch (uses current git branch when omitted). For cross-repo PRs, pass `OWNER:BRANCH` or use `--head-owner OWNER --head BRANCH` |
+| `--head-owner <OWNER>` | — | Owner for the head branch; sends the head as `OWNER:BRANCH` |
 | `--base <BRANCH>` | `-B` | Base branch (prompts, default `main`) |
+| `--json` | — | Print the created pull request as JSON |
+
+On normal text output, `gb pr create` prints the created PR number/title, resolved `Head:` and `Base:` repository refs when the API returns them, and a canonical browser URL using `/pull/{number}`.
+
+#### `gb pr edit`
+
+Edit a pull request through the issue endpoint.
+
+```text
+gb pr edit <NUMBER> [OPTIONS]
+```
+
+| Option | Short | Description |
+| --- | --- | --- |
+| `--title <TEXT>` | `-t` | New PR title |
+| `--body <TEXT>` | `-b` | New PR body |
+| `--add-assignee <USER>` | — | Add an assignee; repeatable or comma-separated |
+| `--remove-assignee <USER>` | — | Remove an assignee; repeatable or comma-separated |
+| `--state <STATE>` | — | Update PR state: `open` or `closed` |
+
+Implementation detail: PR title/body/state/assignee metadata is edited by calling the **issues** endpoint (`PATCH /repos/{owner}/{repo}/issues/{number}`).
 
 #### `gb pr close`
 
@@ -722,6 +746,7 @@ gb pr comment <NUMBER> [OPTIONS]
 | Option | Short | Description |
 | --- | --- | --- |
 | `--body <TEXT>` | `-b` | Comment body (prompted when omitted) |
+| `--edit-last` |  | Edit your last comment instead of adding a new one |
 
 ---
 
@@ -984,6 +1009,8 @@ Pull request:
 - `PUT /repos/{owner}/{repo}/pulls/{number}/merge`
 - `GET /repos/{owner}/{repo}/issues/{number}/comments` (PR comments)
 - `POST /repos/{owner}/{repo}/issues/{number}/comments` (PR comments)
+- `PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}` (PR comment edit)
+- `PATCH /repos/{owner}/{repo}/issues/{number}` (PR title/body/state/assignees)
 
 Label:
 
