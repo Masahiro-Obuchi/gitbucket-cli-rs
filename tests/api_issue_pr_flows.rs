@@ -571,6 +571,11 @@ fn pr_edit_updates_title_body_state_and_assignees() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
+            "200 OK",
+            r#"{"number":5,"title":"Old","state":"open"}"#,
+        ),
+        ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/issues/5 HTTP/1.1",
             "200 OK",
             r#"{"number":5,"title":"Old","state":"open","labels":[],"assignees":[{"login":"alice"}]}"#,
@@ -614,14 +619,51 @@ fn pr_edit_updates_title_body_state_and_assignees() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(requests.len(), 2);
-    assert_eq!(requests[1].method, "PATCH");
+    assert_eq!(requests.len(), 3);
+    assert_eq!(requests[0].method, "GET");
+    assert_eq!(requests[0].target, "/api/v3/repos/alice/project/pulls/5");
+    assert_eq!(requests[1].method, "GET");
     assert_eq!(requests[1].target, "/api/v3/repos/alice/project/issues/5");
-    let body: Value = serde_json::from_str(&requests[1].body).unwrap();
+    assert_eq!(requests[2].method, "PATCH");
+    assert_eq!(requests[2].target, "/api/v3/repos/alice/project/issues/5");
+    let body: Value = serde_json::from_str(&requests[2].body).unwrap();
     assert_eq!(body["title"], "New");
     assert_eq!(body["body"], "Updated body");
     assert_eq!(body["state"], "closed");
     assert_eq!(body["assignees"], serde_json::json!(["bob"]));
+}
+
+#[test]
+fn pr_edit_rejects_issue_number_that_is_not_a_pull_request() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
+        "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
+        "404 Not Found",
+        r#"{"message":"not found"}"#,
+    )]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["pr", "edit", "5", "--title", "Wrong target"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(!output.status.success());
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].method, "GET");
+    assert_eq!(requests[0].target, "/api/v3/repos/alice/project/pulls/5");
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("API error (404)"),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]

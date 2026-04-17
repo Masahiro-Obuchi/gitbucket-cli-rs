@@ -111,6 +111,8 @@ pub(super) async fn edit(
     let (owner, repo) = resolve_repo(cli_repo)?;
     let client = create_client(&hostname)?;
 
+    client.get_pull_request(&owner, &repo, number).await?;
+
     let assignees = if add_assignees.is_empty() && remove_assignees.is_empty() {
         None
     } else {
