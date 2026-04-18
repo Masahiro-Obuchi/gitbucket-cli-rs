@@ -2,6 +2,7 @@ use colored::Colorize;
 
 use crate::cli::common::{create_client, resolve_hostname, resolve_repo};
 use crate::error::{GbError, Result};
+use crate::models::pull_request::PullRequest;
 use crate::output::table::print_table;
 use crate::output::{format_state, truncate};
 
@@ -55,6 +56,7 @@ pub(super) async fn view(
     number: u64,
     show_comments: bool,
     web: bool,
+    json: bool,
 ) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = resolve_repo(cli_repo)?;
@@ -68,6 +70,11 @@ pub(super) async fn view(
     }
 
     let pr = client.get_pull_request(&owner, &repo, number).await?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&pr)?);
+        return Ok(());
+    }
 
     let state = if pr.merged == Some(true) {
         "merged"
@@ -119,4 +126,23 @@ pub(super) async fn view(
     }
 
     Ok(())
+}
+
+pub(super) fn print_pr_refs(pr: &PullRequest) {
+    if let Some(head) = &pr.head {
+        println!("Head: {}", format_pr_ref(head));
+    }
+    if let Some(base) = &pr.base {
+        println!("Base: {}", format_pr_ref(base));
+    }
+}
+
+fn format_pr_ref(pr_ref: &crate::models::pull_request::PullRequestHead) -> String {
+    match &pr_ref.repo {
+        Some(repo) => format!("{}:{}", repo.full_name, pr_ref.ref_name),
+        None => pr_ref
+            .label
+            .clone()
+            .unwrap_or_else(|| pr_ref.ref_name.clone()),
+    }
 }

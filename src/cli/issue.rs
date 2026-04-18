@@ -42,6 +42,9 @@ pub enum IssueCommand {
         /// Open in browser
         #[arg(long, short)]
         web: bool,
+        /// Print raw JSON response
+        #[arg(long)]
+        json: bool,
     },
     /// Create a new issue
     Create {
@@ -124,7 +127,8 @@ pub async fn run(
             number,
             comments,
             web,
-        } => view(cli_hostname, cli_repo, number, comments, web).await,
+            json,
+        } => view(cli_hostname, cli_repo, number, comments, web, json).await,
         IssueCommand::Create {
             title,
             body,
@@ -226,6 +230,7 @@ async fn view(
     number: u64,
     show_comments: bool,
     web: bool,
+    json: bool,
 ) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = resolve_repo(cli_repo)?;
@@ -240,6 +245,11 @@ async fn view(
     }
 
     let issue = client.get_issue(&owner, &repo, number).await?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&issue)?);
+        return Ok(());
+    }
 
     println!(
         "{} {}",
