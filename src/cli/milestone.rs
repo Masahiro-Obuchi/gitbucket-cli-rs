@@ -237,6 +237,9 @@ async fn create(
             Ok(())
         }
         Err(GbError::Api { status: 404, .. }) => {
+            eprintln!(
+                "Notice: REST milestone create is unavailable on this GitBucket instance; using web fallback."
+            );
             let session = create_web_session(&hostname).await?;
             session
                 .create_milestone(
@@ -321,6 +324,9 @@ async fn edit(
             Ok(())
         }
         Err(GbError::Api { status: 404, .. }) => {
+            eprintln!(
+                "Notice: REST milestone edit is unavailable on this GitBucket instance; using web fallback."
+            );
             let session = create_web_session(&hostname).await?;
             if title.is_some() || description.is_some() || !matches!(due_on, DueOnInput::Unchanged)
             {
@@ -395,6 +401,9 @@ async fn delete(
             Ok(())
         }
         Err(GbError::Api { status: 404, .. }) => {
+            eprintln!(
+                "Notice: REST milestone delete is unavailable on this GitBucket instance; using web fallback."
+            );
             let session = create_web_session(&hostname).await?;
             session.delete_milestone(&owner, &repo, number).await?;
             println!("✓ Deleted milestone #{}", number);

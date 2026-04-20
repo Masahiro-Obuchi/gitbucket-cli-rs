@@ -59,6 +59,7 @@ pub(super) async fn diff(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
     number: u64,
+    no_pager: bool,
 ) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = resolve_repo(cli_repo)?;
@@ -107,7 +108,12 @@ pub(super) async fn diff(
         )));
     }
 
-    let status = std::process::Command::new("git")
+    let mut diff_command = std::process::Command::new("git");
+    diff_command.env("GIT_PAGER", "cat");
+    if no_pager {
+        diff_command.arg("--no-pager");
+    }
+    let status = diff_command
         .arg("diff")
         .arg(format!("{}...{}", base_ref, head_ref))
         .output()?;

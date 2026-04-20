@@ -19,6 +19,7 @@ fn pr_create_help_mentions_cross_repo_head_syntax() {
     );
     assert!(stdout.contains("--head-owner"), "stdout: {stdout}");
     assert!(stdout.contains("--json"), "stdout: {stdout}");
+    assert!(stdout.contains("--detect-existing"), "stdout: {stdout}");
 }
 
 #[test]
@@ -40,6 +41,29 @@ fn pr_help_mentions_edit_and_comment_edit_last() {
         comment_stdout.contains("--edit-last"),
         "stdout: {comment_stdout}"
     );
+    assert!(
+        comment_stdout.contains("--json"),
+        "stdout: {comment_stdout}"
+    );
+}
+
+#[test]
+fn pr_view_and_diff_help_mention_no_pager() {
+    let view_output = gb_command()
+        .args(["pr", "view", "--help"])
+        .output()
+        .unwrap();
+    let view_stdout = String::from_utf8_lossy(&view_output.stdout);
+    assert!(view_output.status.success());
+    assert!(view_stdout.contains("--no-pager"), "stdout: {view_stdout}");
+
+    let diff_output = gb_command()
+        .args(["pr", "diff", "--help"])
+        .output()
+        .unwrap();
+    let diff_stdout = String::from_utf8_lossy(&diff_output.stdout);
+    assert!(diff_output.status.success());
+    assert!(diff_stdout.contains("--no-pager"), "stdout: {diff_stdout}");
 }
 
 #[test]

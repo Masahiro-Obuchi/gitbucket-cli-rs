@@ -120,13 +120,14 @@ gb issue comment 1 --edit-last -b "Actually fixed!"
 gb pr list --state closed
 gb pr create
 gb pr create -t "From fork" --head feature/x --head-owner alice -B main
+gb pr create --head feature/x -B main --detect-existing
 gb pr view 5
-gb pr view 5 --json
+gb pr view 5 --json --no-pager
 gb pr edit 5 --add-assignee bob
 gb pr merge 5
 gb pr checkout 5
-gb pr diff 5
-gb pr comment 5 --edit-last -b "Updated note"
+gb pr diff 5 --no-pager
+gb pr comment 5 --edit-last -b "Updated note" --json
 ```
 
 ## Command reference
@@ -226,6 +227,7 @@ Invalid values are rejected before the API call is made.
 
 Some GitBucket actions are only exposed through the web UI, not the REST API.
 When `gb repo delete`, `gb repo fork`, `gb issue close`, `gb issue reopen`, issue metadata updates, or `gb pr edit` hit that case, `gb` falls back to a short web sign-in flow and may prompt for your password.
+When a web fallback is used, `gb` writes a `Notice:` line to stderr so scripts can distinguish REST-only success from fallback success.
 For `gb issue edit`, the web fallback currently covers title/body/milestone/state updates. Label and assignee edits still require REST issue edit support from the target GitBucket.
 Use `GB_USER` and `GB_PASSWORD` to preseed those prompts when needed.
 
@@ -237,7 +239,8 @@ gb issue edit 1 --add-label needs-review --remove-assignee bob
 gb pr edit 5 --add-assignee alice,bob --remove-assignee carol
 ```
 
-`gb pr create --head` accepts a branch name for same-repository PRs. For cross-repository PRs, pass `OWNER:BRANCH` or use `--head-owner OWNER --head BRANCH`; after creation, the CLI prints the resolved `Head:` and `Base:` repositories and refs. `gb pr create --json` and `gb pr view --json` print the API payload for automation.
+`gb pr create --head` accepts a branch name for same-repository PRs. For cross-repository PRs, pass `OWNER:BRANCH` or use `--head-owner OWNER --head BRANCH`; after creation, the CLI prints the resolved `Head:` and `Base:` repositories and refs. Use `gb pr create --detect-existing` to return an existing open PR for the same head/base instead of creating a duplicate. `gb pr create --json` and `gb pr view --json` print the API payload for automation.
+`gb pr comment --json` prints the created or edited comment object; normal text output includes the comment ID and URL when GitBucket returns one.
 
 ## Pull Request Checkout And Diff
 

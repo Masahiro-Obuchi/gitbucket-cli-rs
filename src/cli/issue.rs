@@ -475,10 +475,13 @@ async fn edit(
         Err(GbError::Api { status: 404, .. }) => {
             if update_body.labels.is_some() || update_body.assignees.is_some() {
                 return Err(GbError::Other(
-                    "This GitBucket instance does not support editing issue labels or assignees through the web fallback. Retry against an instance with REST issue edit support, or update title/body/milestone/state only.".into(),
+                    "REST issue edit is unavailable on this GitBucket instance. This GitBucket instance does not support editing issue labels or assignees through the web fallback. Retry against an instance with REST issue edit support, or update title/body/milestone/state only.".into(),
                 ));
             }
 
+            eprintln!(
+                "Notice: REST issue edit is unavailable on this GitBucket instance; using web fallback."
+            );
             let session = create_web_session(&hostname).await?;
 
             let next_title = update_body
@@ -562,6 +565,9 @@ async fn set_issue_state(
             Ok(())
         }
         Err(GbError::Api { status: 404, .. }) => {
+            eprintln!(
+                "Notice: REST issue state update is unavailable on this GitBucket instance; using web fallback."
+            );
             let session = create_web_session(&hostname).await?;
             session
                 .update_issue_state(&owner, &repo, number, web_action)

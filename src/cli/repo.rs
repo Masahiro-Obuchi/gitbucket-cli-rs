@@ -363,6 +363,9 @@ async fn delete(hostname: &Option<String>, repo_arg: Option<String>, yes: bool) 
             Ok(())
         }
         Err(GbError::Api { status: 404, .. }) => {
+            eprintln!(
+                "Notice: REST repository delete is unavailable on this GitBucket instance; using web fallback."
+            );
             let session = create_web_session(&hostname).await?;
             session.delete_repo(&owner, &repo).await?;
             println!("✓ Deleted repository {}/{}", owner, repo);
@@ -394,6 +397,9 @@ async fn fork(
         }
         Err(GbError::Api { status: 404, .. }) => {
             let target_account = resolve_fork_target(&hostname, group)?;
+            eprintln!(
+                "Notice: REST repository fork is unavailable on this GitBucket instance; using web fallback."
+            );
             let session = create_web_session(&hostname).await?;
             session.fork_repo(&owner, &repo, &target_account).await?;
             println!("✓ Forked {}/{} → {}/{}", owner, repo, target_account, repo);
