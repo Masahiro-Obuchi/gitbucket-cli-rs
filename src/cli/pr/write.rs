@@ -421,7 +421,7 @@ fn pull_request_matches_head_base(
                 || pr_head
                     .repo
                     .as_ref()
-                    .is_some_and(|repo| repo.full_name.starts_with(&format!("{head_owner}/")))
+                    .is_some_and(|head_repo| head_repo.full_name == format!("{head_owner}/{repo}"))
         }
         None => {
             pr_head.label.as_deref() == Some(head)

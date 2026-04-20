@@ -612,6 +612,67 @@ fn pr_create_detect_existing_returns_matching_open_pull_request() {
 }
 
 #[test]
+fn pr_create_detect_existing_ignores_qualified_head_from_different_repo() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
+            "200 OK",
+            r#"[
+                {"number":7,"title":"Different repo PR","state":"open","head":{"ref":"feature/branch","repo":{"name":"other-project","full_name":"bob/other-project"}},"base":{"ref":"main","repo":{"name":"project","full_name":"alice/project"}}}
+            ]"#,
+        ),
+        ScriptedResponse::json(
+            "POST /api/v3/repos/alice/project/pulls HTTP/1.1",
+            "200 OK",
+            r#"{"number":8,"title":"Add feature","state":"open","head":{"ref":"feature/branch","repo":{"name":"project","full_name":"bob/project"}},"base":{"ref":"main","repo":{"name":"project","full_name":"alice/project"}}}"#,
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args([
+            "pr",
+            "create",
+            "-t",
+            "Add feature",
+            "-b",
+            "PR body",
+            "--head",
+            "feature/branch",
+            "--head-owner",
+            "bob",
+            "--base",
+            "main",
+            "--detect-existing",
+        ])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[1].method, "POST");
+    let body: Value = serde_json::from_str(&requests[1].body).unwrap();
+    assert_eq!(body["head"], "bob:feature/branch");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Created pull request #8: Add feature"),
+        "stdout: {stdout}"
+    );
+}
+
+#[test]
 fn pr_create_detect_existing_preserves_create_error_when_recheck_fails() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_scripted_server(vec![
