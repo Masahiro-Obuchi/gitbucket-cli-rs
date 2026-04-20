@@ -612,6 +612,65 @@ fn pr_create_detect_existing_returns_matching_open_pull_request() {
 }
 
 #[test]
+fn pr_create_detect_existing_preserves_create_error_when_recheck_fails() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
+            "200 OK",
+            "[]",
+        ),
+        ScriptedResponse::json(
+            "POST /api/v3/repos/alice/project/pulls HTTP/1.1",
+            "422 Unprocessable Entity",
+            r#"{"message":"Validation failed: pull request already exists"}"#,
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
+            "500 Internal Server Error",
+            r#"{"message":"temporary list failure"}"#,
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args([
+            "pr",
+            "create",
+            "-t",
+            "Add feature",
+            "-b",
+            "PR body",
+            "--head",
+            "feature/branch",
+            "--base",
+            "main",
+            "--detect-existing",
+        ])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(!output.status.success());
+    assert_eq!(requests.len(), 3);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Validation failed: pull request already exists"),
+        "stderr: {stderr}"
+    );
+    assert!(
+        !stderr.contains("temporary list failure"),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
 fn pr_edit_updates_title_body_state_and_assignees() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_scripted_server(vec![

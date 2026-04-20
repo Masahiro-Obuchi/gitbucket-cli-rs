@@ -85,15 +85,12 @@ pub(super) async fn create(
     {
         Ok(pr) => print_pr_create_result(&client, &owner, &repo, &pr, json, "Created"),
         Err(err) if detect_existing => {
-            if let Some(pr) =
-                find_existing_open_pull_request(&client, &owner, &repo, &head, &base).await?
-            {
-                eprintln!(
-                    "Notice: PR create failed; returning an existing open PR for the same head/base."
-                );
-                print_pr_create_result(&client, &owner, &repo, &pr, json, "Found existing")
-            } else {
-                Err(err)
+            match find_existing_open_pull_request(&client, &owner, &repo, &head, &base).await {
+                Ok(Some(pr)) => {
+                    eprintln!("Notice: PR create failed; returning an existing open PR.");
+                    print_pr_create_result(&client, &owner, &repo, &pr, json, "Found existing")
+                }
+                Ok(None) | Err(_) => Err(err),
             }
         }
         Err(err) => Err(err),
