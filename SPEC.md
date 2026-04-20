@@ -1013,7 +1013,7 @@ Pull request:
 - `PATCH /repos/{owner}/{repo}/issues/{number}` (PR title/body/state/assignees)
 - `POST /{owner}/{repo}/issues/edit_title/{number}` (PR edit web fallback)
 - `POST /{owner}/{repo}/issues/edit/{number}` (PR edit web fallback)
-- `POST /{owner}/{repo}/issues/{number}/assignee/{add|remove}` (PR edit web fallback)
+- `POST /{owner}/{repo}/issues/{number}/assignee/{new|delete}` (PR edit web fallback)
 - `POST /{owner}/{repo}/issue_comments/state` (PR state web fallback)
 
 Label:
