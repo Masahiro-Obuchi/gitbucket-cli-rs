@@ -2,7 +2,7 @@ use dialoguer::Input;
 
 use crate::cli::common::{create_client, create_web_session, resolve_hostname, resolve_repo};
 use crate::error::{GbError, Result};
-use crate::models::comment::CreateComment;
+use crate::models::comment::{Comment, CreateComment};
 use crate::models::issue::{Issue, UpdateIssue};
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest, PullRequest};
 
@@ -19,6 +19,7 @@ pub(super) async fn create(
     head_owner: Option<String>,
     base: Option<String>,
     json: bool,
+    detect_existing: bool,
 ) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = resolve_repo(cli_repo)?;
@@ -42,6 +43,15 @@ pub(super) async fn create(
             .interact_text()?,
     };
 
+    if detect_existing {
+        if let Some(pr) =
+            find_existing_open_pull_request(&client, &owner, &repo, &head, &base).await?
+        {
+            print_pr_create_result(&client, &owner, &repo, &pr, json, "Found existing")?;
+            return Ok(());
+        }
+    }
+
     let title = match title {
         Some(t) => t,
         None => Input::new().with_prompt("Title").interact_text()?,
@@ -64,24 +74,27 @@ pub(super) async fn create(
 
     let create_body = CreatePullRequest {
         title,
-        head,
-        base,
+        head: head.clone(),
+        base: base.clone(),
         body: body_text,
     };
 
-    let pr = client
+    match client
         .create_pull_request(&owner, &repo, &create_body)
-        .await?;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&pr)?);
-        return Ok(());
+        .await
+    {
+        Ok(pr) => print_pr_create_result(&client, &owner, &repo, &pr, json, "Created"),
+        Err(err) if detect_existing => {
+            match find_existing_open_pull_request(&client, &owner, &repo, &head, &base).await {
+                Ok(Some(pr)) => {
+                    eprintln!("Notice: PR create failed; returning an existing open PR.");
+                    print_pr_create_result(&client, &owner, &repo, &pr, json, "Found existing")
+                }
+                Ok(None) | Err(_) => Err(err),
+            }
+        }
+        Err(err) => Err(err),
     }
-
-    println!("✓ Created pull request #{}: {}", pr.number, pr.title);
-    print_pr_refs(&pr);
-    println!("URL: {}", pr_url(&client, &owner, &repo, &pr));
-    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -148,6 +161,9 @@ pub(super) async fn edit(
             Ok(())
         }
         Err(GbError::Api { status: 404, .. }) => {
+            eprintln!(
+                "Notice: REST PR edit is unavailable on this GitBucket instance; using web fallback."
+            );
             let session = create_web_session(&hostname).await?;
 
             let next_title = update_body
@@ -265,6 +281,7 @@ pub(super) async fn comment(
     number: u64,
     body: Option<String>,
     edit_last: bool,
+    json: bool,
 ) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = resolve_repo(cli_repo)?;
@@ -297,15 +314,15 @@ pub(super) async fn comment(
                 ))
             })?;
 
-        client
+        let comment = client
             .update_issue_comment(&owner, &repo, comment.id, &comment_body)
             .await?;
-        println!("✓ Edited comment {} on PR #{}", comment.id, number);
+        print_comment_result(&comment, number, true, json)?;
     } else {
-        client
+        let comment = client
             .create_pr_comment(&owner, &repo, number, &comment_body)
             .await?;
-        println!("✓ Added comment to PR #{}", number);
+        print_comment_result(&comment, number, false, json)?;
     }
     Ok(())
 }
@@ -356,6 +373,98 @@ fn merge_named_values(
         }
     }
     values
+}
+
+async fn find_existing_open_pull_request(
+    client: &crate::api::client::ApiClient,
+    owner: &str,
+    repo: &str,
+    head: &str,
+    base: &str,
+) -> Result<Option<PullRequest>> {
+    let prs = client.list_pull_requests(owner, repo, "open").await?;
+    Ok(prs
+        .into_iter()
+        .find(|pr| pull_request_matches_head_base(pr, owner, repo, head, base)))
+}
+
+fn pull_request_matches_head_base(
+    pr: &PullRequest,
+    owner: &str,
+    repo: &str,
+    head: &str,
+    base: &str,
+) -> bool {
+    if pr
+        .base
+        .as_ref()
+        .is_none_or(|pr_base| pr_base.ref_name != base)
+    {
+        return false;
+    }
+
+    let Some(pr_head) = pr.head.as_ref() else {
+        return false;
+    };
+
+    let (head_owner, head_branch) = head
+        .split_once(':')
+        .map(|(owner, branch)| (Some(owner), branch))
+        .unwrap_or((None, head));
+    if pr_head.ref_name != head_branch {
+        return false;
+    }
+
+    match head_owner {
+        Some(head_owner) => {
+            pr_head.label.as_deref() == Some(head)
+                || pr_head
+                    .repo
+                    .as_ref()
+                    .is_some_and(|head_repo| head_repo.full_name == format!("{head_owner}/{repo}"))
+        }
+        None => {
+            pr_head.label.as_deref() == Some(head)
+                || pr_head.label.as_deref() == Some(&format!("{owner}:{head_branch}"))
+                || pr_head
+                    .repo
+                    .as_ref()
+                    .is_some_and(|head_repo| head_repo.full_name == format!("{owner}/{repo}"))
+        }
+    }
+}
+
+fn print_pr_create_result(
+    client: &crate::api::client::ApiClient,
+    owner: &str,
+    repo: &str,
+    pr: &PullRequest,
+    json: bool,
+    verb: &str,
+) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(pr)?);
+        return Ok(());
+    }
+
+    println!("✓ {} pull request #{}: {}", verb, pr.number, pr.title);
+    print_pr_refs(pr);
+    println!("URL: {}", pr_url(client, owner, repo, pr));
+    Ok(())
+}
+
+fn print_comment_result(comment: &Comment, pr_number: u64, edited: bool, json: bool) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(comment)?);
+        return Ok(());
+    }
+
+    let action = if edited { "Edited" } else { "Added" };
+    println!("✓ {} comment {} on PR #{}", action, comment.id, pr_number);
+    if let Some(url) = comment.html_url.as_deref().filter(|url| !url.is_empty()) {
+        println!("URL: {}", url);
+    }
+    Ok(())
 }
 
 async fn update_pr_assignees_via_web(

@@ -650,6 +650,7 @@ gb pr view <NUMBER> [OPTIONS]
 | `--comments` | `-c` | Include comments |
 | `--web` | `-w` | Open in browser |
 | `--json` | — | Print JSON |
+| `--no-pager` | — | Do not use a pager |
 
 #### `gb pr create`
 
@@ -667,8 +668,10 @@ gb pr create [OPTIONS]
 | `--head-owner <OWNER>` | — | Owner for the head branch; sends the head as `OWNER:BRANCH` |
 | `--base <BRANCH>` | `-B` | Base branch (prompts, default `main`) |
 | `--json` | — | Print the created pull request as JSON |
+| `--detect-existing` | — | Return an existing open PR for the same head/base instead of creating a duplicate |
 
 On normal text output, `gb pr create` prints the created PR number/title, resolved `Head:` and `Base:` repository refs when the API returns them, and a canonical browser URL using `/pull/{number}`.
+With `--detect-existing`, `gb` checks open pull requests for a matching head/base before prompting for title/body or creating a new PR. If create fails after that check, `gb` checks again and returns the matching open PR when one exists.
 
 #### `gb pr edit`
 
@@ -726,8 +729,12 @@ Execution flow:
 Show PR diff locally.
 
 ```text
-gb pr diff <NUMBER>
+gb pr diff <NUMBER> [--no-pager]
 ```
+
+| Option | Short | Description |
+| --- | --- | --- |
+| `--no-pager` | — | Do not use a pager |
 
 Execution flow:
 
@@ -747,6 +754,9 @@ gb pr comment <NUMBER> [OPTIONS]
 | --- | --- | --- |
 | `--body <TEXT>` | `-b` | Comment body (prompted when omitted) |
 | `--edit-last` | — | Edit your last comment instead of adding a new one |
+| `--json` | — | Print the created or edited comment object as JSON |
+
+On normal text output, `gb pr comment` prints the comment ID. If the API returns `html_url`, it also prints the comment URL.
 
 ---
 
@@ -872,6 +882,10 @@ Available on list commands (`repo list`, `issue list`, `pr list`, `label list`, 
 ### 6.3 Browser output
 
 Available on view/browse flows using `--web` or `gb browse`.
+
+### 6.4 Web fallback notices
+
+When a command falls back from a missing REST API endpoint to a GitBucket web UI route, `gb` writes a `Notice:` line to stderr before performing the web session flow. Unsupported fields must return an explicit error that distinguishes "REST API unavailable" from "web fallback does not support this field."
 
 ---
 

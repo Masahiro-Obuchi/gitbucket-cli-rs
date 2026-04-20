@@ -1043,7 +1043,8 @@ fn e2e_pr_comment_and_view_comments_against_live_instance() {
     let (number, branch, _) = create_live_pr_fixture(temp.path(), "e2e-pr-comment");
     let comment_stdout = add_pr_comment(temp.path(), number, &comment_body);
     assert!(
-        comment_stdout.contains(&format!("Added comment to PR #{number}")),
+        comment_stdout.contains("Added comment")
+            && comment_stdout.contains(&format!("on PR #{number}")),
         "stdout: {comment_stdout}"
     );
 

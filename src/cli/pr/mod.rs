@@ -62,6 +62,9 @@ pub enum PrCommand {
         /// Output the created pull request as JSON
         #[arg(long)]
         json: bool,
+        /// Return an existing open PR for the same head/base instead of creating a duplicate
+        #[arg(long)]
+        detect_existing: bool,
     },
     /// Edit a pull request
     Edit {
@@ -105,6 +108,9 @@ pub enum PrCommand {
     Diff {
         /// PR number
         number: u64,
+        /// Do not use a pager
+        #[arg(long)]
+        no_pager: bool,
     },
     /// Add a comment to a pull request
     Comment {
@@ -116,6 +122,9 @@ pub enum PrCommand {
         /// Edit your last comment instead of adding a new one
         #[arg(long)]
         edit_last: bool,
+        /// Output the comment as JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -131,7 +140,17 @@ pub async fn run(
             comments,
             web,
             json,
-        } => read::view(cli_hostname, cli_repo, number, comments, web, json).await,
+        } => {
+            read::view(
+                cli_hostname,
+                cli_repo,
+                number,
+                comments,
+                web,
+                json,
+            )
+            .await
+        }
         PrCommand::Create {
             title,
             body,
@@ -139,6 +158,7 @@ pub async fn run(
             head_owner,
             base,
             json,
+            detect_existing,
         } => {
             write::create(
                 cli_hostname,
@@ -149,6 +169,7 @@ pub async fn run(
                 head_owner,
                 base,
                 json,
+                detect_existing,
             )
             .await
         }
@@ -177,12 +198,15 @@ pub async fn run(
             write::merge(cli_hostname, cli_repo, number, message).await
         }
         PrCommand::Checkout { number } => worktree::checkout(cli_hostname, cli_repo, number).await,
-        PrCommand::Diff { number } => worktree::diff(cli_hostname, cli_repo, number).await,
+        PrCommand::Diff { number, no_pager } => {
+            worktree::diff(cli_hostname, cli_repo, number, no_pager).await
+        }
         PrCommand::Comment {
             number,
             body,
             edit_last,
-        } => write::comment(cli_hostname, cli_repo, number, body, edit_last).await,
+            json,
+        } => write::comment(cli_hostname, cli_repo, number, body, edit_last, json).await,
     }
 }
 

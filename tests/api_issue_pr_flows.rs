@@ -332,7 +332,7 @@ fn issue_edit_rejects_label_and_assignee_changes_when_only_web_fallback_is_avail
     assert_eq!(requests.len(), 2);
     assert!(
         String::from_utf8_lossy(&output.stderr).contains(
-            "does not support editing issue labels or assignees through the web fallback"
+            "web fallback cannot edit labels or assignees"
         ),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
@@ -567,6 +567,171 @@ fn pr_create_json_prints_created_pull_request() {
 }
 
 #[test]
+fn pr_create_detect_existing_returns_matching_open_pull_request() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
+        "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
+        "200 OK",
+        r#"[
+            {"number":7,"title":"Existing PR","state":"open","head":{"ref":"feature/branch","label":"alice:feature/branch","repo":{"name":"project","full_name":"alice/project"}},"base":{"ref":"main","repo":{"name":"project","full_name":"alice/project"}}}
+        ]"#,
+    )]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args([
+            "pr",
+            "create",
+            "--head",
+            "feature/branch",
+            "--base",
+            "main",
+            "--detect-existing",
+        ])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(requests.len(), 1);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Found existing pull request #7: Existing PR"),
+        "stdout: {stdout}"
+    );
+}
+
+#[test]
+fn pr_create_detect_existing_ignores_qualified_head_from_different_repo() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
+            "200 OK",
+            r#"[
+                {"number":7,"title":"Different repo PR","state":"open","head":{"ref":"feature/branch","repo":{"name":"other-project","full_name":"bob/other-project"}},"base":{"ref":"main","repo":{"name":"project","full_name":"alice/project"}}}
+            ]"#,
+        ),
+        ScriptedResponse::json(
+            "POST /api/v3/repos/alice/project/pulls HTTP/1.1",
+            "200 OK",
+            r#"{"number":8,"title":"Add feature","state":"open","head":{"ref":"feature/branch","repo":{"name":"project","full_name":"bob/project"}},"base":{"ref":"main","repo":{"name":"project","full_name":"alice/project"}}}"#,
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args([
+            "pr",
+            "create",
+            "-t",
+            "Add feature",
+            "-b",
+            "PR body",
+            "--head",
+            "feature/branch",
+            "--head-owner",
+            "bob",
+            "--base",
+            "main",
+            "--detect-existing",
+        ])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[1].method, "POST");
+    let body: Value = serde_json::from_str(&requests[1].body).unwrap();
+    assert_eq!(body["head"], "bob:feature/branch");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Created pull request #8: Add feature"),
+        "stdout: {stdout}"
+    );
+}
+
+#[test]
+fn pr_create_detect_existing_preserves_create_error_when_recheck_fails() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
+            "200 OK",
+            "[]",
+        ),
+        ScriptedResponse::json(
+            "POST /api/v3/repos/alice/project/pulls HTTP/1.1",
+            "422 Unprocessable Entity",
+            r#"{"message":"Validation failed: pull request already exists"}"#,
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
+            "500 Internal Server Error",
+            r#"{"message":"temporary list failure"}"#,
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args([
+            "pr",
+            "create",
+            "-t",
+            "Add feature",
+            "-b",
+            "PR body",
+            "--head",
+            "feature/branch",
+            "--base",
+            "main",
+            "--detect-existing",
+        ])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(!output.status.success());
+    assert_eq!(requests.len(), 3);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Validation failed: pull request already exists"),
+        "stderr: {stderr}"
+    );
+    assert!(
+        !stderr.contains("temporary list failure"),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
 fn pr_edit_updates_title_body_state_and_assignees() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_scripted_server(vec![
@@ -717,6 +882,11 @@ fn pr_edit_falls_back_to_gitbucket_web_session_when_issue_patch_is_missing() {
 
     assert!(
         output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("using web fallback"),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
@@ -1131,7 +1301,10 @@ fn issue_comment_edit_last_rejects_external_pagination_link() {
 #[test]
 fn pr_comment_sends_expected_payload() {
     let temp = tempdir().unwrap();
-    let (port, server) = spawn_server("200 OK", r#"{"id":12,"body":"Please rebase"}"#);
+    let (port, server) = spawn_server(
+        "200 OK",
+        r#"{"id":12,"body":"Please rebase","html_url":"http://127.0.0.1/alice/project/pull/5#comment-12"}"#,
+    );
 
     let output = gb_command()
         .current_dir(temp.path())
@@ -1158,6 +1331,50 @@ fn pr_comment_sends_expected_payload() {
     );
     let body: Value = serde_json::from_str(&request.body).unwrap();
     assert_eq!(body["body"], "Please rebase");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Added comment 12 on PR #5"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("URL: http://127.0.0.1/alice/project/pull/5#comment-12"),
+        "stdout: {stdout}"
+    );
+}
+
+#[test]
+fn pr_comment_json_prints_comment_object() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server(
+        "200 OK",
+        r#"{"id":12,"body":"Please rebase","html_url":"http://127.0.0.1/alice/project/pull/5#comment-12"}"#,
+    );
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["pr", "comment", "5", "--body", "Please rebase", "--json"])
+        .output()
+        .unwrap();
+
+    let _request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(stdout["id"], 12);
+    assert_eq!(stdout["body"], "Please rebase");
+    assert_eq!(
+        stdout["html_url"],
+        "http://127.0.0.1/alice/project/pull/5#comment-12"
+    );
 }
 
 #[test]
