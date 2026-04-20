@@ -686,7 +686,7 @@ gb pr edit <NUMBER> [OPTIONS]
 | `--remove-assignee <USER>` | — | Remove an assignee; repeatable or comma-separated |
 | `--state <STATE>` | — | Update PR state: `open` or `closed` |
 
-Implementation detail: PR title/body/state/assignee metadata is edited by calling the **issues** endpoint (`PATCH /repos/{owner}/{repo}/issues/{number}`).
+Implementation detail: PR title/body/state/assignee metadata is edited by calling the **issues** endpoint (`PATCH /repos/{owner}/{repo}/issues/{number}`). If GitBucket returns `404` for that REST update, `gb` falls back to the GitBucket web UI routes for PR title/body/state/assignee updates.
 
 #### `gb pr close`
 
@@ -1011,6 +1011,10 @@ Pull request:
 - `POST /repos/{owner}/{repo}/issues/{number}/comments` (PR comments)
 - `PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}` (PR comment edit)
 - `PATCH /repos/{owner}/{repo}/issues/{number}` (PR title/body/state/assignees)
+- `POST /{owner}/{repo}/issues/edit_title/{number}` (PR edit web fallback)
+- `POST /{owner}/{repo}/issues/edit/{number}` (PR edit web fallback)
+- `POST /{owner}/{repo}/issues/{number}/assignee/{new|delete}` (PR edit web fallback)
+- `POST /{owner}/{repo}/issue_comments/state` (PR state web fallback)
 
 Label:
 

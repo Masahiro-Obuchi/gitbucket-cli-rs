@@ -979,6 +979,61 @@ fn e2e_pr_create_and_merge_against_live_instance() {
 
 #[test]
 #[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
+fn e2e_pr_edit_against_live_instance() {
+    let temp = tempdir().unwrap();
+    let repo = required_env("GB_E2E_REPO");
+    let user = required_env("GB_E2E_USER");
+    let suffix = unique_suffix();
+    let updated_title = format!("E2E PR edited {suffix}");
+    let updated_body = format!("Updated PR body {suffix}");
+
+    login(temp.path());
+
+    let (number, _, _) = create_live_pr_fixture(temp.path(), "e2e-pr-edit");
+
+    let edit_stdout = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &[
+            "pr",
+            "edit",
+            &number.to_string(),
+            "--title",
+            &updated_title,
+            "--body",
+            &updated_body,
+            "--add-assignee",
+            &user,
+            "--state",
+            "closed",
+        ],
+    );
+    assert!(
+        edit_stdout.contains(&format!("Updated pull request #{number}: {updated_title}")),
+        "stdout: {edit_stdout}"
+    );
+
+    let api_stdout = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["api", &format!("repos/{repo}/pulls/{number}")],
+    );
+    let payload: Value = serde_json::from_str(&api_stdout).unwrap();
+    assert_eq!(payload["title"], updated_title);
+    assert_eq!(payload["body"], updated_body);
+    assert_eq!(payload["state"], "closed");
+    assert!(
+        payload["assignees"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|assignee| assignee["login"] == user),
+        "payload: {api_stdout}"
+    );
+}
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
 fn e2e_pr_comment_and_view_comments_against_live_instance() {
     let temp = tempdir().unwrap();
     let comment_body = format!("pr comment body {}", unique_suffix());
