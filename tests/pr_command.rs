@@ -48,15 +48,7 @@ fn pr_help_mentions_edit_and_comment_edit_last() {
 }
 
 #[test]
-fn pr_view_and_diff_help_mention_no_pager() {
-    let view_output = gb_command()
-        .args(["pr", "view", "--help"])
-        .output()
-        .unwrap();
-    let view_stdout = String::from_utf8_lossy(&view_output.stdout);
-    assert!(view_output.status.success());
-    assert!(view_stdout.contains("--no-pager"), "stdout: {view_stdout}");
-
+fn pr_diff_help_mentions_no_pager() {
     let diff_output = gb_command()
         .args(["pr", "diff", "--help"])
         .output()

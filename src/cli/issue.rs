@@ -475,7 +475,7 @@ async fn edit(
         Err(GbError::Api { status: 404, .. }) => {
             if update_body.labels.is_some() || update_body.assignees.is_some() {
                 return Err(GbError::Other(
-                    "REST issue edit is unavailable on this GitBucket instance. This GitBucket instance does not support editing issue labels or assignees through the web fallback. Retry against an instance with REST issue edit support, or update title/body/milestone/state only.".into(),
+                    "REST issue edit is unavailable on this GitBucket instance, and the web fallback cannot edit labels or assignees. Retry against an instance with REST issue edit support, or update title/body/milestone/state only.".into(),
                 ));
             }
 

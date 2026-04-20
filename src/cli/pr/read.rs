@@ -57,7 +57,6 @@ pub(super) async fn view(
     show_comments: bool,
     web: bool,
     json: bool,
-    _no_pager: bool,
 ) -> Result<()> {
     let hostname = resolve_hostname(hostname)?;
     let (owner, repo) = resolve_repo(cli_repo)?;

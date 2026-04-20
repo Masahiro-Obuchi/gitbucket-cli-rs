@@ -109,8 +109,8 @@ pub(super) async fn diff(
     }
 
     let mut diff_command = std::process::Command::new("git");
-    diff_command.env("GIT_PAGER", "cat");
     if no_pager {
+        diff_command.env("GIT_PAGER", "cat");
         diff_command.arg("--no-pager");
     }
     let status = diff_command

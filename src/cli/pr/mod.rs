@@ -41,9 +41,6 @@ pub enum PrCommand {
         /// Output as JSON
         #[arg(long)]
         json: bool,
-        /// Do not use a pager
-        #[arg(long)]
-        no_pager: bool,
     },
     /// Create a pull request
     Create {
@@ -143,7 +140,6 @@ pub async fn run(
             comments,
             web,
             json,
-            no_pager,
         } => {
             read::view(
                 cli_hostname,
@@ -152,7 +148,6 @@ pub async fn run(
                 comments,
                 web,
                 json,
-                no_pager,
             )
             .await
         }
