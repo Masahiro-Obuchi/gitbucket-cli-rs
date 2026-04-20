@@ -144,6 +144,33 @@ impl GitBucketWebSession {
         .await
     }
 
+    pub async fn update_issue_assignee(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        action: &str,
+        assignee: &str,
+    ) -> Result<()> {
+        let path_action = match action {
+            "add" => "new",
+            "remove" => "delete",
+            other => {
+                return Err(GbError::Other(format!(
+                    "Invalid assignee action '{}'. Expected add or remove.",
+                    other
+                )))
+            }
+        };
+
+        self.post_form(
+            &format!("/{owner}/{repo}/issues/{number}/assignee/{path_action}"),
+            vec![("assigneeUserName", assignee.to_string())],
+            "update the issue assignee",
+        )
+        .await
+    }
+
     pub async fn create_milestone(
         &self,
         owner: &str,

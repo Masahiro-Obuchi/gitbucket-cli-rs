@@ -1,9 +1,9 @@
 use dialoguer::Input;
 
-use crate::cli::common::{create_client, resolve_hostname, resolve_repo};
+use crate::cli::common::{create_client, create_web_session, resolve_hostname, resolve_repo};
 use crate::error::{GbError, Result};
 use crate::models::comment::CreateComment;
-use crate::models::issue::UpdateIssue;
+use crate::models::issue::{Issue, UpdateIssue};
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest, PullRequest};
 
 use super::git::current_branch_name;
@@ -111,21 +111,24 @@ pub(super) async fn edit(
     let (owner, repo) = resolve_repo(cli_repo)?;
     let client = create_client(&hostname)?;
 
-    client.get_pull_request(&owner, &repo, number).await?;
+    let current_pr = client.get_pull_request(&owner, &repo, number).await?;
 
-    let assignees = if add_assignees.is_empty() && remove_assignees.is_empty() {
+    let current_issue = if add_assignees.is_empty() && remove_assignees.is_empty() {
         None
     } else {
-        let current = client.get_issue(&owner, &repo, number).await?;
-        Some(merge_named_values(
+        Some(client.get_issue(&owner, &repo, number).await?)
+    };
+
+    let assignees = current_issue.as_ref().map(|current| {
+        merge_named_values(
             current
                 .assignees
                 .iter()
                 .map(|assignee| assignee.login.clone()),
             add_assignees,
             remove_assignees,
-        ))
-    };
+        )
+    });
 
     let update_body = UpdateIssue {
         state,
@@ -136,11 +139,69 @@ pub(super) async fn edit(
         milestone: None,
     };
 
-    let issue = client
+    match client
         .update_issue(&owner, &repo, number, &update_body)
-        .await?;
-    println!("✓ Updated pull request #{}: {}", issue.number, issue.title);
-    Ok(())
+        .await
+    {
+        Ok(issue) => {
+            println!("✓ Updated pull request #{}: {}", issue.number, issue.title);
+            Ok(())
+        }
+        Err(GbError::Api { status: 404, .. }) => {
+            let session = create_web_session(&hostname).await?;
+
+            let next_title = update_body
+                .title
+                .clone()
+                .unwrap_or_else(|| current_pr.title.clone());
+            let next_body = update_body
+                .body
+                .clone()
+                .unwrap_or_else(|| current_pr.body.clone().unwrap_or_default());
+
+            if next_title != current_pr.title {
+                session
+                    .edit_issue_title(&owner, &repo, number, &next_title)
+                    .await?;
+            }
+
+            if next_body != current_pr.body.clone().unwrap_or_default() {
+                session
+                    .edit_issue_content(&owner, &repo, number, &next_title, &next_body)
+                    .await?;
+            }
+
+            if let (Some(current), Some(next)) =
+                (current_issue.as_ref(), update_body.assignees.as_ref())
+            {
+                update_pr_assignees_via_web(&session, &owner, &repo, number, current, next).await?;
+            }
+
+            if let Some(state) = update_body.state.as_deref() {
+                if state != current_pr.state {
+                    let action = if state == "closed" { "close" } else { "reopen" };
+                    session
+                        .update_issue_state(&owner, &repo, number, action)
+                        .await?;
+                }
+            }
+
+            match client.get_pull_request(&owner, &repo, number).await {
+                Ok(pr) => {
+                    println!("✓ Updated pull request #{}: {}", pr.number, pr.title);
+                }
+                Err(err) => {
+                    eprintln!(
+                        "Warning: failed to fetch updated pull request #{} from API after web fallback: {}",
+                        number, err
+                    );
+                    println!("✓ Updated pull request #{}: {}", number, next_title);
+                }
+            }
+            Ok(())
+        }
+        Err(err) => Err(err),
+    }
 }
 
 pub(super) async fn close(
@@ -295,6 +356,41 @@ fn merge_named_values(
         }
     }
     values
+}
+
+async fn update_pr_assignees_via_web(
+    session: &crate::api::web::GitBucketWebSession,
+    owner: &str,
+    repo: &str,
+    number: u64,
+    current: &Issue,
+    next: &[String],
+) -> Result<()> {
+    let current: Vec<String> = current
+        .assignees
+        .iter()
+        .map(|assignee| assignee.login.clone())
+        .collect();
+
+    for assignee in current
+        .iter()
+        .filter(|assignee| !next.iter().any(|value| value == *assignee))
+    {
+        session
+            .update_issue_assignee(owner, repo, number, "remove", assignee)
+            .await?;
+    }
+
+    for assignee in next
+        .iter()
+        .filter(|assignee| !current.iter().any(|value| value == *assignee))
+    {
+        session
+            .update_issue_assignee(owner, repo, number, "add", assignee)
+            .await?;
+    }
+
+    Ok(())
 }
 
 fn pr_url(
