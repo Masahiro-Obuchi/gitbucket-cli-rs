@@ -61,6 +61,41 @@ fn repo_clone_full_url_does_not_require_gb_authentication() {
 }
 
 #[test]
+fn repo_clone_full_url_rejects_missing_profile() {
+    let temp = tempdir().unwrap();
+    let remote = temp.path().join("remote.git");
+    let init = Command::new("git")
+        .args(["init", "--bare", remote.to_str().unwrap()])
+        .status()
+        .unwrap();
+    assert!(init.success());
+    std::fs::write(temp.path().join("config.toml"), "").unwrap();
+
+    let clone_url = format!("file://{}", remote.display());
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args([
+            "--profile",
+            "missing",
+            "repo",
+            "clone",
+            &clone_url,
+            "cloned",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("Profile 'missing' is not configured"),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!temp.path().join("cloned").exists());
+}
+
+#[test]
 fn pr_merge_returns_non_zero_when_server_reports_not_merged() {
     let temp = tempdir().unwrap();
     let (port, server) = serve_json_once(
@@ -152,6 +187,99 @@ protocol = "https"
     assert!(
         !config.contains("secret-token"),
         "config was not updated: {config}"
+    );
+}
+
+#[test]
+fn auth_logout_with_profile_removes_fallback_global_credentials() {
+    let temp = tempdir().unwrap();
+    std::fs::write(
+        temp.path().join("config.toml"),
+        r#"
+default_profile = "work"
+
+[profiles.work]
+default_host = "gitbucket.example.com"
+default_repo = "alice/project"
+
+[hosts."gitbucket.example.com"]
+token = "global-token"
+user = "alice"
+protocol = "https"
+"#,
+    )
+    .unwrap();
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args(["auth", "logout"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("global credentials used by profile work"),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+
+    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    assert!(
+        !config.contains("global-token"),
+        "config was not updated: {config}"
+    );
+}
+
+#[test]
+fn auth_logout_with_profile_prefers_profile_scoped_credentials() {
+    let temp = tempdir().unwrap();
+    std::fs::write(
+        temp.path().join("config.toml"),
+        r#"
+default_profile = "work"
+
+[profiles.work]
+default_host = "gitbucket.example.com"
+
+[profiles.work.hosts."gitbucket.example.com"]
+token = "profile-token"
+user = "alice"
+protocol = "https"
+
+[hosts."gitbucket.example.com"]
+token = "global-token"
+user = "bob"
+protocol = "https"
+"#,
+    )
+    .unwrap();
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args(["auth", "logout"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    assert!(
+        !config.contains("profile-token"),
+        "profile token was not removed: {config}"
+    );
+    assert!(
+        config.contains("global-token"),
+        "global token should remain when profile-scoped credentials exist: {config}"
     );
 }
 

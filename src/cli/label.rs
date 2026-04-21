@@ -52,23 +52,41 @@ pub async fn run(
     args: LabelArgs,
     cli_hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
 ) -> Result<()> {
     match args.command {
-        LabelCommand::List { json } => list(cli_hostname, cli_repo, json).await,
-        LabelCommand::View { name } => view(cli_hostname, cli_repo, &name).await,
+        LabelCommand::List { json } => list(cli_hostname, cli_repo, cli_profile, json).await,
+        LabelCommand::View { name } => view(cli_hostname, cli_repo, cli_profile, &name).await,
         LabelCommand::Create {
             name,
             color,
             description,
-        } => create(cli_hostname, cli_repo, name, color, description).await,
-        LabelCommand::Delete { name, yes } => delete(cli_hostname, cli_repo, &name, yes).await,
+        } => {
+            create(
+                cli_hostname,
+                cli_repo,
+                cli_profile,
+                name,
+                color,
+                description,
+            )
+            .await
+        }
+        LabelCommand::Delete { name, yes } => {
+            delete(cli_hostname, cli_repo, cli_profile, &name, yes).await
+        }
     }
 }
 
-async fn list(hostname: &Option<String>, cli_repo: &Option<String>, json: bool) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+async fn list(
+    hostname: &Option<String>,
+    cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
+    json: bool,
+) -> Result<()> {
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
     let labels = client.list_labels(&owner, &repo).await?;
 
     if json {
@@ -90,10 +108,15 @@ async fn list(hostname: &Option<String>, cli_repo: &Option<String>, json: bool) 
     Ok(())
 }
 
-async fn view(hostname: &Option<String>, cli_repo: &Option<String>, name: &str) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+async fn view(
+    hostname: &Option<String>,
+    cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
+    name: &str,
+) -> Result<()> {
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
     let label = client.get_label(&owner, &repo, name).await?;
 
     println!("{}", label.name.bold());
@@ -115,13 +138,14 @@ async fn view(hostname: &Option<String>, cli_repo: &Option<String>, name: &str) 
 async fn create(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     name: Option<String>,
     color: Option<String>,
     description: Option<String>,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
 
     let name = match name {
         Some(name) => name,
@@ -158,11 +182,12 @@ async fn create(
 async fn delete(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     name: &str,
     yes: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
 
     if !yes {
         let confirmed = Confirm::new()
@@ -178,7 +203,7 @@ async fn delete(
         }
     }
 
-    let client = create_client(&hostname)?;
+    let client = create_client(&hostname, cli_profile)?;
     client.delete_label(&owner, &repo, name).await?;
     println!("✓ Deleted label {}", name);
     Ok(())

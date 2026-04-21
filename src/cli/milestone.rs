@@ -94,15 +94,30 @@ pub async fn run(
     args: MilestoneArgs,
     cli_hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
 ) -> Result<()> {
     match args.command {
-        MilestoneCommand::List { state, json } => list(cli_hostname, cli_repo, &state, json).await,
-        MilestoneCommand::View { number } => view(cli_hostname, cli_repo, number).await,
+        MilestoneCommand::List { state, json } => {
+            list(cli_hostname, cli_repo, cli_profile, &state, json).await
+        }
+        MilestoneCommand::View { number } => {
+            view(cli_hostname, cli_repo, cli_profile, number).await
+        }
         MilestoneCommand::Create {
             title,
             description,
             due_on,
-        } => create(cli_hostname, cli_repo, title, description, due_on).await,
+        } => {
+            create(
+                cli_hostname,
+                cli_repo,
+                cli_profile,
+                title,
+                description,
+                due_on,
+            )
+            .await
+        }
         MilestoneCommand::Edit {
             number,
             title,
@@ -113,6 +128,7 @@ pub async fn run(
             edit(
                 cli_hostname,
                 cli_repo,
+                cli_profile,
                 number,
                 title,
                 description,
@@ -122,7 +138,7 @@ pub async fn run(
             .await
         }
         MilestoneCommand::Delete { number, yes } => {
-            delete(cli_hostname, cli_repo, number, yes).await
+            delete(cli_hostname, cli_repo, cli_profile, number, yes).await
         }
     }
 }
@@ -130,12 +146,13 @@ pub async fn run(
 async fn list(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     state: &str,
     json: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
     let state = normalize_list_state(state)?;
     let milestones = client.list_milestones(&owner, &repo, &state).await?;
 
@@ -162,10 +179,15 @@ async fn list(
     Ok(())
 }
 
-async fn view(hostname: &Option<String>, cli_repo: &Option<String>, number: u64) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+async fn view(
+    hostname: &Option<String>,
+    cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
+    number: u64,
+) -> Result<()> {
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
     let milestone = client.get_milestone(&owner, &repo, number).await?;
 
     println!(
@@ -204,13 +226,14 @@ async fn view(hostname: &Option<String>, cli_repo: &Option<String>, number: u64)
 async fn create(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     title: Option<String>,
     description: Option<String>,
     due_on: Option<String>,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
 
     let title = match title {
         Some(title) => title,
@@ -240,7 +263,7 @@ async fn create(
             eprintln!(
                 "Notice: REST milestone create is unavailable on this GitBucket instance; using web fallback."
             );
-            let session = create_web_session(&hostname).await?;
+            let session = create_web_session(&hostname, cli_profile).await?;
             session
                 .create_milestone(
                     &owner,
@@ -274,17 +297,19 @@ async fn create(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn edit(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     number: u64,
     title: Option<String>,
     description: Option<String>,
     due_on: Option<String>,
     state: Option<String>,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
     let due_on = normalize_due_on_for_edit(due_on)?;
     let state = normalize_edit_state(state)?;
     if title.is_none()
@@ -298,7 +323,7 @@ async fn edit(
         ));
     }
 
-    let client = create_client(&hostname)?;
+    let client = create_client(&hostname, cli_profile)?;
     let current = client.get_milestone(&owner, &repo, number).await?;
 
     let update_body = UpdateMilestone {
@@ -327,7 +352,7 @@ async fn edit(
             eprintln!(
                 "Notice: REST milestone edit is unavailable on this GitBucket instance; using web fallback."
             );
-            let session = create_web_session(&hostname).await?;
+            let session = create_web_session(&hostname, cli_profile).await?;
             if title.is_some() || description.is_some() || !matches!(due_on, DueOnInput::Unchanged)
             {
                 let fallback_due_date = match &due_on {
@@ -374,11 +399,12 @@ async fn edit(
 async fn delete(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     number: u64,
     yes: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
 
     if !yes {
         let confirmed = Confirm::new()
@@ -394,7 +420,7 @@ async fn delete(
         }
     }
 
-    let client = create_client(&hostname)?;
+    let client = create_client(&hostname, cli_profile)?;
     match client.delete_milestone(&owner, &repo, number).await {
         Ok(()) => {
             println!("✓ Deleted milestone #{}", number);
@@ -404,7 +430,7 @@ async fn delete(
             eprintln!(
                 "Notice: REST milestone delete is unavailable on this GitBucket instance; using web fallback."
             );
-            let session = create_web_session(&hostname).await?;
+            let session = create_web_session(&hostname, cli_profile).await?;
             session.delete_milestone(&owner, &repo, number).await?;
             println!("✓ Deleted milestone #{}", number);
             Ok(())

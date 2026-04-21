@@ -25,9 +25,13 @@ pub struct ApiArgs {
     pub input: Option<String>,
 }
 
-pub async fn run(args: ApiArgs, cli_hostname: &Option<String>) -> Result<()> {
-    let hostname = resolve_hostname(cli_hostname)?;
-    let host = resolve_host_config(&hostname)?;
+pub async fn run(
+    args: ApiArgs,
+    cli_hostname: &Option<String>,
+    cli_profile: &Option<String>,
+) -> Result<()> {
+    let hostname = resolve_hostname(cli_hostname, cli_profile)?;
+    let host = resolve_host_config(&hostname, cli_profile)?;
     let client = ApiClient::new(&hostname, &host.token, &host.protocol)?;
     let method = resolve_method(args.method.as_deref(), args.input.is_some())?;
     let allowed_base_url = normalize_base_url(&hostname, &host.protocol)?;

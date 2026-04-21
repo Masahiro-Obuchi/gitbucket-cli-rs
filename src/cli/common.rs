@@ -8,20 +8,41 @@ use crate::config::auth::{AuthConfig, HostConfig};
 use crate::error::{GbError, Result};
 
 /// Resolve GitBucket host or URL from CLI arg, env var, or config
-pub fn resolve_hostname(cli_hostname: &Option<String>) -> Result<String> {
-    if let Some(h) = cli_hostname {
-        return Ok(h.clone());
-    }
+pub fn resolve_hostname(
+    cli_hostname: &Option<String>,
+    cli_profile: &Option<String>,
+) -> Result<String> {
     let config = AuthConfig::load()?;
-    config.default_hostname().ok_or_else(|| {
-        GbError::Auth("No GitBucket host or URL configured. Run `gb auth login` first.".into())
+    let hostname = config.resolve_hostname(cli_hostname.as_deref(), cli_profile.as_deref())?;
+    let has_active_profile = config
+        .active_profile_name(cli_profile.as_deref())?
+        .is_some();
+    hostname.ok_or_else(|| {
+        if has_active_profile {
+            GbError::Auth(
+                "No GitBucket host or URL configured for the selected profile. Pass --hostname or set the profile default host.".into(),
+            )
+        } else {
+            GbError::Auth("No GitBucket host or URL configured. Run `gb auth login` first.".into())
+        }
     })
 }
 
+/// Validate a selected profile even for commands that do not otherwise need config.
+pub fn validate_selected_profile(cli_profile: &Option<String>) -> Result<()> {
+    let config = AuthConfig::load()?;
+    config.active_profile_name(cli_profile.as_deref())?;
+    Ok(())
+}
+
 /// Resolve owner/repo from CLI arg, env var, or git remote
-pub fn resolve_repo(cli_repo: &Option<String>) -> Result<(String, String)> {
-    if let Some(r) = cli_repo {
-        return parse_owner_repo(r);
+pub fn resolve_repo(
+    cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
+) -> Result<(String, String)> {
+    let config = AuthConfig::load()?;
+    if let Some(repo) = config.resolve_repo(cli_repo.as_deref(), cli_profile.as_deref())? {
+        return parse_owner_repo(&repo);
     }
     detect_repo_from_git()
 }
@@ -99,19 +120,22 @@ fn parse_repo_path(path: &str) -> Result<(String, String)> {
     Ok((owner.to_string(), repo.to_string()))
 }
 
-pub fn resolve_host_config(hostname: &str) -> Result<HostConfig> {
+pub fn resolve_host_config(hostname: &str, cli_profile: &Option<String>) -> Result<HostConfig> {
     let config = AuthConfig::load()?;
-    config.get_host(hostname)
+    config.get_host_for_profile(hostname, cli_profile.as_deref())
 }
 
 /// Create an API client from config
-pub fn create_client(hostname: &str) -> Result<ApiClient> {
-    let host = resolve_host_config(hostname)?;
+pub fn create_client(hostname: &str, cli_profile: &Option<String>) -> Result<ApiClient> {
+    let host = resolve_host_config(hostname, cli_profile)?;
     ApiClient::new(hostname, &host.token, &host.protocol)
 }
 
-pub async fn create_web_session(hostname: &str) -> Result<GitBucketWebSession> {
-    let host = resolve_host_config(hostname)?;
+pub async fn create_web_session(
+    hostname: &str,
+    cli_profile: &Option<String>,
+) -> Result<GitBucketWebSession> {
+    let host = resolve_host_config(hostname, cli_profile)?;
     let username = if let Ok(user) = std::env::var("GB_USER") {
         user
     } else if !host.user.is_empty() {

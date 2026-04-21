@@ -120,15 +120,29 @@ pub async fn run(
     args: IssueArgs,
     cli_hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
 ) -> Result<()> {
     match args.command {
-        IssueCommand::List { state, json } => list(cli_hostname, cli_repo, &state, json).await,
+        IssueCommand::List { state, json } => {
+            list(cli_hostname, cli_repo, cli_profile, &state, json).await
+        }
         IssueCommand::View {
             number,
             comments,
             web,
             json,
-        } => view(cli_hostname, cli_repo, number, comments, web, json).await,
+        } => {
+            view(
+                cli_hostname,
+                cli_repo,
+                cli_profile,
+                number,
+                comments,
+                web,
+                json,
+            )
+            .await
+        }
         IssueCommand::Create {
             title,
             body,
@@ -138,6 +152,7 @@ pub async fn run(
             create(
                 cli_hostname,
                 cli_repo,
+                cli_profile,
                 title,
                 body,
                 normalize_str_vec(label),
@@ -160,6 +175,7 @@ pub async fn run(
             edit(
                 cli_hostname,
                 cli_repo,
+                cli_profile,
                 number,
                 title,
                 body,
@@ -173,25 +189,28 @@ pub async fn run(
             )
             .await
         }
-        IssueCommand::Close { number } => close(cli_hostname, cli_repo, number).await,
-        IssueCommand::Reopen { number } => reopen(cli_hostname, cli_repo, number).await,
+        IssueCommand::Close { number } => close(cli_hostname, cli_repo, cli_profile, number).await,
+        IssueCommand::Reopen { number } => {
+            reopen(cli_hostname, cli_repo, cli_profile, number).await
+        }
         IssueCommand::Comment {
             number,
             body,
             edit_last,
-        } => comment(cli_hostname, cli_repo, number, body, edit_last).await,
+        } => comment(cli_hostname, cli_repo, cli_profile, number, body, edit_last).await,
     }
 }
 
 async fn list(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     state: &str,
     json: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
     let state = crate::cli::common::normalize_list_state(state)?;
 
     let issues = client.list_issues(&owner, &repo, &state).await?;
@@ -227,14 +246,15 @@ async fn list(
 async fn view(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     number: u64,
     show_comments: bool,
     web: bool,
     json: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
 
     if web {
         let url = client.web_url(&format!("/{}/{}/issues/{}", owner, repo, number));
@@ -323,14 +343,15 @@ async fn view(
 async fn create(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     title: Option<String>,
     body: Option<String>,
     labels: Vec<String>,
     assignees: Vec<String>,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
 
     let title = match title {
         Some(t) => t,
@@ -376,18 +397,47 @@ async fn create(
     Ok(())
 }
 
-async fn close(hostname: &Option<String>, cli_repo: &Option<String>, number: u64) -> Result<()> {
-    set_issue_state(hostname, cli_repo, number, "closed", "close", "Closed").await
+async fn close(
+    hostname: &Option<String>,
+    cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
+    number: u64,
+) -> Result<()> {
+    set_issue_state(
+        hostname,
+        cli_repo,
+        cli_profile,
+        number,
+        "closed",
+        "close",
+        "Closed",
+    )
+    .await
 }
 
-async fn reopen(hostname: &Option<String>, cli_repo: &Option<String>, number: u64) -> Result<()> {
-    set_issue_state(hostname, cli_repo, number, "open", "reopen", "Reopened").await
+async fn reopen(
+    hostname: &Option<String>,
+    cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
+    number: u64,
+) -> Result<()> {
+    set_issue_state(
+        hostname,
+        cli_repo,
+        cli_profile,
+        number,
+        "open",
+        "reopen",
+        "Reopened",
+    )
+    .await
 }
 
 #[allow(clippy::too_many_arguments)]
 async fn edit(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     number: u64,
     title: Option<String>,
     body: Option<String>,
@@ -421,9 +471,9 @@ async fn edit(
     }
 
     let state = normalize_edit_state(state)?;
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
     let current = client.get_issue(&owner, &repo, number).await?;
 
     let labels = if add_labels.is_empty() && remove_labels.is_empty() {
@@ -475,14 +525,14 @@ async fn edit(
         Err(GbError::Api { status: 404, .. }) => {
             if update_body.labels.is_some() || update_body.assignees.is_some() {
                 return Err(GbError::Other(
-                    "REST issue edit is unavailable on this GitBucket instance, and the web fallback cannot edit labels or assignees. Retry against an instance with REST issue edit support, or update title/body/milestone/state only.".into(),
+                    "This GitBucket instance does not support editing issue labels or assignees through the web fallback; the web fallback cannot edit labels or assignees. Retry against an instance with REST issue edit support, or update title/body/milestone/state only.".into(),
                 ));
             }
 
             eprintln!(
                 "Notice: REST issue edit is unavailable on this GitBucket instance; using web fallback."
             );
-            let session = create_web_session(&hostname).await?;
+            let session = create_web_session(&hostname, cli_profile).await?;
 
             let next_title = update_body
                 .title
@@ -541,14 +591,15 @@ async fn edit(
 async fn set_issue_state(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     number: u64,
     api_state: &str,
     web_action: &str,
     verb: &str,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
 
     let body = UpdateIssue {
         state: Some(api_state.to_string()),
@@ -568,7 +619,7 @@ async fn set_issue_state(
             eprintln!(
                 "Notice: REST issue state update is unavailable on this GitBucket instance; using web fallback."
             );
-            let session = create_web_session(&hostname).await?;
+            let session = create_web_session(&hostname, cli_profile).await?;
             session
                 .update_issue_state(&owner, &repo, number, web_action)
                 .await?;
@@ -582,13 +633,14 @@ async fn set_issue_state(
 async fn comment(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     number: u64,
     body: Option<String>,
     edit_last: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
 
     let body_text = match body {
         Some(b) => b,
