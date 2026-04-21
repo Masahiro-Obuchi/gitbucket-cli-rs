@@ -124,6 +124,12 @@ async fn logout(hostname: Option<&String>, cli_profile: &Option<String>) -> Resu
         if config.remove_host_for_profile(Some(&profile), &hostname) {
             config.save()?;
             println!("✓ Logged out from {} for profile {}", hostname, profile);
+        } else if config.remove_host(&hostname) {
+            config.save()?;
+            println!(
+                "✓ Logged out from {} (global credentials used by profile {})",
+                hostname, profile
+            );
         } else {
             println!("Not logged in to {} for profile {}", hostname, profile);
         }

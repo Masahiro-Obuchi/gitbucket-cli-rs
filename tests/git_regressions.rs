@@ -156,6 +156,99 @@ protocol = "https"
 }
 
 #[test]
+fn auth_logout_with_profile_removes_fallback_global_credentials() {
+    let temp = tempdir().unwrap();
+    std::fs::write(
+        temp.path().join("config.toml"),
+        r#"
+default_profile = "work"
+
+[profiles.work]
+default_host = "gitbucket.example.com"
+default_repo = "alice/project"
+
+[hosts."gitbucket.example.com"]
+token = "global-token"
+user = "alice"
+protocol = "https"
+"#,
+    )
+    .unwrap();
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args(["auth", "logout"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("global credentials used by profile work"),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+
+    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    assert!(
+        !config.contains("global-token"),
+        "config was not updated: {config}"
+    );
+}
+
+#[test]
+fn auth_logout_with_profile_prefers_profile_scoped_credentials() {
+    let temp = tempdir().unwrap();
+    std::fs::write(
+        temp.path().join("config.toml"),
+        r#"
+default_profile = "work"
+
+[profiles.work]
+default_host = "gitbucket.example.com"
+
+[profiles.work.hosts."gitbucket.example.com"]
+token = "profile-token"
+user = "alice"
+protocol = "https"
+
+[hosts."gitbucket.example.com"]
+token = "global-token"
+user = "bob"
+protocol = "https"
+"#,
+    )
+    .unwrap();
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args(["auth", "logout"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    assert!(
+        !config.contains("profile-token"),
+        "profile token was not removed: {config}"
+    );
+    assert!(
+        config.contains("global-token"),
+        "global token should remain when profile-scoped credentials exist: {config}"
+    );
+}
+
+#[test]
 fn pr_create_fails_cleanly_when_head_is_detached() {
     let temp = tempdir().unwrap();
     run_git(temp.path(), &["init"]);
