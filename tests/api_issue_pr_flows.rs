@@ -331,9 +331,8 @@ fn issue_edit_rejects_label_and_assignee_changes_when_only_web_fallback_is_avail
     assert!(!output.status.success());
     assert_eq!(requests.len(), 2);
     assert!(
-        String::from_utf8_lossy(&output.stderr).contains(
-            "web fallback cannot edit labels or assignees"
-        ),
+        String::from_utf8_lossy(&output.stderr)
+            .contains("web fallback cannot edit labels or assignees"),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );

@@ -6,11 +6,12 @@ use super::git::{pr_base_fetch_source, pr_head_fetch_source, resolve_git_fetch_s
 pub(super) async fn checkout(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     number: u64,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
 
     let pr = client.get_pull_request(&owner, &repo, number).await?;
     let branch = pr
@@ -20,7 +21,7 @@ pub(super) async fn checkout(
         .ok_or_else(|| GbError::Other("PR has no head branch".into()))?;
     let local_branch = format!("pr-{}", number);
 
-    let fetch_source = resolve_git_fetch_source(&hostname, &pr_head_fetch_source(&pr));
+    let fetch_source = resolve_git_fetch_source(&hostname, cli_profile, &pr_head_fetch_source(&pr));
     let head_ref = format!("refs/gb/pr/{}/head", number);
 
     let fetch_output = std::process::Command::new("git")
@@ -58,12 +59,13 @@ pub(super) async fn checkout(
 pub(super) async fn diff(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     number: u64,
     no_pager: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
 
     let pr = client.get_pull_request(&owner, &repo, number).await?;
     let head = pr
@@ -77,8 +79,9 @@ pub(super) async fn diff(
         .map(|b| b.ref_name.as_str())
         .unwrap_or("main");
 
-    let fetch_source = resolve_git_fetch_source(&hostname, &pr_head_fetch_source(&pr));
-    let base_fetch_source = resolve_git_fetch_source(&hostname, &pr_base_fetch_source(&pr));
+    let fetch_source = resolve_git_fetch_source(&hostname, cli_profile, &pr_head_fetch_source(&pr));
+    let base_fetch_source =
+        resolve_git_fetch_source(&hostname, cli_profile, &pr_base_fetch_source(&pr));
     let base_ref = format!("refs/gb/pr/{}/base", number);
     let head_ref = format!("refs/gb/pr/{}/head", number);
 

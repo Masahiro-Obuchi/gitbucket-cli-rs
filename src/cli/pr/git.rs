@@ -40,13 +40,19 @@ pub(super) struct GitFetchSource {
     pub display_source: String,
 }
 
-fn credentialed_git_http_url(hostname: &str, url: &str) -> Option<String> {
+fn credentialed_git_http_url(
+    hostname: &str,
+    cli_profile: &Option<String>,
+    url: &str,
+) -> Option<String> {
     if !url.starts_with("http://") && !url.starts_with("https://") {
         return None;
     }
 
     let config = AuthConfig::load().ok()?;
-    let host = config.get_host(hostname).ok()?;
+    let host = config
+        .get_host_for_profile(hostname, cli_profile.as_deref())
+        .ok()?;
     if host.user.is_empty() {
         return None;
     }
@@ -57,17 +63,22 @@ fn credentialed_git_http_url(hostname: &str, url: &str) -> Option<String> {
     Some(parsed.to_string())
 }
 
-pub(super) fn resolve_git_fetch_source(hostname: &str, source: &str) -> GitFetchSource {
+pub(super) fn resolve_git_fetch_source(
+    hostname: &str,
+    cli_profile: &Option<String>,
+    source: &str,
+) -> GitFetchSource {
     if source.starts_with("http://") || source.starts_with("https://") {
         return GitFetchSource {
-            command_source: credentialed_git_http_url(hostname, source)
+            command_source: credentialed_git_http_url(hostname, cli_profile, source)
                 .unwrap_or_else(|| source.to_string()),
             display_source: source.to_string(),
         };
     }
 
     if let Some(remote_url) = git_remote_url(source) {
-        if let Some(command_source) = credentialed_git_http_url(hostname, &remote_url) {
+        if let Some(command_source) = credentialed_git_http_url(hostname, cli_profile, &remote_url)
+        {
             return GitFetchSource {
                 command_source,
                 display_source: source.to_string(),

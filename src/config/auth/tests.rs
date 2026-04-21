@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::model::{AuthConfig, HostConfig};
+use super::model::{AuthConfig, HostConfig, ProfileConfig};
 use super::resolve::{canonical_hostname, protocol_from_hostname};
 use super::store::write_config_file;
 
@@ -32,6 +32,7 @@ fn env_lock() -> &'static Mutex<()> {
 fn clear_auth_env() {
     unsafe {
         std::env::remove_var("GB_HOST");
+        std::env::remove_var("GB_PROFILE");
         std::env::remove_var("GB_TOKEN");
         std::env::remove_var("GB_PROTOCOL");
     }
@@ -46,7 +47,7 @@ fn set_host_updates_default_host() {
     config.set_host("gitbucket.example.com".into(), host("alice"));
 
     assert_eq!(
-        config.default_hostname().as_deref(),
+        config.resolve_hostname(None, None).unwrap().as_deref(),
         Some("gitbucket.example.com")
     );
 }
@@ -58,11 +59,15 @@ fn default_hostname_prefers_explicit_default() {
     let mut config = AuthConfig {
         hosts: HashMap::new(),
         default_host: Some("b.example.com".into()),
+        ..Default::default()
     };
     config.hosts.insert("a.example.com".into(), host("alice"));
     config.hosts.insert("b.example.com".into(), host("bob"));
 
-    assert_eq!(config.default_hostname().as_deref(), Some("b.example.com"));
+    assert_eq!(
+        config.resolve_hostname(None, None).unwrap().as_deref(),
+        Some("b.example.com")
+    );
 }
 
 #[test]
@@ -73,7 +78,10 @@ fn default_hostname_falls_back_to_sorted_hostnames() {
     config.hosts.insert("z.example.com".into(), host("zoe"));
     config.hosts.insert("a.example.com".into(), host("alice"));
 
-    assert_eq!(config.default_hostname().as_deref(), Some("a.example.com"));
+    assert_eq!(
+        config.resolve_hostname(None, None).unwrap().as_deref(),
+        Some("a.example.com")
+    );
 }
 
 #[test]
@@ -88,7 +96,7 @@ fn default_hostname_prefers_environment_variable() {
     }
 
     assert_eq!(
-        config.default_hostname().as_deref(),
+        config.resolve_hostname(None, None).unwrap().as_deref(),
         Some("env.example.com")
     );
 
@@ -136,7 +144,9 @@ fn get_host_matches_equivalent_hostnames() {
         },
     );
 
-    let host = config.get_host("gitbucket.example.com/gitbucket").unwrap();
+    let host = config
+        .get_host_for_profile("gitbucket.example.com/gitbucket", None)
+        .unwrap();
     assert_eq!(host.protocol, "http");
 }
 
@@ -151,7 +161,7 @@ fn get_host_prefers_environment_token() {
     }
 
     let host = config
-        .get_host("https://gitbucket.example.com/gitbucket")
+        .get_host_for_profile("https://gitbucket.example.com/gitbucket", None)
         .unwrap();
     assert_eq!(host.token, "env-token");
     assert_eq!(host.protocol, "https");
@@ -163,18 +173,105 @@ fn get_host_prefers_environment_token() {
 }
 
 #[test]
+fn resolve_hostname_uses_selected_profile_default_host() {
+    let _guard = env_lock().lock().unwrap();
+    clear_auth_env();
+    let mut config = AuthConfig::default();
+    config.profiles.insert(
+        "work".into(),
+        ProfileConfig {
+            default_host: Some("work.example.com".into()),
+            ..Default::default()
+        },
+    );
+
+    assert_eq!(
+        config
+            .resolve_hostname(None, Some("work"))
+            .unwrap()
+            .as_deref(),
+        Some("work.example.com")
+    );
+}
+
+#[test]
+fn resolve_repo_uses_profile_default_repo_after_cli_and_env() {
+    let _guard = env_lock().lock().unwrap();
+    clear_auth_env();
+    let mut config = AuthConfig::default();
+    config.profiles.insert(
+        "work".into(),
+        ProfileConfig {
+            default_repo: Some("alice/project".into()),
+            ..Default::default()
+        },
+    );
+
+    assert_eq!(
+        config.resolve_repo(None, Some("work")).unwrap().as_deref(),
+        Some("alice/project")
+    );
+    assert_eq!(
+        config
+            .resolve_repo(Some("bob/override"), Some("work"))
+            .unwrap()
+            .as_deref(),
+        Some("bob/override")
+    );
+}
+
+#[test]
+fn get_host_prefers_profile_scoped_credentials() {
+    let _guard = env_lock().lock().unwrap();
+    clear_auth_env();
+    let mut config = AuthConfig::default();
+    config
+        .hosts
+        .insert("gitbucket.example.com".into(), host("global"));
+    config.profiles.insert(
+        "work".into(),
+        ProfileConfig {
+            hosts: HashMap::from([("gitbucket.example.com".into(), host("profile"))]),
+            ..Default::default()
+        },
+    );
+
+    let host = config
+        .get_host_for_profile("gitbucket.example.com", Some("work"))
+        .unwrap();
+    assert_eq!(host.user, "profile");
+}
+
+#[test]
+fn selected_missing_profile_returns_clear_error() {
+    let _guard = env_lock().lock().unwrap();
+    clear_auth_env();
+    let config = AuthConfig::default();
+
+    let err = config
+        .resolve_hostname(None, Some("missing"))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("Profile 'missing' is not configured"));
+}
+
+#[test]
 fn remove_host_promotes_next_sorted_host() {
     let _guard = env_lock().lock().unwrap();
     clear_auth_env();
     let mut config = AuthConfig {
         hosts: HashMap::new(),
         default_host: Some("b.example.com".into()),
+        ..Default::default()
     };
     config.hosts.insert("a.example.com".into(), host("alice"));
     config.hosts.insert("b.example.com".into(), host("bob"));
 
     assert!(config.remove_host("b.example.com"));
-    assert_eq!(config.default_hostname().as_deref(), Some("a.example.com"));
+    assert_eq!(
+        config.resolve_hostname(None, None).unwrap().as_deref(),
+        Some("a.example.com")
+    );
 }
 
 #[cfg(unix)]

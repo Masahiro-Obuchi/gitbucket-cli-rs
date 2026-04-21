@@ -35,6 +35,10 @@ pub struct Cli {
     /// Target repository in OWNER/REPO format
     #[arg(long, short = 'R', global = true, env = "GB_REPO")]
     pub repo: Option<String>,
+
+    /// Configuration profile name
+    #[arg(long, global = true, env = "GB_PROFILE", value_name = "NAME")]
+    pub profile: Option<String>,
 }
 
 #[derive(Subcommand)]

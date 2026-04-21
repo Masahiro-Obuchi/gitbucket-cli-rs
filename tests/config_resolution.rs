@@ -209,6 +209,129 @@ protocol = "https"
 }
 
 #[test]
+fn issue_list_uses_default_profile_host_repo_and_scoped_credentials() {
+    let temp = tempdir().unwrap();
+
+    let (port, server) = serve_json_once(
+        "GET /api/v3/repos/profile-owner/profile-repo/issues?state=open HTTP/1.1",
+        "authorization: token profile-token",
+        r#"[{"number":1,"title":"From profile","state":"open","labels":[]}]"#,
+    );
+
+    write_config(
+        temp.path(),
+        &format!(
+            r#"
+default_profile = "work"
+
+[profiles.work]
+default_host = "127.0.0.1:{port}"
+default_repo = "profile-owner/profile-repo"
+
+[profiles.work.hosts."127.0.0.1:{port}"]
+token = "profile-token"
+user = "profile-user"
+protocol = "http"
+"#
+        ),
+    );
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args(["issue", "list", "--state", "open", "--json"])
+        .output()
+        .unwrap();
+
+    server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("\"title\": \"From profile\""));
+}
+
+#[test]
+fn environment_host_and_repo_override_profile_defaults() {
+    let temp = tempdir().unwrap();
+
+    let (port, server) = serve_json_once(
+        "GET /api/v3/repos/env-owner/env-repo/issues?state=open HTTP/1.1",
+        "authorization: token env-host-token",
+        r#"[{"number":1,"title":"From env over profile","state":"open","labels":[]}]"#,
+    );
+
+    write_config(
+        temp.path(),
+        &format!(
+            r#"
+default_profile = "work"
+
+[profiles.work]
+default_host = "bad.example.com"
+default_repo = "profile-owner/profile-repo"
+
+[profiles.work.hosts."bad.example.com"]
+token = "bad-token"
+user = "bad-user"
+protocol = "https"
+
+[hosts."127.0.0.1:{port}"]
+token = "env-host-token"
+user = "env-user"
+protocol = "http"
+"#
+        ),
+    );
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "env-owner/env-repo")
+        .args(["issue", "list", "--state", "open", "--json"])
+        .output()
+        .unwrap();
+
+    server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("\"title\": \"From env over profile\""));
+}
+
+#[test]
+fn selected_missing_profile_fails_before_api_call() {
+    let temp = tempdir().unwrap();
+    write_config(temp.path(), "");
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_PROFILE", "missing")
+        .env("GB_HOST", "gitbucket.example.com")
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "env-token")
+        .args(["issue", "list", "--state", "open"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("Profile 'missing' is not configured"),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn repo_delete_requires_explicit_repo_even_inside_git_repo() {
     let temp = tempdir().unwrap();
     let status = std::process::Command::new("git")

@@ -75,6 +75,52 @@ protocol = "http"
 }
 
 #[test]
+fn config_list_json_shows_profiles_without_exposing_tokens() {
+    let temp = tempdir().unwrap();
+    fs::write(
+        temp.path().join("config.toml"),
+        r#"
+default_profile = "work"
+
+[profiles.work]
+default_host = "gitbucket.example.com"
+default_repo = "alice/project"
+
+[profiles.work.hosts."gitbucket.example.com"]
+token = "profile-token"
+user = "alice"
+protocol = "https"
+"#,
+    )
+    .unwrap();
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args(["config", "list", "--json"])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let payload: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(payload["default_profile"], "work");
+    assert_eq!(
+        payload["profiles"]["work"]["default_host"],
+        "gitbucket.example.com"
+    );
+    assert_eq!(payload["profiles"]["work"]["default_repo"], "alice/project");
+    assert_eq!(
+        payload["profiles"]["work"]["hosts"]["gitbucket.example.com"]["user"],
+        "alice"
+    );
+    assert_eq!(
+        payload["profiles"]["work"]["hosts"]["gitbucket.example.com"]["has_token"],
+        true
+    );
+    assert!(payload["profiles"]["work"]["hosts"]["gitbucket.example.com"]["token"].is_null());
+}
+
+#[test]
 fn config_list_ignores_runtime_env_overrides() {
     let temp = tempdir().unwrap();
     fs::write(
@@ -167,6 +213,93 @@ protocol = "https"
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+#[test]
+fn config_set_get_and_unset_default_profile() {
+    let temp = tempdir().unwrap();
+    fs::write(
+        temp.path().join("config.toml"),
+        r#"
+[profiles.work]
+default_host = "gitbucket.example.com"
+"#,
+    )
+    .unwrap();
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args(["config", "set", "default-profile", "work"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args(["config", "get", "default-profile"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "work");
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args(["config", "unset", "default-profile"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let config = fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    assert!(!config.contains("default_profile"));
+}
+
+#[test]
+fn config_set_profile_updates_defaults() {
+    let temp = tempdir().unwrap();
+    fs::write(temp.path().join("config.toml"), "").unwrap();
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args([
+            "config",
+            "set",
+            "profile",
+            "work",
+            "--default-host",
+            "gitbucket.example.com",
+            "--default-repo",
+            "alice/project",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args(["config", "get", "profile", "work", "--json"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let payload: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(payload["default_host"], "gitbucket.example.com");
+    assert_eq!(payload["default_repo"], "alice/project");
 }
 
 #[test]

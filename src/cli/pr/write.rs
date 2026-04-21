@@ -13,6 +13,7 @@ use super::read::print_pr_refs;
 pub(super) async fn create(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     title: Option<String>,
     body: Option<String>,
     head: Option<String>,
@@ -21,9 +22,9 @@ pub(super) async fn create(
     json: bool,
     detect_existing: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
 
     let head_branch = match head {
         Some(h) => h,
@@ -101,6 +102,7 @@ pub(super) async fn create(
 pub(super) async fn edit(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     number: u64,
     title: Option<String>,
     body: Option<String>,
@@ -120,9 +122,9 @@ pub(super) async fn edit(
     }
 
     let state = normalize_edit_state(state)?;
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
 
     let current_pr = client.get_pull_request(&owner, &repo, number).await?;
 
@@ -164,7 +166,7 @@ pub(super) async fn edit(
             eprintln!(
                 "Notice: REST PR edit is unavailable on this GitBucket instance; using web fallback."
             );
-            let session = create_web_session(&hostname).await?;
+            let session = create_web_session(&hostname, cli_profile).await?;
 
             let next_title = update_body
                 .title
@@ -223,11 +225,12 @@ pub(super) async fn edit(
 pub(super) async fn close(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     number: u64,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
 
     let body = UpdateIssue {
         state: Some("closed".to_string()),
@@ -245,12 +248,13 @@ pub(super) async fn close(
 pub(super) async fn merge(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     number: u64,
     message: Option<String>,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
 
     let body = MergePullRequest {
         commit_message: message,
@@ -278,14 +282,15 @@ pub(super) async fn merge(
 pub(super) async fn comment(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     number: u64,
     body: Option<String>,
     edit_last: bool,
     json: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
 
     let body_text = match body {
         Some(b) => b,
