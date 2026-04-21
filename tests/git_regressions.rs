@@ -61,6 +61,41 @@ fn repo_clone_full_url_does_not_require_gb_authentication() {
 }
 
 #[test]
+fn repo_clone_full_url_rejects_missing_profile() {
+    let temp = tempdir().unwrap();
+    let remote = temp.path().join("remote.git");
+    let init = Command::new("git")
+        .args(["init", "--bare", remote.to_str().unwrap()])
+        .status()
+        .unwrap();
+    assert!(init.success());
+    std::fs::write(temp.path().join("config.toml"), "").unwrap();
+
+    let clone_url = format!("file://{}", remote.display());
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args([
+            "--profile",
+            "missing",
+            "repo",
+            "clone",
+            &clone_url,
+            "cloned",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("Profile 'missing' is not configured"),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!temp.path().join("cloned").exists());
+}
+
+#[test]
 fn pr_merge_returns_non_zero_when_server_reports_not_merged() {
     let temp = tempdir().unwrap();
     let (port, server) = serve_json_once(

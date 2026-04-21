@@ -91,6 +91,9 @@ async fn login(
             .interact()?,
     };
 
+    let mut config = AuthConfig::load()?;
+    let profile = selected_profile_for_write(&config, cli_profile)?;
+
     // Verify the token by making a test API call
     let client = crate::api::client::ApiClient::new(&hostname, &token, &protocol)?;
     let user: crate::models::user::User = client
@@ -98,8 +101,6 @@ async fn login(
         .await
         .map_err(|err| map_login_error(&hostname, err))?;
 
-    let mut config = AuthConfig::load()?;
-    let profile = selected_profile_for_write(&config, cli_profile);
     config.set_host_for_profile(
         profile.as_deref(),
         hostname.clone(),
@@ -198,11 +199,25 @@ async fn print_token(hostname: Option<&String>, cli_profile: &Option<String>) ->
     Ok(())
 }
 
-fn selected_profile_for_write(config: &AuthConfig, cli_profile: &Option<String>) -> Option<String> {
-    cli_profile
+fn selected_profile_for_write(
+    config: &AuthConfig,
+    cli_profile: &Option<String>,
+) -> Result<Option<String>> {
+    let profile = cli_profile
         .clone()
         .or_else(|| std::env::var("GB_PROFILE").ok())
-        .or_else(|| config.default_profile.clone())
+        .or_else(|| config.default_profile.clone());
+
+    profile.map(sanitize_profile_name).transpose()
+}
+
+fn sanitize_profile_name(profile: String) -> Result<String> {
+    let profile = profile.trim();
+    if profile.is_empty() {
+        Err(GbError::Config("Profile name cannot be empty.".into()))
+    } else {
+        Ok(profile.to_string())
+    }
 }
 
 fn selected_profile_for_read(

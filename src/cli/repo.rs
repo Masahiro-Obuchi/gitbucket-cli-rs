@@ -5,7 +5,7 @@ use url::Url;
 
 use crate::cli::common::{
     create_client, create_web_session, parse_owner_repo, resolve_host_config, resolve_hostname,
-    resolve_repo,
+    resolve_repo, validate_selected_profile,
 };
 use crate::error::{GbError, Result};
 use crate::models::repository::CreateRepository;
@@ -338,6 +338,7 @@ async fn clone(
     directory: Option<&str>,
 ) -> Result<()> {
     let clone_url = if repo.contains("://") || repo.contains('@') {
+        validate_selected_profile(cli_profile)?;
         repo.to_string()
     } else {
         let hostname = resolve_hostname(hostname, cli_profile)?;

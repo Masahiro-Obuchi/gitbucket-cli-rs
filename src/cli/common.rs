@@ -28,6 +28,13 @@ pub fn resolve_hostname(
     })
 }
 
+/// Validate a selected profile even for commands that do not otherwise need config.
+pub fn validate_selected_profile(cli_profile: &Option<String>) -> Result<()> {
+    let config = AuthConfig::load()?;
+    config.active_profile_name(cli_profile.as_deref())?;
+    Ok(())
+}
+
 /// Resolve owner/repo from CLI arg, env var, or git remote
 pub fn resolve_repo(
     cli_repo: &Option<String>,

@@ -93,6 +93,39 @@ fn auth_login_with_profile_saves_profile_scoped_host() {
 }
 
 #[test]
+fn auth_login_rejects_empty_profile_before_api_call() {
+    let temp = tempdir().unwrap();
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_PROFILE", "")
+        .args([
+            "auth",
+            "login",
+            "-H",
+            "127.0.0.1:9",
+            "-t",
+            "secret-token",
+            "--protocol",
+            "http",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("Profile name cannot be empty."),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !temp.path().join("config.toml").exists(),
+        "empty profile should not be written to config"
+    );
+}
+
+#[test]
 fn auth_login_maps_401_to_user_friendly_error() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_server("401 Unauthorized", r#"{"message":"bad credentials"}"#);
