@@ -51,6 +51,7 @@ Available on all commands:
 | --- | --- | --- | --- |
 | `--hostname <HOST>` | `-H` | `GB_HOST` | GitBucket host or base URL (e.g. `gitbucket.example.com` or `https://gitbucket.example.com/gitbucket`) |
 | `--repo <OWNER/REPO>` | `-R` | `GB_REPO` | Target repository |
+| `--profile <NAME>` | — | `GB_PROFILE` | Configuration profile |
 | `--help` | `-h` | — | Show help |
 | `--version` | `-V` | — | Show version |
 
@@ -151,8 +152,8 @@ gb config list [--json]
 Behavior:
 
 - Prints the config file path
-- Prints the stored `default_host` when set
-- Lists saved host entries with `user`, `protocol`, and whether a token is configured
+- Prints the stored `default_host` and `default_profile` when set
+- Lists saved host and profile entries with `user`, `protocol`, and whether a token is configured
 - Redacts token values; use `gb auth token` when the raw token is needed
 
 #### `gb config get default-host`
@@ -162,6 +163,14 @@ gb config get default-host
 ```
 
 Print the stored `default_host` value.
+
+#### `gb config get default-profile`
+
+```text
+gb config get default-profile
+```
+
+Print the stored `default_profile` value.
 
 #### `gb config get host`
 
@@ -177,6 +186,14 @@ gb config get host --host <HOST> [--field <FIELD>] [--json]
 
 Host lookup is canonical, so equivalent forms such as `https://host/path`, `host/path`, and `https://host/path/api/v3` resolve to the same saved entry.
 
+#### `gb config get profile`
+
+```text
+gb config get profile <NAME> [--json]
+```
+
+Print profile defaults and profile-scoped saved hosts. Token values are redacted.
+
 #### `gb config set default-host`
 
 ```text
@@ -184,6 +201,14 @@ gb config set default-host <HOST>
 ```
 
 Set the stored default host. The target host must already exist in saved config.
+
+#### `gb config set default-profile`
+
+```text
+gb config set default-profile <NAME>
+```
+
+Set the stored default profile. The target profile must already exist in saved config.
 
 #### `gb config set host`
 
@@ -200,6 +225,14 @@ gb config set host --host <HOST> [--user <USER>] [--protocol <PROTOCOL>] [--defa
 
 The target host must already exist in saved config.
 
+#### `gb config set profile`
+
+```text
+gb config set profile <NAME> [--default-host <HOST>] [--default-repo <OWNER/REPO>]
+```
+
+Create or update a saved profile. `--default-repo` must use `OWNER/REPO` format.
+
 #### `gb config unset default-host`
 
 ```text
@@ -207,6 +240,14 @@ gb config unset default-host
 ```
 
 Clear the stored `default_host` value.
+
+#### `gb config unset default-profile`
+
+```text
+gb config unset default-profile
+```
+
+Clear the stored `default_profile` value.
 
 ---
 
@@ -772,7 +813,8 @@ The repository is resolved from:
 
 1. `--repo/-R`
 2. `GB_REPO`
-3. Git remote (`origin`)
+3. Active profile's `default_repo`
+4. Git remote (`origin`)
 
 ---
 
@@ -784,6 +826,7 @@ The repository is resolved from:
 - Stored per host.
 - Verified during login via `GET /user`.
 - Successful login updates the saved `default_host`.
+- When a profile is selected, successful login writes the host entry under that profile and updates the profile's `default_host`.
 - Path-prefixed GitBucket deployments are supported by passing a base URL such as `https://gitbucket.example.com/gitbucket`.
 
 ### 4.2 Configuration file
@@ -800,9 +843,19 @@ Example:
 
 ```toml
 default_host = "https://gitbucket.example.com/gitbucket"
+default_profile = "work"
 
 [hosts."https://gitbucket.example.com/gitbucket"]
 token = "your-token"
+user = "alice"
+protocol = "https"
+
+[profiles.work]
+default_host = "gitbucket.example.com"
+default_repo = "alice/project"
+
+[profiles.work.hosts."gitbucket.example.com"]
+token = "your-work-token"
 user = "alice"
 protocol = "https"
 ```
@@ -821,7 +874,8 @@ On Unix-like systems, `config.toml` is written with `0600` permissions.
 ### 4.3 Credential precedence
 
 1. `GB_TOKEN` environment variable
-2. Host entry in `config.toml`
+2. Profile-scoped host entry in `config.toml`
+3. Global host entry in `config.toml`
 
 When `GB_TOKEN` is set, protocol resolution uses this order:
 
@@ -830,12 +884,22 @@ When `GB_TOKEN` is set, protocol resolution uses this order:
 3. Matching stored host configuration from `config.toml`
 4. Default `https`
 
-### 4.4 Hostname resolution order
+### 4.4 Profile resolution order
+
+1. `--profile`
+2. `GB_PROFILE`
+3. Saved `default_profile` in `config.toml`
+4. No active profile
+
+If a selected profile does not exist, commands fail with a clear configuration error.
+
+### 4.5 Hostname resolution order
 
 1. `--hostname/-H`
 2. `GB_HOST`
-3. Saved `default_host` in `config.toml`
-4. Lexicographically first configured host in `config.toml` as a backward-compatible fallback
+3. Active profile's `default_host`
+4. Saved `default_host` in `config.toml` when no profile is active
+5. Lexicographically first configured host in `config.toml` as a backward-compatible fallback when no profile is active
 
 Stored hosts are matched canonically, so equivalent forms such as `https://host/path`, `host/path`, and `https://host/path/api/v3` resolve to the same saved entry.
 
@@ -857,7 +921,8 @@ When `--repo/-R` is omitted, `gb` tries to parse `git remote get-url origin`.
 
 1. `--repo/-R`
 2. `GB_REPO`
-3. `git remote get-url origin`
+3. Active profile's `default_repo`
+4. `git remote get-url origin`
 
 If parsing fails, `RepoNotFound` is returned.
 
@@ -895,6 +960,7 @@ When a command falls back from a missing REST API endpoint to a GitBucket web UI
 | --- | --- |
 | `GB_HOST` | Default hostname or base URL |
 | `GB_REPO` | Default repository (`OWNER/REPO`) |
+| `GB_PROFILE` | Default configuration profile |
 | `GB_TOKEN` | Access token override |
 | `GB_PROTOCOL` | Protocol override when `GB_TOKEN` is used with a plain hostname |
 | `GB_USER` | Username for GitBucket web-session fallbacks |

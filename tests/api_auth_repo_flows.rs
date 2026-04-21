@@ -52,6 +52,80 @@ fn auth_login_success_saves_default_host_and_user() {
 }
 
 #[test]
+fn auth_login_with_profile_saves_profile_scoped_host() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_server("200 OK", r#"{"login":"alice"}"#);
+
+    let host = format!("127.0.0.1:{port}");
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args([
+            "--profile",
+            "work",
+            "auth",
+            "login",
+            "-H",
+            &host,
+            "-t",
+            "profile-token",
+            "--protocol",
+            "http",
+        ])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(request.target, "/api/v3/user");
+
+    let config = fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    assert!(config.contains("[profiles.work]"));
+    assert!(config.contains(&format!("default_host = \"{host}\"")));
+    assert!(config.contains(&format!("[profiles.work.hosts.\"{host}\"]")));
+    assert!(config.contains("token = \"profile-token\""));
+    assert!(!config.contains("default_host = \"bad.example.com\""));
+}
+
+#[test]
+fn auth_login_rejects_empty_profile_before_api_call() {
+    let temp = tempdir().unwrap();
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_PROFILE", "")
+        .args([
+            "auth",
+            "login",
+            "-H",
+            "127.0.0.1:9",
+            "-t",
+            "secret-token",
+            "--protocol",
+            "http",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("Profile name cannot be empty."),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !temp.path().join("config.toml").exists(),
+        "empty profile should not be written to config"
+    );
+}
+
+#[test]
 fn auth_login_maps_401_to_user_friendly_error() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_server("401 Unauthorized", r#"{"message":"bad credentials"}"#);

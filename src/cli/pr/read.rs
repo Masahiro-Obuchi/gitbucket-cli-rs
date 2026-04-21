@@ -9,12 +9,13 @@ use crate::output::{format_state, truncate};
 pub(super) async fn list(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     state: &str,
     json: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
     let state = crate::cli::common::normalize_list_state(state)?;
 
     let prs = client.list_pull_requests(&owner, &repo, &state).await?;
@@ -53,14 +54,15 @@ pub(super) async fn list(
 pub(super) async fn view(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
     number: u64,
     show_comments: bool,
     web: bool,
     json: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let (owner, repo) = resolve_repo(cli_repo)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
 
     if web {
         let url = client.web_url(&format!("/{}/{}/pull/{}", owner, repo, number));

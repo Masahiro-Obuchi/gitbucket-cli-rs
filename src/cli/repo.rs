@@ -5,7 +5,7 @@ use url::Url;
 
 use crate::cli::common::{
     create_client, create_web_session, parse_owner_repo, resolve_host_config, resolve_hostname,
-    resolve_repo,
+    resolve_repo, validate_selected_profile,
 };
 use crate::error::{GbError, Result};
 use crate::models::repository::CreateRepository;
@@ -87,25 +87,39 @@ pub async fn run(
     args: RepoArgs,
     cli_hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
 ) -> Result<()> {
     match args.command {
-        RepoCommand::List { owner, json } => list(cli_hostname, owner, json).await,
-        RepoCommand::View { repo, web } => view(cli_hostname, repo.or(cli_repo.clone()), web).await,
+        RepoCommand::List { owner, json } => list(cli_hostname, cli_profile, owner, json).await,
+        RepoCommand::View { repo, web } => {
+            view(cli_hostname, repo.or(cli_repo.clone()), cli_profile, web).await
+        }
         RepoCommand::Create {
             name,
             description,
             private,
             add_readme,
             group,
-        } => create(cli_hostname, name, description, private, add_readme, group).await,
+        } => {
+            create(
+                cli_hostname,
+                cli_profile,
+                name,
+                description,
+                private,
+                add_readme,
+                group,
+            )
+            .await
+        }
         RepoCommand::Clone { repo, directory } => {
-            clone(cli_hostname, &repo, directory.as_deref()).await
+            clone(cli_hostname, cli_profile, &repo, directory.as_deref()).await
         }
         RepoCommand::Delete { repo, yes } => {
-            delete(cli_hostname, repo.or(cli_repo.clone()), yes).await
+            delete(cli_hostname, cli_profile, repo.or(cli_repo.clone()), yes).await
         }
         RepoCommand::Fork { repo, group } => {
-            fork(cli_hostname, repo.or(cli_repo.clone()), group).await
+            fork(cli_hostname, repo.or(cli_repo.clone()), cli_profile, group).await
         }
     }
 }
@@ -174,9 +188,14 @@ fn accessible_clone_url(api_clone_url: Option<&str>, fallback_url: &str) -> Stri
     clone_url.to_string()
 }
 
-async fn list(hostname: &Option<String>, owner: Option<String>, json: bool) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let client = create_client(&hostname)?;
+async fn list(
+    hostname: &Option<String>,
+    cli_profile: &Option<String>,
+    owner: Option<String>,
+    json: bool,
+) -> Result<()> {
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
 
     let repos = match owner {
         Some(ref o) => client.list_owner_repos(o).await?,
@@ -205,13 +224,18 @@ async fn list(hostname: &Option<String>, owner: Option<String>, json: bool) -> R
     Ok(())
 }
 
-async fn view(hostname: &Option<String>, repo_arg: Option<String>, web: bool) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
+async fn view(
+    hostname: &Option<String>,
+    repo_arg: Option<String>,
+    cli_profile: &Option<String>,
+    web: bool,
+) -> Result<()> {
+    let hostname = resolve_hostname(hostname, cli_profile)?;
     let (owner, repo) = match repo_arg {
         Some(r) => parse_owner_repo(&r)?,
-        None => resolve_repo(&None)?,
+        None => resolve_repo(&None, cli_profile)?,
     };
-    let client = create_client(&hostname)?;
+    let client = create_client(&hostname, cli_profile)?;
 
     if web {
         let url = client.web_url(&format!("/{}/{}", owner, repo));
@@ -271,14 +295,15 @@ Stars: {}  Forks: {}  Issues: {}",
 
 async fn create(
     hostname: &Option<String>,
+    cli_profile: &Option<String>,
     name: Option<String>,
     description: Option<String>,
     private: bool,
     add_readme: bool,
     group: Option<String>,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
-    let client = create_client(&hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
 
     let name = match name {
         Some(n) => n,
@@ -306,12 +331,18 @@ async fn create(
     Ok(())
 }
 
-async fn clone(hostname: &Option<String>, repo: &str, directory: Option<&str>) -> Result<()> {
+async fn clone(
+    hostname: &Option<String>,
+    cli_profile: &Option<String>,
+    repo: &str,
+    directory: Option<&str>,
+) -> Result<()> {
     let clone_url = if repo.contains("://") || repo.contains('@') {
+        validate_selected_profile(cli_profile)?;
         repo.to_string()
     } else {
-        let hostname = resolve_hostname(hostname)?;
-        let client = create_client(&hostname)?;
+        let hostname = resolve_hostname(hostname, cli_profile)?;
+        let client = create_client(&hostname, cli_profile)?;
         let (owner, name) = parse_owner_repo(repo)?;
         let r = client.get_repo(&owner, &name).await?;
         let fallback_clone_url = client.web_url(&format!("/{}/{}.git", owner, name));
@@ -332,8 +363,13 @@ async fn clone(hostname: &Option<String>, repo: &str, directory: Option<&str>) -
     Ok(())
 }
 
-async fn delete(hostname: &Option<String>, repo_arg: Option<String>, yes: bool) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
+async fn delete(
+    hostname: &Option<String>,
+    cli_profile: &Option<String>,
+    repo_arg: Option<String>,
+    yes: bool,
+) -> Result<()> {
+    let hostname = resolve_hostname(hostname, cli_profile)?;
     let repo_arg = repo_arg.ok_or_else(|| {
         crate::error::GbError::Other(
             "Refusing to delete without an explicit repository. Pass OWNER/REPO or -R/--repo."
@@ -356,7 +392,7 @@ async fn delete(hostname: &Option<String>, repo_arg: Option<String>, yes: bool) 
         }
     }
 
-    let client = create_client(&hostname)?;
+    let client = create_client(&hostname, cli_profile)?;
     match client.delete_repo(&owner, &repo).await {
         Ok(()) => {
             println!("✓ Deleted repository {}/{}", owner, repo);
@@ -366,7 +402,7 @@ async fn delete(hostname: &Option<String>, repo_arg: Option<String>, yes: bool) 
             eprintln!(
                 "Notice: REST repository delete is unavailable on this GitBucket instance; using web fallback."
             );
-            let session = create_web_session(&hostname).await?;
+            let session = create_web_session(&hostname, cli_profile).await?;
             session.delete_repo(&owner, &repo).await?;
             println!("✓ Deleted repository {}/{}", owner, repo);
             Ok(())
@@ -378,15 +414,16 @@ async fn delete(hostname: &Option<String>, repo_arg: Option<String>, yes: bool) 
 async fn fork(
     hostname: &Option<String>,
     repo_arg: Option<String>,
+    cli_profile: &Option<String>,
     group: Option<String>,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname)?;
+    let hostname = resolve_hostname(hostname, cli_profile)?;
     let (owner, repo) = match repo_arg {
         Some(r) => parse_owner_repo(&r)?,
-        None => resolve_repo(&None)?,
+        None => resolve_repo(&None, cli_profile)?,
     };
 
-    let client = create_client(&hostname)?;
+    let client = create_client(&hostname, cli_profile)?;
     match client.fork_repo(&owner, &repo).await {
         Ok(forked) => {
             println!("✓ Forked {}/{} → {}", owner, repo, forked.full_name);
@@ -396,11 +433,11 @@ async fn fork(
             Ok(())
         }
         Err(GbError::Api { status: 404, .. }) => {
-            let target_account = resolve_fork_target(&hostname, group)?;
+            let target_account = resolve_fork_target(&hostname, cli_profile, group)?;
             eprintln!(
                 "Notice: REST repository fork is unavailable on this GitBucket instance; using web fallback."
             );
-            let session = create_web_session(&hostname).await?;
+            let session = create_web_session(&hostname, cli_profile).await?;
             session.fork_repo(&owner, &repo, &target_account).await?;
             println!("✓ Forked {}/{} → {}/{}", owner, repo, target_account, repo);
             println!(
@@ -413,7 +450,11 @@ async fn fork(
     }
 }
 
-fn resolve_fork_target(hostname: &str, group: Option<String>) -> Result<String> {
+fn resolve_fork_target(
+    hostname: &str,
+    cli_profile: &Option<String>,
+    group: Option<String>,
+) -> Result<String> {
     if let Some(group) = group {
         return Ok(group);
     }
@@ -423,7 +464,7 @@ fn resolve_fork_target(hostname: &str, group: Option<String>) -> Result<String> 
         }
     }
 
-    let host = resolve_host_config(hostname)?;
+    let host = resolve_host_config(hostname, cli_profile)?;
     if !host.user.is_empty() {
         return Ok(host.user);
     }

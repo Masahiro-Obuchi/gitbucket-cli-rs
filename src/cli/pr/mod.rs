@@ -132,9 +132,12 @@ pub async fn run(
     args: PrArgs,
     cli_hostname: &Option<String>,
     cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
 ) -> crate::error::Result<()> {
     match args.command {
-        PrCommand::List { state, json } => read::list(cli_hostname, cli_repo, &state, json).await,
+        PrCommand::List { state, json } => {
+            read::list(cli_hostname, cli_repo, cli_profile, &state, json).await
+        }
         PrCommand::View {
             number,
             comments,
@@ -144,6 +147,7 @@ pub async fn run(
             read::view(
                 cli_hostname,
                 cli_repo,
+                cli_profile,
                 number,
                 comments,
                 web,
@@ -163,6 +167,7 @@ pub async fn run(
             write::create(
                 cli_hostname,
                 cli_repo,
+                cli_profile,
                 title,
                 body,
                 head,
@@ -184,6 +189,7 @@ pub async fn run(
             write::edit(
                 cli_hostname,
                 cli_repo,
+                cli_profile,
                 number,
                 title,
                 body,
@@ -193,20 +199,35 @@ pub async fn run(
             )
             .await
         }
-        PrCommand::Close { number } => write::close(cli_hostname, cli_repo, number).await,
-        PrCommand::Merge { number, message } => {
-            write::merge(cli_hostname, cli_repo, number, message).await
+        PrCommand::Close { number } => {
+            write::close(cli_hostname, cli_repo, cli_profile, number).await
         }
-        PrCommand::Checkout { number } => worktree::checkout(cli_hostname, cli_repo, number).await,
+        PrCommand::Merge { number, message } => {
+            write::merge(cli_hostname, cli_repo, cli_profile, number, message).await
+        }
+        PrCommand::Checkout { number } => {
+            worktree::checkout(cli_hostname, cli_repo, cli_profile, number).await
+        }
         PrCommand::Diff { number, no_pager } => {
-            worktree::diff(cli_hostname, cli_repo, number, no_pager).await
+            worktree::diff(cli_hostname, cli_repo, cli_profile, number, no_pager).await
         }
         PrCommand::Comment {
             number,
             body,
             edit_last,
             json,
-        } => write::comment(cli_hostname, cli_repo, number, body, edit_last, json).await,
+        } => {
+            write::comment(
+                cli_hostname,
+                cli_repo,
+                cli_profile,
+                number,
+                body,
+                edit_last,
+                json,
+            )
+            .await
+        }
     }
 }
 

@@ -254,6 +254,7 @@ When the PR head repository is available from the API response, `gb` fetches fro
 | `GB_TOKEN`      | Access token (takes precedence over file config for auth) |
 | `GB_HOST`       | Default GitBucket host or base URL                        |
 | `GB_REPO`       | Default repository (`OWNER/REPO`)                         |
+| `GB_PROFILE`    | Default configuration profile                             |
 | `GB_CONFIG_DIR` | Config directory path (default: `~/.config/gb/`)          |
 | `GB_PROTOCOL`   | Protocol override when using `GB_TOKEN` with a plain host |
 | `GB_USER`       | Username for GitBucket web-session fallbacks              |
@@ -282,6 +283,23 @@ token = "your-personal-access-token"
 user = "alice"
 protocol = "https"
 ```
+
+Profiles can select host and repository defaults, and can optionally carry credentials scoped to that profile:
+
+```toml
+default_profile = "work"
+
+[profiles.work]
+default_host = "gitbucket.example.com"
+default_repo = "alice/project"
+
+[profiles.work.hosts."gitbucket.example.com"]
+token = "your-work-token"
+user = "alice"
+protocol = "https"
+```
+
+`--hostname` / `GB_HOST` and `--repo` / `GB_REPO` override profile defaults. Profile-scoped credentials are tried before global `[hosts]` credentials for the same host.
 
 When `GB_TOKEN` is set, protocol selection uses this order:
 
@@ -314,18 +332,24 @@ Lower priority / re-evaluate later:
 gb config path
 gb config list
 gb config get default-host
+gb config get default-profile
 gb config get host --host gitbucket.example.com/gitbucket --field protocol
+gb config get profile work --json
 gb config set host --host gitbucket.example.com/gitbucket --protocol http --default
+gb config set profile work --default-host gitbucket.example.com --default-repo alice/project
+gb config set default-profile work
 gb config unset default-host
+gb config unset default-profile
 ```
 
 `gb config` manages the local `config.toml` file. It currently supports:
 
 - printing the config file path
-- listing saved hosts and the stored default host
+- listing saved hosts, profiles, and stored defaults
 - reading saved host `user` / `protocol` / `has-token` values
 - updating saved host `user` / `protocol` values
-- setting or clearing `default_host`
+- creating or updating profile defaults
+- setting or clearing `default_host` and `default_profile`
 
 Token creation and token printing remain under `gb auth`.
 
