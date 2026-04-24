@@ -110,11 +110,7 @@ impl ApiClient {
         repo: &str,
         number: u64,
     ) -> Result<Vec<Comment>> {
-        self.get(&format!(
-            "/repos/{}/{}/issues/{}/comments",
-            owner, repo, number
-        ))
-        .await
+        self.list_issue_comments(owner, repo, number).await
     }
 
     /// Add a comment to a pull request (uses issues API)
@@ -125,10 +121,6 @@ impl ApiClient {
         number: u64,
         body: &CreateComment,
     ) -> Result<Comment> {
-        self.post(
-            &format!("/repos/{}/{}/issues/{}/comments", owner, repo, number),
-            body,
-        )
-        .await
+        self.create_issue_comment(owner, repo, number, body).await
     }
 }

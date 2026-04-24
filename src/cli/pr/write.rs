@@ -1,9 +1,12 @@
 use dialoguer::Input;
 
-use crate::cli::common::{create_client, create_web_session, resolve_hostname, resolve_repo};
+use crate::cli::common::{
+    create_client, create_web_session, merge_named_values, normalize_edit_state, resolve_hostname,
+    resolve_repo, update_issue_assignees_via_web,
+};
 use crate::error::{GbError, Result};
 use crate::models::comment::{Comment, CreateComment};
-use crate::models::issue::{Issue, UpdateIssue};
+use crate::models::issue::UpdateIssue;
 use crate::models::pull_request::{CreatePullRequest, MergePullRequest, PullRequest};
 
 use super::git::current_branch_name;
@@ -122,7 +125,7 @@ pub(super) async fn edit(
         ));
     }
 
-    let state = normalize_edit_state(state)?;
+    let state = normalize_edit_state("pull request", state)?;
     let hostname = resolve_hostname(hostname, cli_profile)?;
     let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
     let client = create_client(&hostname, cli_profile)?;
@@ -199,7 +202,8 @@ pub(super) async fn edit(
             if let (Some(current), Some(next)) =
                 (current_issue.as_ref(), update_body.assignees.as_ref())
             {
-                update_pr_assignees_via_web(&session, &owner, &repo, number, current, next).await?;
+                update_issue_assignees_via_web(&session, &owner, &repo, number, current, next)
+                    .await?;
             }
 
             if let Some(state) = update_body.state.as_deref() {
@@ -360,33 +364,6 @@ fn qualified_head(head: String, head_owner: Option<String>) -> Result<String> {
     Ok(format!("{owner}:{head}"))
 }
 
-fn normalize_edit_state(state: Option<String>) -> Result<Option<String>> {
-    match state {
-        None => Ok(None),
-        Some(value) => match value.to_ascii_lowercase().as_str() {
-            "open" | "closed" => Ok(Some(value.to_ascii_lowercase())),
-            _ => Err(GbError::Other(
-                "Invalid pull request state. Expected 'open' or 'closed'.".into(),
-            )),
-        },
-    }
-}
-
-fn merge_named_values(
-    current: impl IntoIterator<Item = String>,
-    additions: Vec<String>,
-    removals: Vec<String>,
-) -> Vec<String> {
-    let mut values: Vec<String> = current.into_iter().collect();
-    values.retain(|value| !removals.iter().any(|removed| removed == value));
-    for addition in additions {
-        if !values.iter().any(|existing| existing == &addition) {
-            values.push(addition);
-        }
-    }
-    values
-}
-
 async fn find_existing_open_pull_request(
     client: &crate::api::client::ApiClient,
     owner: &str,
@@ -476,41 +453,6 @@ fn print_comment_result(comment: &Comment, pr_number: u64, edited: bool, json: b
     if let Some(url) = comment.html_url.as_deref().filter(|url| !url.is_empty()) {
         println!("URL: {}", url);
     }
-    Ok(())
-}
-
-async fn update_pr_assignees_via_web(
-    session: &crate::api::web::GitBucketWebSession,
-    owner: &str,
-    repo: &str,
-    number: u64,
-    current: &Issue,
-    next: &[String],
-) -> Result<()> {
-    let current: Vec<String> = current
-        .assignees
-        .iter()
-        .map(|assignee| assignee.login.clone())
-        .collect();
-
-    for assignee in current
-        .iter()
-        .filter(|assignee| !next.iter().any(|value| value == *assignee))
-    {
-        session
-            .update_issue_assignee(owner, repo, number, "remove", assignee)
-            .await?;
-    }
-
-    for assignee in next
-        .iter()
-        .filter(|assignee| !current.iter().any(|value| value == *assignee))
-    {
-        session
-            .update_issue_assignee(owner, repo, number, "add", assignee)
-            .await?;
-    }
-
     Ok(())
 }
 
