@@ -32,9 +32,7 @@ impl ApiClient {
 
     /// Make a GET request and deserialize the response
     pub async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let url = format!("{}{}", self.base_url, path);
-        let resp = self.client.get(&url).send().await?;
-        self.handle_response(resp).await
+        self.request_json(Method::GET, path, None::<&()>).await
     }
 
     /// Make a GET request and return response headers with the deserialized body.
@@ -63,9 +61,7 @@ impl ApiClient {
         path: &str,
         body: &B,
     ) -> Result<T> {
-        let url = format!("{}{}", self.base_url, path);
-        let resp = self.client.post(&url).json(body).send().await?;
-        self.handle_response(resp).await
+        self.request_json(Method::POST, path, Some(body)).await
     }
 
     /// Make a PATCH request with a JSON body
@@ -74,25 +70,14 @@ impl ApiClient {
         path: &str,
         body: &B,
     ) -> Result<T> {
-        let url = format!("{}{}", self.base_url, path);
-        let resp = self.client.patch(&url).json(body).send().await?;
-        self.handle_response(resp).await
+        self.request_json(Method::PATCH, path, Some(body)).await
     }
 
     /// Make a DELETE request
     pub async fn delete(&self, path: &str) -> Result<()> {
-        let url = format!("{}{}", self.base_url, path);
+        let url = self.api_url(path);
         let resp = self.client.delete(&url).send().await?;
-        let status = resp.status();
-        if status.is_success() {
-            Ok(())
-        } else {
-            let message = resp.text().await.unwrap_or_default();
-            Err(GbError::Api {
-                status: status.as_u16(),
-                message,
-            })
-        }
+        self.handle_empty_response(resp).await
     }
 
     /// Make a PUT request with a JSON body
@@ -101,9 +86,7 @@ impl ApiClient {
         path: &str,
         body: &B,
     ) -> Result<T> {
-        let url = format!("{}{}", self.base_url, path);
-        let resp = self.client.put(&url).json(body).send().await?;
-        self.handle_response(resp).await
+        self.request_json(Method::PUT, path, Some(body)).await
     }
 
     /// Make a raw request for the `gb api` command
@@ -157,6 +140,38 @@ impl ApiClient {
                 message: body,
             })
         }
+    }
+
+    async fn request_json<T: DeserializeOwned, B: serde::Serialize>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&B>,
+    ) -> Result<T> {
+        let url = self.api_url(path);
+        let mut request = self.client.request(method, &url);
+        if let Some(body) = body {
+            request = request.json(body);
+        }
+        let resp = request.send().await?;
+        self.handle_response(resp).await
+    }
+
+    async fn handle_empty_response(&self, resp: Response) -> Result<()> {
+        let status = resp.status();
+        if status.is_success() {
+            Ok(())
+        } else {
+            let message = resp.text().await.unwrap_or_default();
+            Err(GbError::Api {
+                status: status.as_u16(),
+                message,
+            })
+        }
+    }
+
+    fn api_url(&self, path: &str) -> String {
+        format!("{}{}", self.base_url, path)
     }
 }
 

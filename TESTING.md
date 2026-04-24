@@ -11,9 +11,6 @@ Use it when you want to know:
 - which command to run for fast feedback
 - where a new test should be added
 
-For broader validation scope, see [VALIDATION_CHECKLIST.md](./VALIDATION_CHECKLIST.md).
-For long-term automation priorities, see [TEST_AUTOMATION_PLAN.md](./TEST_AUTOMATION_PLAN.md).
-
 ## Fast Commands
 
 Run these during normal development:
@@ -116,6 +113,7 @@ Add or extend a git regression test when:
 - The mocked HTTP helpers use timeouts so failures should become test failures, not hangs. Shared helpers now live under `tests/support/`.
 - `tests/git_regressions.rs` intentionally uses temporary git repositories and is heavier than the other integration tests.
 - If a new bug fix depends on both HTTP shape and git behavior, prefer adding one focused mocked API test and one focused git regression test instead of one oversized test.
+- Browser launch behavior, interactive prompt ergonomics, terminal color/readability, and live server compatibility should still be checked manually when a change affects those surfaces.
 
 ## Suggested Workflow
 

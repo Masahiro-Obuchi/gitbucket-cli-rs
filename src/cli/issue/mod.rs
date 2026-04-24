@@ -2,20 +2,18 @@ use clap::{Args, Subcommand};
 
 use crate::cli::common::normalize_str_vec;
 
-mod git;
 mod read;
-mod worktree;
 mod write;
 
 #[derive(Args)]
-pub struct PrArgs {
+pub struct IssueArgs {
     #[command(subcommand)]
-    pub command: PrCommand,
+    pub command: IssueCommand,
 }
 
 #[derive(Subcommand)]
-pub enum PrCommand {
-    /// List pull requests
+pub enum IssueCommand {
+    /// List issues
     List {
         /// Filter by state (open, closed, all)
         #[arg(
@@ -30,96 +28,80 @@ pub enum PrCommand {
         #[arg(long)]
         json: bool,
     },
-    /// View a pull request
+    /// View an issue (use --comments to include comments)
     View {
-        /// PR number
+        /// Issue number
         number: u64,
-        /// Show comments
+        /// Include comments in the output
         #[arg(long, short)]
         comments: bool,
         /// Open in browser
         #[arg(long, short)]
         web: bool,
-        /// Output as JSON
+        /// Print raw JSON response
         #[arg(long)]
         json: bool,
     },
-    /// Create a pull request
+    /// Create a new issue
     Create {
-        /// PR title (prompts when omitted)
+        /// Issue title (prompts when omitted)
         #[arg(long, short)]
         title: Option<String>,
-        /// PR body (prompts when omitted)
+        /// Issue body (prompts when omitted)
         #[arg(long, short)]
         body: Option<String>,
-        /// Head branch (defaults to current branch). For cross-repo PRs, use OWNER:BRANCH or pass --head-owner.
-        #[arg(long)]
-        head: Option<String>,
-        /// Owner for the head branch; sends the head as OWNER:BRANCH
-        #[arg(long = "head-owner")]
-        head_owner: Option<String>,
-        /// Base branch (prompts with main as the default when omitted)
-        #[arg(long, short = 'B')]
-        base: Option<String>,
-        /// Output the created pull request as JSON
-        #[arg(long)]
-        json: bool,
-        /// Return an existing open PR for the same head/base instead of creating a duplicate
-        #[arg(long)]
-        detect_existing: bool,
+        /// Label name (repeatable or comma-separated)
+        #[arg(long, short, value_delimiter = ',')]
+        label: Vec<String>,
+        /// Assignee username (repeatable or comma-separated)
+        #[arg(long, short, value_delimiter = ',')]
+        assignee: Vec<String>,
     },
-    /// Edit a pull request
+    /// Edit an issue
     Edit {
-        /// PR number
+        /// Issue number
         number: u64,
-        /// New PR title
+        /// New issue title
         #[arg(long, short)]
         title: Option<String>,
-        /// New PR body
+        /// New issue body
         #[arg(long, short)]
         body: Option<String>,
+        /// Add label name (repeatable or comma-separated)
+        #[arg(long = "add-label", value_delimiter = ',')]
+        add_label: Vec<String>,
+        /// Remove label name (repeatable or comma-separated)
+        #[arg(long = "remove-label", value_delimiter = ',')]
+        remove_label: Vec<String>,
         /// Add assignee username (repeatable or comma-separated)
         #[arg(long = "add-assignee", value_delimiter = ',')]
         add_assignee: Vec<String>,
         /// Remove assignee username (repeatable or comma-separated)
         #[arg(long = "remove-assignee", value_delimiter = ',')]
         remove_assignee: Vec<String>,
-        /// Update PR state (open or closed)
+        /// Set milestone number
+        #[arg(long)]
+        milestone: Option<u64>,
+        /// Remove the current milestone
+        #[arg(long)]
+        remove_milestone: bool,
+        /// Update issue state (open or closed)
         #[arg(long, value_parser = ["open", "closed"], ignore_case = true)]
         state: Option<String>,
-        /// Allow GitBucket web UI fallback when REST PR edit is unavailable
-        #[arg(long)]
-        web: bool,
     },
-    /// Close a pull request
+    /// Close an issue
     Close {
-        /// PR number
+        /// Issue number
         number: u64,
     },
-    /// Merge a pull request
-    Merge {
-        /// PR number
-        number: u64,
-        /// Merge commit message
-        #[arg(long, short)]
-        message: Option<String>,
-    },
-    /// Checkout a pull request branch locally
-    Checkout {
-        /// PR number
+    /// Reopen an issue
+    Reopen {
+        /// Issue number
         number: u64,
     },
-    /// View the diff of a pull request
-    Diff {
-        /// PR number
-        number: u64,
-        /// Do not use a pager
-        #[arg(long)]
-        no_pager: bool,
-    },
-    /// Add a comment to a pull request
+    /// Add or edit a comment on an issue
     Comment {
-        /// PR number
+        /// Issue number
         number: u64,
         /// Comment body (prompts when omitted)
         #[arg(long, short)]
@@ -127,23 +109,20 @@ pub enum PrCommand {
         /// Edit your last comment instead of adding a new one
         #[arg(long)]
         edit_last: bool,
-        /// Output the comment as JSON
-        #[arg(long)]
-        json: bool,
     },
 }
 
 pub async fn run(
-    args: PrArgs,
+    args: IssueArgs,
     cli_hostname: &Option<String>,
     cli_repo: &Option<String>,
     cli_profile: &Option<String>,
 ) -> crate::error::Result<()> {
     match args.command {
-        PrCommand::List { state, json } => {
+        IssueCommand::List { state, json } => {
             read::list(cli_hostname, cli_repo, cli_profile, &state, json).await
         }
-        PrCommand::View {
+        IssueCommand::View {
             number,
             comments,
             web,
@@ -160,14 +139,11 @@ pub async fn run(
             )
             .await
         }
-        PrCommand::Create {
+        IssueCommand::Create {
             title,
             body,
-            head,
-            head_owner,
-            base,
-            json,
-            detect_existing,
+            label,
+            assignee,
         } => {
             write::create(
                 cli_hostname,
@@ -175,22 +151,22 @@ pub async fn run(
                 cli_profile,
                 title,
                 body,
-                head,
-                head_owner,
-                base,
-                json,
-                detect_existing,
+                normalize_str_vec(label),
+                normalize_str_vec(assignee),
             )
             .await
         }
-        PrCommand::Edit {
+        IssueCommand::Edit {
             number,
             title,
             body,
+            add_label,
+            remove_label,
             add_assignee,
             remove_assignee,
+            milestone,
+            remove_milestone,
             state,
-            web,
         } => {
             write::edit(
                 cli_hostname,
@@ -199,41 +175,26 @@ pub async fn run(
                 number,
                 title,
                 body,
+                normalize_str_vec(add_label),
+                normalize_str_vec(remove_label),
                 normalize_str_vec(add_assignee),
                 normalize_str_vec(remove_assignee),
+                milestone,
+                remove_milestone,
                 state,
-                web,
             )
             .await
         }
-        PrCommand::Close { number } => {
+        IssueCommand::Close { number } => {
             write::close(cli_hostname, cli_repo, cli_profile, number).await
         }
-        PrCommand::Merge { number, message } => {
-            write::merge(cli_hostname, cli_repo, cli_profile, number, message).await
+        IssueCommand::Reopen { number } => {
+            write::reopen(cli_hostname, cli_repo, cli_profile, number).await
         }
-        PrCommand::Checkout { number } => {
-            worktree::checkout(cli_hostname, cli_repo, cli_profile, number).await
-        }
-        PrCommand::Diff { number, no_pager } => {
-            worktree::diff(cli_hostname, cli_repo, cli_profile, number, no_pager).await
-        }
-        PrCommand::Comment {
+        IssueCommand::Comment {
             number,
             body,
             edit_last,
-            json,
-        } => {
-            write::comment(
-                cli_hostname,
-                cli_repo,
-                cli_profile,
-                number,
-                body,
-                edit_last,
-                json,
-            )
-            .await
-        }
+        } => write::comment(cli_hostname, cli_repo, cli_profile, number, body, edit_last).await,
     }
 }
