@@ -72,12 +72,22 @@ pub(super) async fn diff(
         .head
         .as_ref()
         .map(|h| h.ref_name.as_str())
-        .unwrap_or("HEAD");
+        .ok_or_else(|| {
+            GbError::Other(format!(
+                "Diff unavailable for pull request #{}: API response does not include a head ref.",
+                number
+            ))
+        })?;
     let base = pr
         .base
         .as_ref()
         .map(|b| b.ref_name.as_str())
-        .unwrap_or("main");
+        .ok_or_else(|| {
+            GbError::Other(format!(
+                "Diff unavailable for pull request #{}: API response does not include a base ref.",
+                number
+            ))
+        })?;
 
     let fetch_source = resolve_git_fetch_source(&hostname, cli_profile, &pr_head_fetch_source(&pr));
     let base_fetch_source =
@@ -127,6 +137,13 @@ pub(super) async fn diff(
 
     print!("{}", String::from_utf8_lossy(&status.stdout));
     eprint!("{}", String::from_utf8_lossy(&status.stderr));
+
+    if status.stdout.is_empty() && pr.state != "open" {
+        return Err(GbError::Other(format!(
+            "Diff unavailable for {} pull request #{}: fetched base and head refs have no diff. The source branch may have been merged, deleted, or no longer represent the PR changes.",
+            pr.state, number
+        )));
+    }
 
     Ok(())
 }
