@@ -684,7 +684,7 @@ fn e2e_issue_edit_updates_metadata_against_live_instance() {
 
 #[test]
 #[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
-fn e2e_issue_edit_label_and_assignee_constraints_against_live_instance() {
+fn e2e_issue_edit_label_constraint_and_assignee_fallback_against_live_instance() {
     let temp = tempdir().unwrap();
     let user = required_env("GB_E2E_USER");
 
@@ -709,29 +709,24 @@ fn e2e_issue_edit_label_and_assignee_constraints_against_live_instance() {
     }
     let label_stderr = run_and_assert_failure(&mut label_command);
     assert!(
-        label_stderr.contains(
-            "does not support editing issue labels or assignees through the web fallback"
-        ),
+        label_stderr.contains("does not support editing issue labels through the web fallback"),
         "stderr: {label_stderr}"
     );
 
-    let mut assignee_command = gb_command();
-    assignee_command.current_dir(temp.path()).args([
-        "issue",
-        "edit",
-        &issue_number.to_string(),
-        "--add-assignee",
-        &user,
-    ]);
-    for (key, value) in e2e_env(temp.path()) {
-        assignee_command.env(key, value);
-    }
-    let assignee_stderr = run_and_assert_failure(&mut assignee_command);
+    let assignee_stdout = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &[
+            "issue",
+            "edit",
+            &issue_number.to_string(),
+            "--add-assignee",
+            &user,
+        ],
+    );
     assert!(
-        assignee_stderr.contains(
-            "does not support editing issue labels or assignees through the web fallback"
-        ),
-        "stderr: {assignee_stderr}"
+        assignee_stdout.contains(&format!("Updated issue #{issue_number}:")),
+        "stdout: {assignee_stdout}"
     );
 }
 

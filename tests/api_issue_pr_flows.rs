@@ -350,7 +350,78 @@ fn issue_edit_falls_back_to_gitbucket_web_session_for_supported_fields() {
 }
 
 #[test]
-fn issue_edit_rejects_label_and_assignee_changes_when_only_web_fallback_is_available() {
+fn issue_edit_uses_web_fallback_for_assignee_changes() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /gitbucket/api/v3/repos/alice/project/issues/7 HTTP/1.1",
+            "200 OK",
+            r#"{"number":7,"title":"Bug report","body":"Body text","state":"open","labels":[],"assignees":[{"login":"alice"}],"milestone":null}"#,
+        ),
+        ScriptedResponse::json(
+            "PATCH /gitbucket/api/v3/repos/alice/project/issues/7 HTTP/1.1",
+            "404 Not Found",
+            r#"{"message":"Not Found"}"#,
+        ),
+        ScriptedResponse::html("POST /gitbucket/signin HTTP/1.1", "200 OK", "signed in")
+            .with_header("set-cookie", "JSESSIONID=session347; Path=/; HttpOnly"),
+        ScriptedResponse::html(
+            "POST /gitbucket/alice/project/issues/7/assignee/delete HTTP/1.1",
+            "200 OK",
+            "removed",
+        ),
+        ScriptedResponse::html(
+            "POST /gitbucket/alice/project/issues/7/assignee/new HTTP/1.1",
+            "200 OK",
+            "added",
+        ),
+        ScriptedResponse::json(
+            "GET /gitbucket/api/v3/repos/alice/project/issues/7 HTTP/1.1",
+            "200 OK",
+            r#"{"number":7,"title":"Bug report","body":"Body text","state":"open","labels":[],"assignees":[{"login":"bob"}],"milestone":null}"#,
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .env("GB_USER", "alice")
+        .env("GB_PASSWORD", "secret-pass")
+        .args([
+            "issue",
+            "edit",
+            "7",
+            "--add-assignee",
+            "bob",
+            "--remove-assignee",
+            "alice",
+        ])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(requests.len(), 6);
+    assert!(requests[3].body.contains("assigneeUserName=alice"));
+    assert!(requests[4].body.contains("assigneeUserName=bob"));
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("Updated issue #7: Bug report"),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
+fn issue_edit_rejects_label_changes_when_only_web_fallback_is_available() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
@@ -381,8 +452,7 @@ fn issue_edit_rejects_label_and_assignee_changes_when_only_web_fallback_is_avail
     assert!(!output.status.success());
     assert_eq!(requests.len(), 2);
     assert!(
-        String::from_utf8_lossy(&output.stderr)
-            .contains("web fallback cannot edit labels or assignees"),
+        String::from_utf8_lossy(&output.stderr).contains("web fallback cannot edit labels"),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
