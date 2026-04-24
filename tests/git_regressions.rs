@@ -718,3 +718,78 @@ fn pr_diff_prefers_matching_remotes_when_api_clone_urls_are_unusable() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("feature"), "stdout: {stdout}");
 }
+
+#[test]
+fn pr_diff_returns_non_zero_when_closed_pr_diff_is_unavailable() {
+    let temp = tempdir().unwrap();
+    let remote = temp.path().join("remote.git");
+    run_git(temp.path(), &["init", "--bare", remote.to_str().unwrap()]);
+
+    let work = temp.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    run_git(&work, &["init"]);
+    run_git(&work, &["config", "user.name", "Test User"]);
+    run_git(&work, &["config", "user.email", "test@example.com"]);
+    std::fs::write(work.join("README.md"), "base\n").unwrap();
+    run_git(&work, &["add", "README.md"]);
+    run_git(&work, &["commit", "-m", "base"]);
+    run_git(&work, &["branch", "-M", "main"]);
+    run_git(
+        &work,
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    );
+    run_git(&work, &["push", "origin", "main"]);
+
+    let local_repo = temp.path().join("local-repo");
+    run_git(
+        temp.path(),
+        &[
+            "clone",
+            remote.to_str().unwrap(),
+            local_repo.to_str().unwrap(),
+        ],
+    );
+
+    let body = concat!(
+        "{",
+        "\"number\":9,",
+        "\"title\":\"Already merged\",",
+        "\"state\":\"closed\",",
+        "\"head\":{\"ref\":\"main\"},",
+        "\"base\":{\"ref\":\"main\"}",
+        "}"
+    );
+    let (port, server) = serve_json_once(
+        "GET /api/v3/repos/alice/project/pulls/9 HTTP/1.1",
+        "authorization: token test-token",
+        body,
+    );
+
+    let output = gb_command()
+        .current_dir(&local_repo)
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["pr", "diff", "9", "--no-pager"])
+        .output()
+        .unwrap();
+
+    server.join().unwrap();
+
+    assert!(
+        !output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Diff unavailable"), "stderr: {stderr}");
+    assert!(stderr.contains("pull request #9"), "stderr: {stderr}");
+}

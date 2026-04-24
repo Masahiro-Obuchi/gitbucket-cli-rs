@@ -5,7 +5,7 @@ use dialoguer::Input;
 use crate::cli::common::{create_client, create_web_session, resolve_hostname, resolve_repo};
 use crate::error::{GbError, Result};
 use crate::models::comment::CreateComment;
-use crate::models::issue::{CreateIssue, UpdateIssue};
+use crate::models::issue::{CreateIssue, Issue, UpdateIssue};
 use crate::output::table::print_table;
 use crate::output::{format_state, truncate};
 
@@ -523,9 +523,9 @@ async fn edit(
             Ok(())
         }
         Err(GbError::Api { status: 404, .. }) => {
-            if update_body.labels.is_some() || update_body.assignees.is_some() {
+            if update_body.labels.is_some() {
                 return Err(GbError::Other(
-                    "This GitBucket instance does not support editing issue labels or assignees through the web fallback; the web fallback cannot edit labels or assignees. Retry against an instance with REST issue edit support, or update title/body/milestone/state only.".into(),
+                    "This GitBucket instance does not support editing issue labels through the web fallback; the web fallback cannot edit labels. Retry against an instance with REST issue edit support, or update title/body/assignees/milestone/state only.".into(),
                 ));
             }
 
@@ -559,6 +559,18 @@ async fn edit(
                 session
                     .update_issue_milestone(&owner, &repo, number, milestone)
                     .await?;
+            }
+
+            if let Some(next_assignees) = update_body.assignees.as_ref() {
+                update_issue_assignees_via_web(
+                    &session,
+                    &owner,
+                    &repo,
+                    number,
+                    &current,
+                    next_assignees,
+                )
+                .await?;
             }
 
             if let Some(state) = update_body.state.as_deref() {
@@ -715,6 +727,41 @@ fn merge_named_values(
         }
     }
     values
+}
+
+async fn update_issue_assignees_via_web(
+    session: &crate::api::web::GitBucketWebSession,
+    owner: &str,
+    repo: &str,
+    number: u64,
+    current: &Issue,
+    next: &[String],
+) -> Result<()> {
+    let current: Vec<String> = current
+        .assignees
+        .iter()
+        .map(|assignee| assignee.login.clone())
+        .collect();
+
+    for assignee in current
+        .iter()
+        .filter(|assignee| !next.iter().any(|value| value == *assignee))
+    {
+        session
+            .update_issue_assignee(owner, repo, number, "remove", assignee)
+            .await?;
+    }
+
+    for assignee in next
+        .iter()
+        .filter(|assignee| !current.iter().any(|value| value == *assignee))
+    {
+        session
+            .update_issue_assignee(owner, repo, number, "add", assignee)
+            .await?;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
