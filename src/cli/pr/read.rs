@@ -76,7 +76,17 @@ pub(super) async fn view(
     let pr = client.get_pull_request(&owner, &repo, number).await?;
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&pr)?);
+        if show_comments {
+            let comments = client.list_pr_comments(&owner, &repo, number).await?;
+            let mut value = serde_json::to_value(&pr)?;
+            let object = value.as_object_mut().ok_or_else(|| {
+                GbError::Other("Failed to serialize pull request as JSON object".into())
+            })?;
+            object.insert("comments".into(), serde_json::to_value(comments)?);
+            println!("{}", serde_json::to_string_pretty(&value)?);
+        } else {
+            println!("{}", serde_json::to_string_pretty(&pr)?);
+        }
         return Ok(());
     }
 

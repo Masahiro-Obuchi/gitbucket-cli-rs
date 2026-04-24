@@ -193,6 +193,48 @@ fn pr_view_json_prints_pull_request_payload() {
 }
 
 #[test]
+fn pr_view_json_with_comments_includes_comments_array() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
+            "200 OK",
+            r#"{"number":5,"title":"Add feature","body":"PR body","state":"open","head":{"ref":"feature/demo"},"base":{"ref":"main"}}"#,
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/issues/5/comments HTTP/1.1",
+            "200 OK",
+            r#"[{"id":11,"body":"Please rebase","user":{"login":"carol"},"created_at":"2026-03-25T00:00:00Z"}]"#,
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["pr", "view", "5", "--comments", "--json"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert_eq!(requests.len(), 2);
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(stdout["number"], 5);
+    assert_eq!(stdout["comments"][0]["id"], 11);
+    assert_eq!(stdout["comments"][0]["body"], "Please rebase");
+    assert_eq!(stdout["comments"][0]["user"]["login"], "carol");
+}
+
+#[test]
 fn repo_view_surfaces_api_404() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
