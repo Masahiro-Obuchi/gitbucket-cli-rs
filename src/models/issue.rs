@@ -5,6 +5,18 @@ use super::milestone::Milestone;
 use super::user::User;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct IssuePullRequest {
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub html_url: Option<String>,
+    #[serde(default)]
+    pub diff_url: Option<String>,
+    #[serde(default)]
+    pub patch_url: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Issue {
     pub number: u64,
     pub title: String,
@@ -29,6 +41,8 @@ pub struct Issue {
     pub closed_at: Option<String>,
     #[serde(default)]
     pub comments: Option<u64>,
+    #[serde(default)]
+    pub pull_request: Option<IssuePullRequest>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

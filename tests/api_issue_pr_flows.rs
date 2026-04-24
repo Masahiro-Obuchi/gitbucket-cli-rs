@@ -7,6 +7,56 @@ use support::gb_cmd::gb_command;
 use support::mock_http::{spawn_scripted_server, spawn_server, ScriptedResponse};
 
 #[test]
+fn pr_list_includes_open_prs_visible_through_repo_issues() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
+            "200 OK",
+            r#"[{"number":1,"title":"Listed PR","state":"open"}]"#,
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/issues?state=open HTTP/1.1",
+            "200 OK",
+            r#"[
+                {"number":1,"title":"Listed PR","state":"open","pull_request":{}},
+                {"number":2,"title":"Visible PR","state":"open","pull_request":{}},
+                {"number":3,"title":"Plain issue","state":"open"}
+            ]"#,
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls/2 HTTP/1.1",
+            "200 OK",
+            r#"{"number":2,"title":"Visible PR","state":"open"}"#,
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["pr", "list", "--json"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(stdout.as_array().unwrap().len(), 2);
+    assert_eq!(stdout[0]["number"], 1);
+    assert_eq!(stdout[1]["number"], 2);
+    assert_eq!(requests.len(), 3);
+}
+
+#[test]
 fn issue_create_sends_labels_assignees_and_body() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_server(

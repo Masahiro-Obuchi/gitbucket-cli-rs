@@ -18,7 +18,9 @@ pub(super) async fn list(
     let client = create_client(&hostname, cli_profile)?;
     let state = crate::cli::common::normalize_list_state(state)?;
 
-    let prs = client.list_pull_requests(&owner, &repo, &state).await?;
+    let prs = client
+        .list_repository_pull_requests(&owner, &repo, &state)
+        .await?;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&prs)?);
