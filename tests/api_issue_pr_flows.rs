@@ -848,7 +848,53 @@ fn pr_edit_updates_title_body_state_and_assignees() {
 }
 
 #[test]
-fn pr_edit_falls_back_to_gitbucket_web_session_when_issue_patch_is_missing() {
+fn pr_edit_fails_non_interactively_when_issue_patch_is_missing() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /gitbucket/api/v3/repos/alice/project/pulls/5 HTTP/1.1",
+            "200 OK",
+            r#"{"number":5,"title":"Old","body":"Old body","state":"open"}"#,
+        ),
+        ScriptedResponse::json(
+            "GET /gitbucket/api/v3/repos/alice/project/issues/5 HTTP/1.1",
+            "200 OK",
+            r#"{"number":5,"title":"Old","body":"Old body","state":"open","labels":[],"assignees":[{"login":"alice"}]}"#,
+        ),
+        ScriptedResponse::json(
+            "PATCH /gitbucket/api/v3/repos/alice/project/issues/5 HTTP/1.1",
+            "404 Not Found",
+            r#"{"message":"Not Found"}"#,
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .env("GB_USER", "alice")
+        .env("GB_PASSWORD", "secret-pass")
+        .args(["pr", "edit", "5", "--title", "New", "--add-assignee", "bob"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(!output.status.success());
+    assert_eq!(requests.len(), 3);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Re-run with --web to allow the GitBucket web UI fallback"),
+        "stderr: {stderr}"
+    );
+    assert!(!stderr.contains("using web fallback"), "stderr: {stderr}");
+}
+
+#[test]
+fn pr_edit_uses_gitbucket_web_session_with_web_flag_when_issue_patch_is_missing() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
@@ -923,6 +969,7 @@ fn pr_edit_falls_back_to_gitbucket_web_session_when_issue_patch_is_missing() {
             "alice",
             "--state",
             "closed",
+            "--web",
         ])
         .output()
         .unwrap();

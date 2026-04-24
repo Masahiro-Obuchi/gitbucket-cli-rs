@@ -109,6 +109,7 @@ pub(super) async fn edit(
     add_assignees: Vec<String>,
     remove_assignees: Vec<String>,
     state: Option<String>,
+    web: bool,
 ) -> Result<()> {
     if title.is_none()
         && body.is_none()
@@ -163,6 +164,12 @@ pub(super) async fn edit(
             Ok(())
         }
         Err(GbError::Api { status: 404, .. }) => {
+            if !web {
+                return Err(GbError::Other(
+                    "REST PR edit is unavailable on this GitBucket instance. Re-run with --web to allow the GitBucket web UI fallback.".into(),
+                ));
+            }
+
             eprintln!(
                 "Notice: REST PR edit is unavailable on this GitBucket instance; using web fallback."
             );

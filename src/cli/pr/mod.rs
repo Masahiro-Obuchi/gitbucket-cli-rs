@@ -85,6 +85,9 @@ pub enum PrCommand {
         /// Update PR state (open or closed)
         #[arg(long, value_parser = ["open", "closed"], ignore_case = true)]
         state: Option<String>,
+        /// Allow GitBucket web UI fallback when REST PR edit is unavailable
+        #[arg(long)]
+        web: bool,
     },
     /// Close a pull request
     Close {
@@ -185,6 +188,7 @@ pub async fn run(
             add_assignee,
             remove_assignee,
             state,
+            web,
         } => {
             write::edit(
                 cli_hostname,
@@ -196,6 +200,7 @@ pub async fn run(
                 normalize_str_vec(add_assignee),
                 normalize_str_vec(remove_assignee),
                 state,
+                web,
             )
             .await
         }
