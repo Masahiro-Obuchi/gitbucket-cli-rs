@@ -1001,6 +1001,7 @@ fn e2e_pr_edit_against_live_instance() {
             &user,
             "--state",
             "closed",
+            "--web",
         ],
     );
     assert!(
