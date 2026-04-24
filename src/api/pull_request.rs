@@ -35,7 +35,8 @@ impl ApiClient {
 
         let issues = match self.list_issues(owner, repo, state).await {
             Ok(issues) => issues,
-            Err(_) => return Ok(prs),
+            Err(GbError::Api { status, .. }) if status == 404 || status == 501 => return Ok(prs),
+            Err(err) => return Err(err),
         };
         let mut seen: HashSet<u64> = prs.iter().map(|pr| pr.number).collect();
 
@@ -44,8 +45,10 @@ impl ApiClient {
                 continue;
             }
 
-            if let Ok(pr) = self.get_pull_request(owner, repo, issue.number).await {
-                prs.push(pr);
+            match self.get_pull_request(owner, repo, issue.number).await {
+                Ok(pr) => prs.push(pr),
+                Err(GbError::Api { status, .. }) if status == 404 || status == 501 => continue,
+                Err(err) => return Err(err),
             }
         }
 
