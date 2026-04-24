@@ -226,9 +226,10 @@ Invalid values are rejected before the API call is made.
 ## GitBucket Web Fallbacks
 
 Some GitBucket actions are only exposed through the web UI, not the REST API.
-When `gb repo delete`, `gb repo fork`, `gb issue close`, `gb issue reopen`, issue metadata updates, or `gb pr edit` hit that case, `gb` falls back to a short web sign-in flow and may prompt for your password.
+When `gb repo delete`, `gb repo fork`, `gb issue close`, `gb issue reopen`, or issue metadata updates hit that case, `gb` falls back to a short web sign-in flow and may prompt for your password.
+`gb pr edit` is automation-safe by default: if REST PR edit is unavailable it fails non-interactively, and uses the web fallback only when `--web` is passed.
 When a web fallback is used, `gb` writes a `Notice:` line to stderr so scripts can distinguish REST-only success from fallback success.
-For `gb issue edit`, the web fallback currently covers title/body/milestone/state updates. Label and assignee edits still require REST issue edit support from the target GitBucket.
+For `gb issue edit`, the web fallback currently covers title/body/assignee/milestone/state updates. Label edits still require REST issue edit support from the target GitBucket.
 Use `GB_USER` and `GB_PASSWORD` to preseed those prompts when needed.
 
 Issue label and assignee options can be repeated or comma-separated:
@@ -239,12 +240,13 @@ gb issue edit 1 --add-label needs-review --remove-assignee bob
 gb pr edit 5 --add-assignee alice,bob --remove-assignee carol
 ```
 
-`gb pr create --head` accepts a branch name for same-repository PRs. For cross-repository PRs, pass `OWNER:BRANCH` or use `--head-owner OWNER --head BRANCH`; after creation, the CLI prints the resolved `Head:` and `Base:` repositories and refs. Use `gb pr create --detect-existing` to return an existing open PR for the same head/base instead of creating a duplicate. `gb pr create --json` and `gb pr view --json` print the API payload for automation.
+`gb pr create --head` accepts a branch name for same-repository PRs. For cross-repository PRs, pass `OWNER:BRANCH` or use `--head-owner OWNER --head BRANCH`; after creation, the CLI prints the resolved `Head:` and `Base:` repositories and refs. Use `gb pr create --detect-existing` to return an existing open PR for the same head/base instead of creating a duplicate. `gb pr create --json` and `gb pr view --json` print the API payload for automation; `gb pr view --comments --json` also includes a top-level `comments` array.
 `gb pr comment --json` prints the created or edited comment object; normal text output includes the comment ID and URL when GitBucket returns one.
 
 ## Pull Request Checkout And Diff
 
 `gb pr checkout` and `gb pr diff` work with same-repository PRs and fork-based PRs.
+When a closed PR's diff cannot be reconstructed from fetched refs, `gb pr diff` exits non-zero and reports that the diff is unavailable on stderr instead of returning empty successful output.
 When the PR head repository is available from the API response, `gb` fetches from that repository's clone URL and operates on `FETCH_HEAD`.
 
 ## Environment variables

@@ -626,7 +626,7 @@ Behavior:
 - Requires at least one explicit change
 - Fetches the current issue first so label/assignee changes can be merged safely
 - Rejects `--milestone` and `--remove-milestone` together before any API call
-- If GitBucket does not support REST issue editing and `gb` falls back to the web UI flow, title/body/milestone/state updates are supported; label and assignee edits still require REST issue edit support
+- If GitBucket does not support REST issue editing and `gb` falls back to the web UI flow, title/body/assignee/milestone/state updates are supported; label edits still require REST issue edit support
 
 #### `gb issue close`
 
@@ -693,6 +693,8 @@ gb pr view <NUMBER> [OPTIONS]
 | `--json` | — | Print JSON |
 | `--no-pager` | — | Do not use a pager |
 
+With `--json`, `gb` prints the pull request API payload. When `--comments` is also passed, the JSON object includes a top-level `comments` array fetched from the PR comments endpoint.
+
 #### `gb pr create`
 
 Create a pull request.
@@ -729,8 +731,9 @@ gb pr edit <NUMBER> [OPTIONS]
 | `--add-assignee <USER>` | — | Add an assignee; repeatable or comma-separated |
 | `--remove-assignee <USER>` | — | Remove an assignee; repeatable or comma-separated |
 | `--state <STATE>` | — | Update PR state: `open` or `closed` |
+| `--web` | — | Allow GitBucket web UI fallback when REST PR edit is unavailable |
 
-Implementation detail: PR title/body/state/assignee metadata is edited by calling the **issues** endpoint (`PATCH /repos/{owner}/{repo}/issues/{number}`). If GitBucket returns `404` for that REST update, `gb` falls back to the GitBucket web UI routes for PR title/body/state/assignee updates.
+Implementation detail: PR title/body/state/assignee metadata is edited by calling the **issues** endpoint (`PATCH /repos/{owner}/{repo}/issues/{number}`). If GitBucket returns `404` for that REST update, `gb pr edit` fails without performing a web session. Passing `--web` explicitly allows the GitBucket web UI fallback routes for PR title/body/state/assignee updates.
 
 #### `gb pr close`
 
@@ -784,6 +787,8 @@ Execution flow:
 3. Resolve the fetch source from the PR head repository clone URL when available, otherwise use `origin`.
 4. Run `git fetch <fetch-source> <head>`.
 5. Run `git diff origin/<base>...FETCH_HEAD`.
+
+If the API response lacks the PR head/base refs, or a non-open PR produces an empty local diff after fetching, `gb pr diff` exits non-zero and reports that the diff is unavailable on stderr.
 
 #### `gb pr comment`
 
