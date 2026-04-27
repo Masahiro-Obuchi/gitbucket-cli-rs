@@ -480,7 +480,7 @@ fn repo_fork_returns_existing_fork_when_fork_request_fails_after_creation() {
         ScriptedResponse::json(
             "GET /api/v3/repos/bob/project HTTP/1.1",
             "200 OK",
-            r#"{"name":"project","full_name":"bob/project","private":false,"fork":true,"html_url":"http://127.0.0.1/bob/project"}"#,
+            r#"{"name":"project","full_name":"bob/project","private":false,"fork":true,"html_url":"http://127.0.0.1/bob/project","parent":{"full_name":"alice/project"}}"#,
         ),
     ]);
 
@@ -510,6 +510,49 @@ fn repo_fork_returns_existing_fork_when_fork_request_fails_after_creation() {
     assert!(stdout.contains("http://127.0.0.1/bob/project"));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("using existing fork"), "stderr: {stderr}");
+}
+
+#[test]
+fn repo_fork_preserves_error_when_existing_fork_has_different_upstream() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "POST /api/v3/repos/alice/project/forks HTTP/1.1",
+            "500 Internal Server Error",
+            r#"{"message":"temporary fork failure"}"#,
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/bob/project HTTP/1.1",
+            "200 OK",
+            r#"{"name":"project","full_name":"bob/project","private":false,"fork":true,"parent":{"full_name":"carol/project"}}"#,
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .env("GB_USER", "bob")
+        .args(["repo", "fork", "alice/project"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(!output.status.success());
+    assert_eq!(requests.len(), 2);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("API error (500)"), "stderr: {stderr}");
+    assert!(
+        stderr.contains("temporary fork failure"),
+        "stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("upstream did not match alice/project"),
+        "stderr: {stderr}"
+    );
 }
 
 #[test]

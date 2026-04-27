@@ -482,10 +482,26 @@ async fn existing_fork(
     source_repo: &str,
 ) -> Result<Option<crate::models::repository::Repository>> {
     match client.get_repo(target_owner, target_repo).await {
-        Ok(repo) if repo.fork && repo.full_name == format!("{target_owner}/{target_repo}") => {
+        Ok(repo)
+            if repository_is_requested_fork(
+                &repo,
+                target_owner,
+                target_repo,
+                source_owner,
+                source_repo,
+            ) =>
+        {
             Ok(Some(repo))
         }
-        Ok(_) => Ok(None),
+        Ok(repo) => {
+            if repo.fork && repo.full_name == format!("{target_owner}/{target_repo}") {
+                eprintln!(
+                    "Notice: found existing fork {}, but its upstream did not match {}/{}.",
+                    repo.full_name, source_owner, source_repo
+                );
+            }
+            Ok(None)
+        }
         Err(GbError::Api { status: 404, .. }) => Ok(None),
         Err(err) => {
             eprintln!(
@@ -495,6 +511,27 @@ async fn existing_fork(
             Ok(None)
         }
     }
+}
+
+fn repository_is_requested_fork(
+    repo: &crate::models::repository::Repository,
+    target_owner: &str,
+    target_repo: &str,
+    source_owner: &str,
+    source_repo: &str,
+) -> bool {
+    if !repo.fork || repo.full_name != format!("{target_owner}/{target_repo}") {
+        return false;
+    }
+
+    let source_full_name = format!("{source_owner}/{source_repo}");
+    repo.parent
+        .as_ref()
+        .is_some_and(|parent| parent.full_name == source_full_name)
+        || repo
+            .source
+            .as_ref()
+            .is_some_and(|source| source.full_name == source_full_name)
 }
 
 fn print_fork_result(owner: &str, repo: &str, forked: &crate::models::repository::Repository) {
