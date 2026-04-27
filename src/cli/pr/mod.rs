@@ -117,17 +117,35 @@ pub enum PrCommand {
         #[arg(long)]
         no_pager: bool,
     },
-    /// Add a comment to a pull request
-    Comment {
+    /// Add, edit, or list comments on a pull request
+    Comment(PrCommentArgs),
+}
+
+#[derive(Args)]
+#[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
+pub struct PrCommentArgs {
+    #[command(subcommand)]
+    pub command: Option<PrCommentCommand>,
+    /// PR number
+    pub number: Option<u64>,
+    /// Comment body (prompts when omitted)
+    #[arg(long, short)]
+    pub body: Option<String>,
+    /// Edit your last comment instead of adding a new one
+    #[arg(long)]
+    pub edit_last: bool,
+    /// Output the comment as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Subcommand)]
+pub enum PrCommentCommand {
+    /// List comments on a pull request
+    List {
         /// PR number
         number: u64,
-        /// Comment body (prompts when omitted)
-        #[arg(long, short)]
-        body: Option<String>,
-        /// Edit your last comment instead of adding a new one
-        #[arg(long)]
-        edit_last: bool,
-        /// Output the comment as JSON
+        /// Output comments as JSON
         #[arg(long)]
         json: bool,
     },
@@ -218,22 +236,27 @@ pub async fn run(
         PrCommand::Diff { number, no_pager } => {
             worktree::diff(cli_hostname, cli_repo, cli_profile, number, no_pager).await
         }
-        PrCommand::Comment {
-            number,
-            body,
-            edit_last,
-            json,
-        } => {
-            write::comment(
-                cli_hostname,
-                cli_repo,
-                cli_profile,
-                number,
-                body,
-                edit_last,
-                json,
-            )
-            .await
-        }
+        PrCommand::Comment(args) => match args.command {
+            Some(PrCommentCommand::List { number, json }) => {
+                read::list_comments(cli_hostname, cli_repo, cli_profile, number, json).await
+            }
+            None => {
+                let number = args.number.ok_or_else(|| {
+                    crate::error::GbError::Other(
+                        "PR number is required. Use `gb pr comment <NUMBER>` or `gb pr comment list <NUMBER>`.".into(),
+                    )
+                })?;
+                write::comment(
+                    cli_hostname,
+                    cli_repo,
+                    cli_profile,
+                    number,
+                    args.body,
+                    args.edit_last,
+                    args.json,
+                )
+                .await
+            }
+        },
     }
 }

@@ -1,4 +1,5 @@
 use dialoguer::Input;
+use std::collections::HashSet;
 
 use crate::cli::common::{
     create_client, create_web_session, merge_named_values, normalize_edit_state, resolve_hostname,
@@ -372,9 +373,74 @@ async fn find_existing_open_pull_request(
     base: &str,
 ) -> Result<Option<PullRequest>> {
     let prs = client.list_pull_requests(owner, repo, "open").await?;
-    Ok(prs
-        .into_iter()
-        .find(|pr| pull_request_matches_head_base(pr, owner, repo, head, base)))
+    let mut seen: HashSet<u64> = prs.iter().map(|pr| pr.number).collect();
+
+    if let Some(pr) =
+        find_matching_pull_request(client, owner, repo, head, base, prs.into_iter()).await?
+    {
+        return Ok(Some(pr));
+    }
+
+    let issues = match client.list_issues(owner, repo, "open").await {
+        Ok(issues) => issues,
+        Err(GbError::Api { status, .. }) if status == 404 || status == 501 => return Ok(None),
+        Err(err) => return Err(err),
+    };
+
+    for issue in issues {
+        if issue.pull_request.is_none() || !seen.insert(issue.number) {
+            continue;
+        }
+
+        match client.get_pull_request(owner, repo, issue.number).await {
+            Ok(pr) if pull_request_matches_head_base(&pr, owner, repo, head, base) => {
+                return Ok(Some(pr));
+            }
+            Ok(_) => {}
+            Err(GbError::Api { status, .. }) if status == 404 || status == 501 => {}
+            Err(err) => return Err(err),
+        }
+    }
+
+    Ok(None)
+}
+
+async fn find_matching_pull_request(
+    client: &crate::api::client::ApiClient,
+    owner: &str,
+    repo: &str,
+    head: &str,
+    base: &str,
+    prs: impl Iterator<Item = PullRequest>,
+) -> Result<Option<PullRequest>> {
+    for pr in prs {
+        if pull_request_matches_head_base(&pr, owner, repo, head, base) {
+            return Ok(Some(pr));
+        }
+
+        if !pull_request_has_comparable_refs(&pr) {
+            match client.get_pull_request(owner, repo, pr.number).await {
+                Ok(pr) if pull_request_matches_head_base(&pr, owner, repo, head, base) => {
+                    return Ok(Some(pr));
+                }
+                Ok(_) => {}
+                Err(GbError::Api { status, .. }) if status == 404 || status == 501 => {}
+                Err(err) => return Err(err),
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+fn pull_request_has_comparable_refs(pr: &PullRequest) -> bool {
+    pr.head
+        .as_ref()
+        .is_some_and(|head| !head.ref_name.is_empty())
+        && pr
+            .base
+            .as_ref()
+            .is_some_and(|base| !base.ref_name.is_empty())
 }
 
 fn pull_request_matches_head_base(

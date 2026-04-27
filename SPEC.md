@@ -725,7 +725,7 @@ gb pr create [OPTIONS]
 | `--detect-existing` | — | Return an existing open PR for the same head/base instead of creating a duplicate |
 
 On normal text output, `gb pr create` prints the created PR number/title, resolved `Head:` and `Base:` repository refs when the API returns them, and a canonical browser URL using `/pull/{number}`.
-With `--detect-existing`, `gb` checks open pull requests for a matching head/base before prompting for title/body or creating a new PR. If create fails after that check, `gb` checks again and returns the matching open PR when one exists.
+With `--detect-existing`, `gb` checks open pull requests for a matching head/base before prompting for title/body or creating a new PR. If the pull request listing is incomplete or lacks comparable refs, `gb` also checks PRs exposed through the issue listing and fetches PR details before deciding no match exists. If create fails after that check, `gb` checks again and returns the matching open PR when one exists.
 
 #### `gb pr edit`
 
@@ -805,6 +805,7 @@ If the API response lacks the PR head/base refs, or a non-open PR produces an em
 
 ```text
 gb pr comment <NUMBER> [OPTIONS]
+gb pr comment list <NUMBER> [OPTIONS]
 ```
 
 | Option | Short | Description |
@@ -814,6 +815,8 @@ gb pr comment <NUMBER> [OPTIONS]
 | `--json` | — | Print the created or edited comment object as JSON |
 
 On normal text output, `gb pr comment` prints the comment ID. If the API returns `html_url`, it also prints the comment URL.
+
+`gb pr comment list <NUMBER>` lists comments on the pull request. Pass `--json` to print the full comment array, which can be used to verify whether a previous comment mutation succeeded before retrying.
 
 ---
 
