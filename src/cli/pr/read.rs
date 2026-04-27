@@ -84,13 +84,9 @@ pub(super) async fn list_comments(
                 comment.created_at.clone().unwrap_or_default(),
                 {
                     let raw = comment.body.as_deref().unwrap_or("");
-                    let normalized = raw
-                        .replace('\r', " ")
-                        .replace('\n', " ");
-                    let collapsed: String = normalized
-                        .split_whitespace()
-                        .collect::<Vec<_>>()
-                        .join(" ");
+                    let normalized = raw.replace(['\r', '\n'], " ");
+                    let collapsed: String =
+                        normalized.split_whitespace().collect::<Vec<_>>().join(" ");
                     truncate(&collapsed, 70)
                 },
             ]
