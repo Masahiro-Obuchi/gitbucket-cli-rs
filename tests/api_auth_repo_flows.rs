@@ -556,6 +556,36 @@ fn repo_fork_preserves_error_when_existing_fork_has_different_upstream() {
 }
 
 #[test]
+fn repo_fork_preserves_auth_error_without_existing_fork_recovery() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
+        "POST /api/v3/repos/alice/project/forks HTTP/1.1",
+        "403 Forbidden",
+        r#"{"message":"forbidden"}"#,
+    )]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .env("GB_USER", "bob")
+        .args(["repo", "fork", "alice/project"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(!output.status.success());
+    assert_eq!(requests.len(), 1);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("API error (403)"), "stderr: {stderr}");
+    assert!(stderr.contains("forbidden"), "stderr: {stderr}");
+    assert!(!stderr.contains("using existing fork"), "stderr: {stderr}");
+}
+
+#[test]
 fn repo_fork_preserves_non_404_api_error_when_fork_target_is_unknown() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
