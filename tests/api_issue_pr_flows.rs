@@ -797,6 +797,71 @@ fn pr_create_detect_existing_ignores_qualified_head_from_different_repo() {
 }
 
 #[test]
+fn pr_create_detect_existing_continues_when_issue_fallback_fails() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
+            "200 OK",
+            "[]",
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/issues?state=open HTTP/1.1",
+            "500 Internal Server Error",
+            r#"{"message":"temporary issue list failure"}"#,
+        ),
+        ScriptedResponse::json(
+            "POST /api/v3/repos/alice/project/pulls HTTP/1.1",
+            "200 OK",
+            r#"{"number":8,"title":"Add feature","state":"open","head":{"ref":"feature/branch"},"base":{"ref":"main"}}"#,
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args([
+            "pr",
+            "create",
+            "-t",
+            "Add feature",
+            "-b",
+            "PR body",
+            "--head",
+            "feature/branch",
+            "--base",
+            "main",
+            "--detect-existing",
+        ])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(requests.len(), 3);
+    assert_eq!(requests[2].method, "POST");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("skipping issue-list fallback"),
+        "stderr: {stderr}"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("Created pull request #8: Add feature"),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
 fn pr_create_detect_existing_preserves_create_error_when_recheck_fails() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_scripted_server(vec![

@@ -384,7 +384,13 @@ async fn find_existing_open_pull_request(
     let issues = match client.list_issues(owner, repo, "open").await {
         Ok(issues) => issues,
         Err(GbError::Api { status, .. }) if status == 404 || status == 501 => return Ok(None),
-        Err(err) => return Err(err),
+        Err(err) => {
+            eprintln!(
+                "Notice: skipping issue-list fallback while checking for an existing PR: {}",
+                err
+            );
+            return Ok(None);
+        }
     };
 
     for issue in issues {
