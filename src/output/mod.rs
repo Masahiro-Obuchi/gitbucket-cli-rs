@@ -53,8 +53,14 @@ pub fn page_or_print(content: &str, no_pager: bool) -> std::io::Result<()> {
     };
 
     if let Some(stdin) = child.stdin.as_mut() {
-        stdin.write_all(content.as_bytes())?;
+        if let Err(err) = stdin.write_all(content.as_bytes()) {
+            if err.kind() == std::io::ErrorKind::BrokenPipe {
+                return Ok(());
+            }
+            return Err(err);
+        }
     }
+    let _ = child.stdin.take();
     let _ = child.wait();
     Ok(())
 }
