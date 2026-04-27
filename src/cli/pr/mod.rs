@@ -29,6 +29,9 @@ pub enum PrCommand {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Do not use a pager
+        #[arg(long)]
+        no_pager: bool,
     },
     /// View a pull request
     View {
@@ -43,6 +46,9 @@ pub enum PrCommand {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Do not use a pager
+        #[arg(long)]
+        no_pager: bool,
     },
     /// Create a pull request
     Create {
@@ -148,6 +154,9 @@ pub enum PrCommentCommand {
         /// Output comments as JSON
         #[arg(long)]
         json: bool,
+        /// Do not use a pager
+        #[arg(long)]
+        no_pager: bool,
     },
 }
 
@@ -158,23 +167,29 @@ pub async fn run(
     cli_profile: &Option<String>,
 ) -> crate::error::Result<()> {
     match args.command {
-        PrCommand::List { state, json } => {
-            read::list(cli_hostname, cli_repo, cli_profile, &state, json).await
-        }
+        PrCommand::List {
+            state,
+            json,
+            no_pager,
+        } => read::list(cli_hostname, cli_repo, cli_profile, &state, json, no_pager).await,
         PrCommand::View {
             number,
             comments,
             web,
             json,
+            no_pager,
         } => {
             read::view(
                 cli_hostname,
                 cli_repo,
                 cli_profile,
-                number,
-                comments,
-                web,
-                json,
+                read::ViewOptions {
+                    number,
+                    show_comments: comments,
+                    web,
+                    json,
+                    no_pager,
+                },
             )
             .await
         }
@@ -237,8 +252,13 @@ pub async fn run(
             worktree::diff(cli_hostname, cli_repo, cli_profile, number, no_pager).await
         }
         PrCommand::Comment(args) => match args.command {
-            Some(PrCommentCommand::List { number, json }) => {
-                read::list_comments(cli_hostname, cli_repo, cli_profile, number, json).await
+            Some(PrCommentCommand::List {
+                number,
+                json,
+                no_pager,
+            }) => {
+                read::list_comments(cli_hostname, cli_repo, cli_profile, number, json, no_pager)
+                    .await
             }
             None => {
                 let number = args.number.ok_or_else(|| {

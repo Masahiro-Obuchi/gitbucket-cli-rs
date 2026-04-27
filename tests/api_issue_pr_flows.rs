@@ -13,7 +13,12 @@ fn pr_list_includes_open_prs_visible_through_repo_issues() {
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
             "200 OK",
-            r#"[{"number":1,"title":"Listed PR","state":"open"}]"#,
+            r#"[{"number":1,"title":"Listed PR","state":"open","head":{"ref":"list-head"}}]"#,
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls/1 HTTP/1.1",
+            "200 OK",
+            r#"{"number":1,"title":"Listed PR","state":"open","head":{"ref":"feature/list","repo":{"name":"fork","full_name":"bob/fork","private":false}},"base":{"ref":"main","repo":{"name":"project","full_name":"alice/project","private":false}}}"#,
         ),
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/issues?state=open HTTP/1.1",
@@ -52,8 +57,10 @@ fn pr_list_includes_open_prs_visible_through_repo_issues() {
     let stdout: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(stdout.as_array().unwrap().len(), 2);
     assert_eq!(stdout[0]["number"], 1);
+    assert_eq!(stdout[0]["head"]["ref"], "feature/list");
+    assert_eq!(stdout[0]["head"]["repo"]["full_name"], "bob/fork");
     assert_eq!(stdout[1]["number"], 2);
-    assert_eq!(requests.len(), 3);
+    assert_eq!(requests.len(), 4);
 }
 
 #[test]

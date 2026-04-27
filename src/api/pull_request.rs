@@ -26,11 +26,22 @@ impl ApiClient {
         owner: &str,
         repo: &str,
         state: &str,
+        hydrate: bool,
     ) -> Result<Vec<PullRequest>> {
         let mut prs = self.list_pull_requests(owner, repo, state).await?;
 
         if state != "open" {
             return Ok(prs);
+        }
+
+        if hydrate {
+            for pr in &mut prs {
+                match self.get_pull_request(owner, repo, pr.number).await {
+                    Ok(hydrated) => *pr = hydrated,
+                    Err(GbError::Api { status, .. }) if status == 404 || status == 501 => {}
+                    Err(err) => return Err(err),
+                }
+            }
         }
 
         let issues = match self.list_issues(owner, repo, state).await {

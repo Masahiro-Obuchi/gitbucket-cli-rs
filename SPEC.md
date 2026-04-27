@@ -571,6 +571,7 @@ gb issue list [OPTIONS]
 | --- | --- | --- | --- |
 | `--state <STATE>` | `-s` | `open` | Filter: `open`, `closed`, `all` |
 | `--json` | — | `false` | Print JSON |
+| `--no-pager` | — | `false` | Do not use a pager |
 
 Table output columns:
 
@@ -593,6 +594,7 @@ gb issue view <NUMBER> [OPTIONS]
 | `--comments` | `-c` | Include comments |
 | `--web` | `-w` | Open in browser |
 | `--json` | — | Print JSON |
+| `--no-pager` | — | Do not use a pager |
 
 Shows title, state, author, created date, labels, assignees, milestone when present, body, and optional comments.
 Comments are hidden by default; pass `--comments` to include them in the CLI output.
@@ -682,6 +684,9 @@ gb pr list [OPTIONS]
 | --- | --- | --- | --- |
 | `--state <STATE>` | `-s` | `open` | Filter: `open`, `closed`, `all` |
 | `--json` | — | `false` | Print JSON |
+| `--no-pager` | — | `false` | Do not use a pager |
+
+With `--state open --json`, `gb` fetches each listed pull request detail before printing JSON so fork `head`/`base` repository information is as reliable as `gb pr view --json`. The issue-listing recovery for GitBucket versions that omit repository-visible open PRs from `/pulls` still applies.
 
 Table output columns:
 
@@ -813,10 +818,11 @@ gb pr comment list <NUMBER> [OPTIONS]
 | `--body <TEXT>` | `-b` | Comment body (prompted when omitted) |
 | `--edit-last` | — | Edit your last comment instead of adding a new one |
 | `--json` | — | Print the created or edited comment object as JSON |
+| `--no-pager` | — | Do not use a pager for `gb pr comment list` |
 
 On normal text output, `gb pr comment` prints the comment ID. If the API returns `html_url`, it also prints the comment URL.
 
-`gb pr comment list <NUMBER>` lists comments on the pull request. Pass `--json` to print the full comment array, which can be used to verify whether a previous comment mutation succeeded before retrying.
+`gb pr comment list <NUMBER>` lists comments on the pull request. Pass `--json` to print the full comment array, which can be used to verify whether a previous comment mutation succeeded before retrying. Pass `--no-pager` to force direct stdout output.
 
 ---
 

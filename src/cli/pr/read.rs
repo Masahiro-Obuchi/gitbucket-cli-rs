@@ -3,8 +3,16 @@ use colored::Colorize;
 use crate::cli::common::{create_client, resolve_hostname, resolve_repo};
 use crate::error::{GbError, Result};
 use crate::models::pull_request::PullRequest;
-use crate::output::table::print_table;
-use crate::output::{format_state, truncate};
+use crate::output::table::format_table;
+use crate::output::{format_state, page_or_print, truncate};
+
+pub(super) struct ViewOptions {
+    pub number: u64,
+    pub show_comments: bool,
+    pub web: bool,
+    pub json: bool,
+    pub no_pager: bool,
+}
 
 pub(super) async fn list(
     hostname: &Option<String>,
@@ -12,6 +20,7 @@ pub(super) async fn list(
     cli_profile: &Option<String>,
     state: &str,
     json: bool,
+    no_pager: bool,
 ) -> Result<()> {
     let hostname = resolve_hostname(hostname, cli_profile)?;
     let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
@@ -19,11 +28,14 @@ pub(super) async fn list(
     let state = crate::cli::common::normalize_list_state(state)?;
 
     let prs = client
-        .list_repository_pull_requests(&owner, &repo, &state)
+        .list_repository_pull_requests(&owner, &repo, &state, json)
         .await?;
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&prs)?);
+        page_or_print(
+            &format!("{}\n", serde_json::to_string_pretty(&prs)?),
+            no_pager,
+        )?;
         return Ok(());
     }
 
@@ -49,7 +61,10 @@ pub(super) async fn list(
         })
         .collect();
 
-    print_table(&["#", "STATE", "TITLE", "BRANCH", "AUTHOR"], &rows);
+    page_or_print(
+        &format_table(&["#", "STATE", "TITLE", "BRANCH", "AUTHOR"], &rows),
+        no_pager,
+    )?;
     Ok(())
 }
 
@@ -59,6 +74,7 @@ pub(super) async fn list_comments(
     cli_profile: &Option<String>,
     number: u64,
     json: bool,
+    no_pager: bool,
 ) -> Result<()> {
     let hostname = resolve_hostname(hostname, cli_profile)?;
     let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
@@ -67,7 +83,10 @@ pub(super) async fn list_comments(
     let comments = client.list_all_pr_comments(&owner, &repo, number).await?;
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&comments)?);
+        page_or_print(
+            &format!("{}\n", serde_json::to_string_pretty(&comments)?),
+            no_pager,
+        )?;
         return Ok(());
     }
 
@@ -93,7 +112,10 @@ pub(super) async fn list_comments(
         })
         .collect();
 
-    print_table(&["ID", "AUTHOR", "CREATED", "BODY"], &rows);
+    page_or_print(
+        &format_table(&["ID", "AUTHOR", "CREATED", "BODY"], &rows),
+        no_pager,
+    )?;
     Ok(())
 }
 
@@ -101,73 +123,108 @@ pub(super) async fn view(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
     cli_profile: &Option<String>,
-    number: u64,
-    show_comments: bool,
-    web: bool,
-    json: bool,
+    options: ViewOptions,
 ) -> Result<()> {
     let hostname = resolve_hostname(hostname, cli_profile)?;
     let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
     let client = create_client(&hostname, cli_profile)?;
 
-    if web {
-        let url = client.web_url(&format!("/{}/{}/pull/{}", owner, repo, number));
+    if options.web {
+        let url = client.web_url(&format!("/{}/{}/pull/{}", owner, repo, options.number));
         open::that(&url).map_err(|e| GbError::Other(format!("Failed to open browser: {}", e)))?;
         println!("Opening {} in your browser.", url);
         return Ok(());
     }
 
-    let pr = client.get_pull_request(&owner, &repo, number).await?;
+    let pr = client
+        .get_pull_request(&owner, &repo, options.number)
+        .await?;
 
-    if json {
-        if show_comments {
-            let comments = client.list_pr_comments(&owner, &repo, number).await?;
+    if options.json {
+        if options.show_comments {
+            let comments = client
+                .list_pr_comments(&owner, &repo, options.number)
+                .await?;
             let mut value = serde_json::to_value(&pr)?;
             let object = value.as_object_mut().ok_or_else(|| {
                 GbError::Other("Failed to serialize pull request as JSON object".into())
             })?;
             object.insert("comments".into(), serde_json::to_value(comments)?);
-            println!("{}", serde_json::to_string_pretty(&value)?);
+            page_or_print(
+                &format!("{}\n", serde_json::to_string_pretty(&value)?),
+                options.no_pager,
+            )?;
         } else {
-            println!("{}", serde_json::to_string_pretty(&pr)?);
+            page_or_print(
+                &format!("{}\n", serde_json::to_string_pretty(&pr)?),
+                options.no_pager,
+            )?;
         }
         return Ok(());
     }
 
+    let output = format_pr_view(
+        &client,
+        &owner,
+        &repo,
+        options.number,
+        options.show_comments,
+        &pr,
+    )
+    .await?;
+    page_or_print(&output, options.no_pager)?;
+    Ok(())
+}
+
+async fn format_pr_view(
+    client: &crate::api::client::ApiClient,
+    owner: &str,
+    repo: &str,
+    number: u64,
+    show_comments: bool,
+    pr: &PullRequest,
+) -> Result<String> {
     let state = if pr.merged == Some(true) {
         "merged"
     } else {
         &pr.state
     };
-
-    println!("{} {}", pr.title.bold(), format!("#{}", pr.number).dimmed());
-    println!("{}", format_state(state));
-    println!();
+    let mut output = String::new();
+    output.push_str(&format!(
+        "{} {}\n",
+        pr.title.bold(),
+        format!("#{}", pr.number).dimmed()
+    ));
+    output.push_str(&format!("{}\n\n", format_state(state)));
 
     if let Some(head) = &pr.head {
         if let Some(base) = &pr.base {
-            println!("{} ← {}", base.ref_name.cyan(), head.ref_name.green());
+            output.push_str(&format!(
+                "{} ← {}\n",
+                base.ref_name.cyan(),
+                head.ref_name.green()
+            ));
         }
     }
 
     if let Some(user) = &pr.user {
-        print!("Author: {}  ", user.login);
+        output.push_str(&format!("Author: {}  ", user.login));
     }
     if let Some(created) = &pr.created_at {
-        print!("Created: {}", created);
+        output.push_str(&format!("Created: {}", created));
     }
-    println!();
+    output.push('\n');
 
     if let Some(body) = &pr.body {
         if !body.is_empty() {
-            println!("\n{}", body);
+            output.push_str(&format!("\n{}\n", body));
         }
     }
 
     if show_comments {
-        let comments = client.list_pr_comments(&owner, &repo, number).await?;
+        let comments = client.list_pr_comments(owner, repo, number).await?;
         if !comments.is_empty() {
-            println!("\n{}", "--- Comments ---".dimmed());
+            output.push_str(&format!("\n{}\n", "--- Comments ---".dimmed()));
             for c in &comments {
                 let author = c
                     .user
@@ -175,15 +232,16 @@ pub(super) async fn view(
                     .map(|u| u.login.as_str())
                     .unwrap_or("unknown");
                 let date = c.created_at.as_deref().unwrap_or("");
-                println!("\n{} ({})", author.bold(), date.dimmed());
+                output.push_str(&format!("\n{} ({})\n", author.bold(), date.dimmed()));
                 if let Some(body) = &c.body {
-                    println!("{}", body);
+                    output.push_str(body);
+                    output.push('\n');
                 }
             }
         }
     }
 
-    Ok(())
+    Ok(output)
 }
 
 pub(super) fn print_pr_refs(pr: &PullRequest) {

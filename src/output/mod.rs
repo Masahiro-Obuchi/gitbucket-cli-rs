@@ -1,6 +1,8 @@
 pub mod table;
 
 use colored::Colorize;
+use std::io::{IsTerminal, Write};
+use std::process::{Command, Stdio};
 
 /// Format a state label with color
 pub fn format_state(state: &str) -> String {
@@ -22,6 +24,39 @@ pub fn truncate(s: &str, max: usize) -> String {
     } else {
         s.chars().take(max).collect()
     }
+}
+
+pub fn page_or_print(content: &str, no_pager: bool) -> std::io::Result<()> {
+    if no_pager || !std::io::stdout().is_terminal() {
+        print!("{content}");
+        return Ok(());
+    }
+
+    let pager = std::env::var("PAGER").unwrap_or_else(|_| "less -R".to_string());
+    let mut parts = pager.split_whitespace();
+    let Some(program) = parts.next() else {
+        print!("{content}");
+        return Ok(());
+    };
+    let args: Vec<&str> = parts.collect();
+
+    let child = Command::new(program)
+        .args(args)
+        .stdin(Stdio::piped())
+        .spawn();
+    let mut child = match child {
+        Ok(child) => child,
+        Err(_) => {
+            print!("{content}");
+            return Ok(());
+        }
+    };
+
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin.write_all(content.as_bytes())?;
+    }
+    let _ = child.wait();
+    Ok(())
 }
 
 #[cfg(test)]

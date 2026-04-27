@@ -2,8 +2,17 @@ use colored::Colorize;
 
 use crate::cli::common::{create_client, resolve_hostname, resolve_repo};
 use crate::error::{GbError, Result};
-use crate::output::table::print_table;
-use crate::output::{format_state, truncate};
+use crate::models::issue::Issue;
+use crate::output::table::format_table;
+use crate::output::{format_state, page_or_print, truncate};
+
+pub(super) struct ViewOptions {
+    pub number: u64,
+    pub show_comments: bool,
+    pub web: bool,
+    pub json: bool,
+    pub no_pager: bool,
+}
 
 pub(super) async fn list(
     hostname: &Option<String>,
@@ -11,6 +20,7 @@ pub(super) async fn list(
     cli_profile: &Option<String>,
     state: &str,
     json: bool,
+    no_pager: bool,
 ) -> Result<()> {
     let hostname = resolve_hostname(hostname, cli_profile)?;
     let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
@@ -20,7 +30,10 @@ pub(super) async fn list(
     let issues = client.list_issues(&owner, &repo, &state).await?;
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&issues)?);
+        page_or_print(
+            &format!("{}\n", serde_json::to_string_pretty(&issues)?),
+            no_pager,
+        )?;
         return Ok(());
     }
 
@@ -47,7 +60,10 @@ pub(super) async fn list(
         })
         .collect();
 
-    print_table(&["#", "STATE", "TITLE", "AUTHOR", "LABELS"], &rows);
+    page_or_print(
+        &format_table(&["#", "STATE", "TITLE", "AUTHOR", "LABELS"], &rows),
+        no_pager,
+    )?;
     Ok(())
 }
 
@@ -55,74 +71,37 @@ pub(super) async fn view(
     hostname: &Option<String>,
     cli_repo: &Option<String>,
     cli_profile: &Option<String>,
-    number: u64,
-    show_comments: bool,
-    web: bool,
-    json: bool,
+    options: ViewOptions,
 ) -> Result<()> {
     let hostname = resolve_hostname(hostname, cli_profile)?;
     let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
     let client = create_client(&hostname, cli_profile)?;
 
-    if web {
-        let url = client.web_url(&format!("/{}/{}/issues/{}", owner, repo, number));
+    if options.web {
+        let url = client.web_url(&format!("/{}/{}/issues/{}", owner, repo, options.number));
         open::that(&url)
             .map_err(|err| GbError::Other(format!("Failed to open browser: {}", err)))?;
         println!("Opening {} in your browser.", url);
         return Ok(());
     }
 
-    let issue = client.get_issue(&owner, &repo, number).await?;
+    let issue = client.get_issue(&owner, &repo, options.number).await?;
 
-    if json {
-        println!("{}", serde_json::to_string_pretty(&issue)?);
+    if options.json {
+        page_or_print(
+            &format!("{}\n", serde_json::to_string_pretty(&issue)?),
+            options.no_pager,
+        )?;
         return Ok(());
     }
 
-    println!(
-        "{} {}",
-        issue.title.bold(),
-        format!("#{}", issue.number).dimmed()
-    );
-    println!("{}", format_state(&issue.state));
-    println!();
-
-    if let Some(user) = &issue.user {
-        print!("Author: {}  ", user.login);
-    }
-    if let Some(created) = &issue.created_at {
-        print!("Created: {}", created);
-    }
-    println!();
-
-    if !issue.labels.is_empty() {
-        let labels: Vec<&str> = issue
-            .labels
-            .iter()
-            .map(|label| label.name.as_str())
-            .collect();
-        println!("Labels: {}", labels.join(", "));
-    }
-    if !issue.assignees.is_empty() {
-        let assignees: Vec<&str> = issue
-            .assignees
-            .iter()
-            .map(|assignee| assignee.login.as_str())
-            .collect();
-        println!("Assignees: {}", assignees.join(", "));
-    }
-    if let Some(milestone) = issue.milestone.as_ref() {
-        println!("Milestone: {} (#{})", milestone.title, milestone.number);
-    }
-
-    if let Some(body) = issue.body.as_deref().filter(|body| !body.is_empty()) {
-        println!("\n{}", body);
-    }
-
-    if show_comments {
-        let comments = client.list_issue_comments(&owner, &repo, number).await?;
+    let mut output = format_issue_view(&issue);
+    if options.show_comments {
+        let comments = client
+            .list_issue_comments(&owner, &repo, options.number)
+            .await?;
         if !comments.is_empty() {
-            println!("\n{}", "--- Comments ---".dimmed());
+            output.push_str(&format!("\n{}\n", "--- Comments ---".dimmed()));
             for comment in &comments {
                 let author = comment
                     .user
@@ -130,13 +109,62 @@ pub(super) async fn view(
                     .map(|user| user.login.as_str())
                     .unwrap_or("unknown");
                 let date = comment.created_at.as_deref().unwrap_or("");
-                println!("\n{} ({})", author.bold(), date.dimmed());
+                output.push_str(&format!("\n{} ({})\n", author.bold(), date.dimmed()));
                 if let Some(body) = &comment.body {
-                    println!("{}", body);
+                    output.push_str(body);
+                    output.push('\n');
                 }
             }
         }
     }
 
+    page_or_print(&output, options.no_pager)?;
     Ok(())
+}
+
+fn format_issue_view(issue: &Issue) -> String {
+    let mut output = String::new();
+    output.push_str(&format!(
+        "{} {}\n",
+        issue.title.bold(),
+        format!("#{}", issue.number).dimmed()
+    ));
+    output.push_str(&format!("{}\n\n", format_state(&issue.state)));
+
+    if let Some(user) = &issue.user {
+        output.push_str(&format!("Author: {}  ", user.login));
+    }
+    if let Some(created) = &issue.created_at {
+        output.push_str(&format!("Created: {}", created));
+    }
+    output.push('\n');
+
+    if !issue.labels.is_empty() {
+        let labels: Vec<&str> = issue
+            .labels
+            .iter()
+            .map(|label| label.name.as_str())
+            .collect();
+        output.push_str(&format!("Labels: {}\n", labels.join(", ")));
+    }
+    if !issue.assignees.is_empty() {
+        let assignees: Vec<&str> = issue
+            .assignees
+            .iter()
+            .map(|assignee| assignee.login.as_str())
+            .collect();
+        output.push_str(&format!("Assignees: {}\n", assignees.join(", ")));
+    }
+    if let Some(milestone) = issue.milestone.as_ref() {
+        output.push_str(&format!(
+            "Milestone: {} (#{})\n",
+            milestone.title, milestone.number
+        ));
+    }
+
+    if let Some(body) = issue.body.as_deref().filter(|body| !body.is_empty()) {
+        output.push_str(&format!("\n{}\n", body));
+    }
+
+    output
 }

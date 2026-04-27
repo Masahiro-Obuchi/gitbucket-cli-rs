@@ -2,9 +2,13 @@ use colored::Colorize;
 
 /// Print a simple table with aligned columns
 pub fn print_table(headers: &[&str], rows: &[Vec<String>]) {
+    print!("{}", format_table(headers, rows));
+}
+
+/// Format a simple table with aligned columns
+pub fn format_table(headers: &[&str], rows: &[Vec<String>]) -> String {
     if rows.is_empty() {
-        println!("No items found.");
-        return;
+        return "No items found.\n".to_string();
     }
 
     // Calculate column widths
@@ -25,7 +29,9 @@ pub fn print_table(headers: &[&str], rows: &[Vec<String>]) {
         .enumerate()
         .map(|(i, h)| format!("{:<width$}", h, width = widths[i]))
         .collect();
-    println!("{}", header_line.join("  ").dimmed());
+    let mut output = String::new();
+    output.push_str(&header_line.join("  ").dimmed().to_string());
+    output.push('\n');
 
     // Print rows
     for row in rows {
@@ -43,8 +49,11 @@ pub fn print_table(headers: &[&str], rows: &[Vec<String>]) {
                 format!("{}{}", cell, padding)
             })
             .collect();
-        println!("{}", line.join("  "));
+        output.push_str(&line.join("  "));
+        output.push('\n');
     }
+
+    output
 }
 
 fn strip_ansi(s: &str) -> String {

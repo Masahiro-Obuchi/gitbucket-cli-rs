@@ -27,6 +27,9 @@ pub enum IssueCommand {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Do not use a pager
+        #[arg(long)]
+        no_pager: bool,
     },
     /// View an issue (use --comments to include comments)
     View {
@@ -41,6 +44,9 @@ pub enum IssueCommand {
         /// Print raw JSON response
         #[arg(long)]
         json: bool,
+        /// Do not use a pager
+        #[arg(long)]
+        no_pager: bool,
     },
     /// Create a new issue
     Create {
@@ -119,23 +125,29 @@ pub async fn run(
     cli_profile: &Option<String>,
 ) -> crate::error::Result<()> {
     match args.command {
-        IssueCommand::List { state, json } => {
-            read::list(cli_hostname, cli_repo, cli_profile, &state, json).await
-        }
+        IssueCommand::List {
+            state,
+            json,
+            no_pager,
+        } => read::list(cli_hostname, cli_repo, cli_profile, &state, json, no_pager).await,
         IssueCommand::View {
             number,
             comments,
             web,
             json,
+            no_pager,
         } => {
             read::view(
                 cli_hostname,
                 cli_repo,
                 cli_profile,
-                number,
-                comments,
-                web,
-                json,
+                read::ViewOptions {
+                    number,
+                    show_comments: comments,
+                    web,
+                    json,
+                    no_pager,
+                },
             )
             .await
         }
