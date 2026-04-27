@@ -469,6 +469,50 @@ fn repo_fork_accepts_positional_repo_after_subcommand() {
 }
 
 #[test]
+fn repo_fork_returns_existing_fork_when_fork_request_fails_after_creation() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "POST /api/v3/repos/alice/project/forks HTTP/1.1",
+            "500 Internal Server Error",
+            r#"{"message":"temporary fork failure"}"#,
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/bob/project HTTP/1.1",
+            "200 OK",
+            r#"{"name":"project","full_name":"bob/project","private":false,"fork":true,"html_url":"http://127.0.0.1/bob/project"}"#,
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .env("GB_USER", "bob")
+        .args(["repo", "fork", "alice/project"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[1].method, "GET");
+    assert_eq!(requests[1].target, "/api/v3/repos/bob/project");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Forked alice/project → bob/project"));
+    assert!(stdout.contains("http://127.0.0.1/bob/project"));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("using existing fork"), "stderr: {stderr}");
+}
+
+#[test]
 fn repo_delete_yes_skips_confirmation_and_sends_delete_request() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_server("204 No Content", "");
@@ -553,6 +597,11 @@ fn repo_fork_falls_back_to_gitbucket_web_session() {
             "404 Not Found",
             r#"{"message":"Not Found"}"#,
         ),
+        ScriptedResponse::json(
+            "GET /gitbucket/api/v3/repos/my-group/project HTTP/1.1",
+            "404 Not Found",
+            r#"{"message":"Not Found"}"#,
+        ),
         ScriptedResponse::html("POST /gitbucket/signin HTTP/1.1", "200 OK", "signed in")
             .with_header("set-cookie", "JSESSIONID=session345; Path=/; HttpOnly"),
         ScriptedResponse::html(
@@ -582,12 +631,12 @@ fn repo_fork_falls_back_to_gitbucket_web_session() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(requests.len(), 3);
+    assert_eq!(requests.len(), 4);
     assert_eq!(
-        requests[2].headers.get("cookie").map(String::as_str),
+        requests[3].headers.get("cookie").map(String::as_str),
         Some("JSESSIONID=session345")
     );
-    assert!(requests[2].body.contains("account=my-group"));
+    assert!(requests[3].body.contains("account=my-group"));
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Forked alice/project → my-group/project"));
 }
