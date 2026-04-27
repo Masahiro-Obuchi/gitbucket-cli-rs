@@ -105,8 +105,10 @@ gb auth logout [OPTIONS]
 Show current authentication entries.
 
 ```text
-gb auth status
+gb auth status [--json]
 ```
+
+`--profile <NAME>` limits output to that profile and prints the profile's effective actor. `--json` prints structured output with a top-level `effective_actor` object containing `host`, `user`, `protocol`, and `credential_source`.
 
 Example output:
 
@@ -114,6 +116,15 @@ Example output:
 gitbucket.example.com
   ✓ Logged in as alice
   Protocol: https
+```
+
+Profile example:
+
+```text
+Profile: work
+  Default host: gitbucket.example.com
+  Default repo: alice/project
+  Effective actor: alice @ gitbucket.example.com (profile credentials)
 ```
 
 #### `gb auth token`

@@ -136,7 +136,7 @@ gb pr comment 5 --edit-last -b "Updated note" --json
 | ------------------------------ | ------------------------------------ |
 | `gb auth login`                | Authenticate to a GitBucket instance |
 | `gb auth logout`               | Remove auth for a host               |
-| `gb auth status`               | Show current auth status             |
+| `gb auth status [--json]`      | Show current auth status             |
 | `gb auth token`                | Print access token                   |
 | `gb config`                    | Manage local CLI configuration       |
 | `gb completion <SHELL>`        | Generate shell completion scripts    |
@@ -302,6 +302,19 @@ protocol = "https"
 ```
 
 `--hostname` / `GB_HOST` and `--repo` / `GB_REPO` override profile defaults. Profile-scoped credentials are tried before global `[hosts]` credentials for the same host.
+
+The same GitBucket host can be used with multiple accounts by storing credentials under different profiles:
+
+```sh
+gb auth login --profile work -H gitbucket.example.com -t "$WORK_TOKEN"
+gb auth login --profile personal -H gitbucket.example.com -t "$PERSONAL_TOKEN"
+
+gb auth status --profile work
+gb auth status --profile personal --json
+gb issue list --profile work -R alice/project
+```
+
+`gb auth status --profile <name>` prints only that profile and shows its effective actor, including whether credentials came from the profile, global host entry, or environment token. `gb auth status --json` exposes the same information in `effective_actor` for scripts.
 
 When `GB_TOKEN` is set, protocol selection uses this order:
 

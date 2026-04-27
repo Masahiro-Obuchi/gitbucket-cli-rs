@@ -126,6 +126,108 @@ fn auth_login_rejects_empty_profile_before_api_call() {
 }
 
 #[test]
+fn auth_status_with_profile_prints_only_that_profile_and_effective_actor() {
+    let temp = tempdir().unwrap();
+    fs::write(
+        temp.path().join("config.toml"),
+        r#"
+[hosts."gitbucket.example.com"]
+token = "global-token"
+user = "global-user"
+protocol = "https"
+
+[profiles.work]
+default_host = "gitbucket.example.com"
+default_repo = "alice/project"
+
+[profiles.work.hosts."gitbucket.example.com"]
+token = "work-token"
+user = "alice"
+protocol = "https"
+
+[profiles.sandbox]
+default_host = "gitbucket.example.com"
+
+[profiles.sandbox.hosts."gitbucket.example.com"]
+token = "sandbox-token"
+user = "bob"
+protocol = "https"
+"#,
+    )
+    .unwrap();
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args(["auth", "status", "--profile", "work"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Profile: work"));
+    assert!(stdout.contains("Default repo: alice/project"));
+    assert!(stdout.contains("Effective actor: alice @ gitbucket.example.com"));
+    assert!(stdout.contains("profile credentials"));
+    assert!(!stdout.contains("sandbox"));
+    assert!(!stdout.contains("bob"));
+    assert!(!stdout.contains("global-user"));
+}
+
+#[test]
+fn auth_status_json_includes_structured_effective_actor() {
+    let temp = tempdir().unwrap();
+    fs::write(
+        temp.path().join("config.toml"),
+        r#"
+default_profile = "work"
+
+[hosts."gitbucket.example.com"]
+token = "global-token"
+user = "global-user"
+protocol = "https"
+
+[profiles.work]
+default_host = "gitbucket.example.com"
+default_repo = "alice/project"
+
+[profiles.work.hosts."gitbucket.example.com"]
+token = "work-token"
+user = "alice"
+protocol = "https"
+"#,
+    )
+    .unwrap();
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args(["auth", "status", "--json"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(payload["active_profile"], "work");
+    assert_eq!(payload["effective_actor"]["host"], "gitbucket.example.com");
+    assert_eq!(payload["effective_actor"]["user"], "alice");
+    assert_eq!(payload["effective_actor"]["protocol"], "https");
+    assert_eq!(payload["effective_actor"]["credential_source"], "profile");
+    assert_eq!(
+        payload["profiles"]["work"]["effective_actor"]["user"],
+        "alice"
+    );
+}
+
+#[test]
 fn auth_login_maps_401_to_user_friendly_error() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_server("401 Unauthorized", r#"{"message":"bad credentials"}"#);

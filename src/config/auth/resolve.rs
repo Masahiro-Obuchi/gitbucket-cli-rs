@@ -192,6 +192,12 @@ impl AuthConfig {
         stored_hostname_in(&self.hosts, hostname)
     }
 
+    pub fn stored_hostname_for_profile(&self, profile: &str, hostname: &str) -> Option<String> {
+        self.profiles
+            .get(profile)
+            .and_then(|profile| stored_hostname_in(&profile.hosts, hostname))
+    }
+
     pub(super) fn find_host(&self, hostname: &str) -> Option<&HostConfig> {
         find_host_in(&self.hosts, hostname)
     }
