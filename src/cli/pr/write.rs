@@ -404,7 +404,12 @@ async fn find_existing_open_pull_request(
             }
             Ok(_) => {}
             Err(GbError::Api { status, .. }) if status == 404 || status == 501 => {}
-            Err(err) => return Err(err),
+            Err(err) => {
+                eprintln!(
+                    "Notice: skipping pull request #{} while checking for an existing PR: {}",
+                    issue.number, err
+                );
+            }
         }
     }
 
@@ -431,7 +436,12 @@ async fn find_matching_pull_request(
                 }
                 Ok(_) => {}
                 Err(GbError::Api { status, .. }) if status == 404 || status == 501 => {}
-                Err(err) => return Err(err),
+                Err(err) => {
+                    eprintln!(
+                        "Notice: skipping pull request #{} while checking for an existing PR: {}",
+                        pr.number, err
+                    );
+                }
             }
         }
     }
