@@ -113,6 +113,16 @@ impl ApiClient {
         self.list_issue_comments(owner, repo, number).await
     }
 
+    /// List all comments on a pull request across paginated API responses.
+    pub async fn list_all_pr_comments(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Vec<Comment>> {
+        self.list_all_issue_comments(owner, repo, number).await
+    }
+
     /// Add a comment to a pull request (uses issues API)
     pub async fn create_pr_comment(
         &self,

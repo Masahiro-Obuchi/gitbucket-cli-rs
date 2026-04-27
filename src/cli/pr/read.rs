@@ -53,6 +53,50 @@ pub(super) async fn list(
     Ok(())
 }
 
+pub(super) async fn list_comments(
+    hostname: &Option<String>,
+    cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
+    number: u64,
+    json: bool,
+) -> Result<()> {
+    let hostname = resolve_hostname(hostname, cli_profile)?;
+    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let client = create_client(&hostname, cli_profile)?;
+
+    let comments = client.list_all_pr_comments(&owner, &repo, number).await?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&comments)?);
+        return Ok(());
+    }
+
+    let rows: Vec<Vec<String>> = comments
+        .iter()
+        .map(|comment| {
+            vec![
+                comment.id.to_string(),
+                comment
+                    .user
+                    .as_ref()
+                    .map(|user| user.login.clone())
+                    .unwrap_or_default(),
+                comment.created_at.clone().unwrap_or_default(),
+                {
+                    let raw = comment.body.as_deref().unwrap_or("");
+                    let normalized = raw.replace(['\r', '\n'], " ");
+                    let collapsed: String =
+                        normalized.split_whitespace().collect::<Vec<_>>().join(" ");
+                    truncate(&collapsed, 70)
+                },
+            ]
+        })
+        .collect();
+
+    print_table(&["ID", "AUTHOR", "CREATED", "BODY"], &rows);
+    Ok(())
+}
+
 pub(super) async fn view(
     hostname: &Option<String>,
     cli_repo: &Option<String>,

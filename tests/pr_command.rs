@@ -45,6 +45,19 @@ fn pr_help_mentions_edit_and_comment_edit_last() {
         comment_stdout.contains("--json"),
         "stdout: {comment_stdout}"
     );
+    assert!(comment_stdout.contains("list"), "stdout: {comment_stdout}");
+
+    let comment_list_output = gb_command()
+        .args(["pr", "comment", "list", "--help"])
+        .output()
+        .unwrap();
+    let comment_list_stdout = String::from_utf8_lossy(&comment_list_output.stdout);
+
+    assert!(comment_list_output.status.success());
+    assert!(
+        comment_list_stdout.contains("--json"),
+        "stdout: {comment_list_stdout}"
+    );
 }
 
 #[test]

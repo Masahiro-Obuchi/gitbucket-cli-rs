@@ -21,11 +21,20 @@ pub struct Repository {
     #[serde(default)]
     pub owner: Option<User>,
     #[serde(default)]
+    pub parent: Option<RepositoryRef>,
+    #[serde(default)]
+    pub source: Option<RepositoryRef>,
+    #[serde(default)]
     pub watchers_count: Option<u64>,
     #[serde(default)]
     pub forks_count: Option<u64>,
     #[serde(default)]
     pub open_issues_count: Option<u64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RepositoryRef {
+    pub full_name: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

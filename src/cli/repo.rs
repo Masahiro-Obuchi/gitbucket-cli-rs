@@ -426,14 +426,40 @@ async fn fork(
     let client = create_client(&hostname, cli_profile)?;
     match client.fork_repo(&owner, &repo).await {
         Ok(forked) => {
-            println!("✓ Forked {}/{} → {}", owner, repo, forked.full_name);
-            if let Some(url) = &forked.html_url {
-                println!("{}", url);
-            }
+            print_fork_result(&owner, &repo, &forked);
             Ok(())
         }
-        Err(GbError::Api { status: 404, .. }) => {
+        Err(err @ GbError::Api { status, .. }) => {
+            if status != 404 {
+                if status == 409 || status >= 500 {
+                    if let Ok(target_account) = resolve_fork_target(&hostname, cli_profile, group) {
+                        if let Some(existing) =
+                            existing_fork(&client, &target_account, &repo, &owner, &repo).await?
+                        {
+                            eprintln!(
+                                "Notice: fork request did not return a repository; using existing fork {}.",
+                                existing.full_name
+                            );
+                            print_fork_result(&owner, &repo, &existing);
+                            return Ok(());
+                        }
+                    }
+                }
+                return Err(err);
+            }
+
             let target_account = resolve_fork_target(&hostname, cli_profile, group)?;
+            if let Some(existing) =
+                existing_fork(&client, &target_account, &repo, &owner, &repo).await?
+            {
+                eprintln!(
+                    "Notice: fork request did not return a repository; using existing fork {}.",
+                    existing.full_name
+                );
+                print_fork_result(&owner, &repo, &existing);
+                return Ok(());
+            }
+
             eprintln!(
                 "Notice: REST repository fork is unavailable on this GitBucket instance; using web fallback."
             );
@@ -447,6 +473,73 @@ async fn fork(
             Ok(())
         }
         Err(err) => Err(err),
+    }
+}
+
+async fn existing_fork(
+    client: &crate::api::client::ApiClient,
+    target_owner: &str,
+    target_repo: &str,
+    source_owner: &str,
+    source_repo: &str,
+) -> Result<Option<crate::models::repository::Repository>> {
+    match client.get_repo(target_owner, target_repo).await {
+        Ok(repo)
+            if repository_is_requested_fork(
+                &repo,
+                target_owner,
+                target_repo,
+                source_owner,
+                source_repo,
+            ) =>
+        {
+            Ok(Some(repo))
+        }
+        Ok(repo) => {
+            if repo.fork && repo.full_name == format!("{target_owner}/{target_repo}") {
+                eprintln!(
+                    "Notice: found existing fork {}, but its upstream did not match {}/{}.",
+                    repo.full_name, source_owner, source_repo
+                );
+            }
+            Ok(None)
+        }
+        Err(GbError::Api { status: 404, .. }) => Ok(None),
+        Err(err) => {
+            eprintln!(
+                "Notice: failed to check existing fork {}/{} after fork error for {}/{}: {}",
+                target_owner, target_repo, source_owner, source_repo, err
+            );
+            Ok(None)
+        }
+    }
+}
+
+fn repository_is_requested_fork(
+    repo: &crate::models::repository::Repository,
+    target_owner: &str,
+    target_repo: &str,
+    source_owner: &str,
+    source_repo: &str,
+) -> bool {
+    if !repo.fork || repo.full_name != format!("{target_owner}/{target_repo}") {
+        return false;
+    }
+
+    let source_full_name = format!("{source_owner}/{source_repo}");
+    repo.parent
+        .as_ref()
+        .is_some_and(|parent| parent.full_name == source_full_name)
+        || repo
+            .source
+            .as_ref()
+            .is_some_and(|source| source.full_name == source_full_name)
+}
+
+fn print_fork_result(owner: &str, repo: &str, forked: &crate::models::repository::Repository) {
+    println!("✓ Forked {}/{} → {}", owner, repo, forked.full_name);
+    if let Some(url) = &forked.html_url {
+        println!("{}", url);
     }
 }
 
