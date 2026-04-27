@@ -917,6 +917,60 @@ fn pr_create_detect_existing_finds_pull_request_from_issue_listing_gap() {
 }
 
 #[test]
+fn pr_create_detect_existing_fetches_details_when_list_item_lacks_head_identity() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
+            "200 OK",
+            r#"[
+                {"number":7,"title":"Existing PR","state":"open","head":{"ref":"feature/branch"},"base":{"ref":"main"}}
+            ]"#,
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls/7 HTTP/1.1",
+            "200 OK",
+            r#"{"number":7,"title":"Existing PR","state":"open","head":{"ref":"feature/branch","label":"alice:feature/branch","repo":{"name":"project","full_name":"alice/project"}},"base":{"ref":"main","repo":{"name":"project","full_name":"alice/project"}}}"#,
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args([
+            "pr",
+            "create",
+            "--head",
+            "feature/branch",
+            "--base",
+            "main",
+            "--detect-existing",
+        ])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[1].target, "/api/v3/repos/alice/project/pulls/7");
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("Found existing pull request #7: Existing PR"),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
 fn pr_edit_updates_title_body_state_and_assignees() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_scripted_server(vec![

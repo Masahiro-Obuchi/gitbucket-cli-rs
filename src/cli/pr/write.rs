@@ -434,13 +434,17 @@ async fn find_matching_pull_request(
 }
 
 fn pull_request_has_comparable_refs(pr: &PullRequest) -> bool {
-    pr.head
+    pr.head.as_ref().is_some_and(|head| {
+        !head.ref_name.is_empty()
+            && (head.label.as_deref().is_some_and(|label| !label.is_empty())
+                || head
+                    .repo
+                    .as_ref()
+                    .is_some_and(|repo| !repo.full_name.is_empty()))
+    }) && pr
+        .base
         .as_ref()
-        .is_some_and(|head| !head.ref_name.is_empty())
-        && pr
-            .base
-            .as_ref()
-            .is_some_and(|base| !base.ref_name.is_empty())
+        .is_some_and(|base| !base.ref_name.is_empty())
 }
 
 fn pull_request_matches_head_base(
