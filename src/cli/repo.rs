@@ -430,6 +430,22 @@ async fn fork(
             Ok(())
         }
         Err(err @ GbError::Api { status, .. }) => {
+            if status != 404 {
+                if let Ok(target_account) = resolve_fork_target(&hostname, cli_profile, group) {
+                    if let Some(existing) =
+                        existing_fork(&client, &target_account, &repo, &owner, &repo).await?
+                    {
+                        eprintln!(
+                            "Notice: fork request did not return a repository; using existing fork {}.",
+                            existing.full_name
+                        );
+                        print_fork_result(&owner, &repo, &existing);
+                        return Ok(());
+                    }
+                }
+                return Err(err);
+            }
+
             let target_account = resolve_fork_target(&hostname, cli_profile, group)?;
             if let Some(existing) =
                 existing_fork(&client, &target_account, &repo, &owner, &repo).await?
@@ -440,10 +456,6 @@ async fn fork(
                 );
                 print_fork_result(&owner, &repo, &existing);
                 return Ok(());
-            }
-
-            if status != 404 {
-                return Err(err);
             }
 
             eprintln!(

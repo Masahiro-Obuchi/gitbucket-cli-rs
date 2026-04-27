@@ -513,6 +513,41 @@ fn repo_fork_returns_existing_fork_when_fork_request_fails_after_creation() {
 }
 
 #[test]
+fn repo_fork_preserves_non_404_api_error_when_fork_target_is_unknown() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
+        "POST /api/v3/repos/alice/project/forks HTTP/1.1",
+        "500 Internal Server Error",
+        r#"{"message":"temporary fork failure"}"#,
+    )]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["repo", "fork", "alice/project"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert!(!output.status.success());
+    assert_eq!(requests.len(), 1);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("API error (500)"), "stderr: {stderr}");
+    assert!(
+        stderr.contains("temporary fork failure"),
+        "stderr: {stderr}"
+    );
+    assert!(
+        !stderr.contains("GitBucket fork requires"),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
 fn repo_delete_yes_skips_confirmation_and_sends_delete_request() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_server("204 No Content", "");
