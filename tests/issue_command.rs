@@ -20,6 +20,7 @@ fn issue_view_help_mentions_comments_flag_behavior() {
         stdout.contains("Include comments in the output"),
         "stdout: {stdout}"
     );
+    assert!(stdout.contains("--no-pager"), "stdout: {stdout}");
 }
 
 #[test]
@@ -35,6 +36,7 @@ fn issue_help_mentions_state_values_and_repeatable_metadata_options() {
         list_stdout.contains("[possible values: open, closed, all]"),
         "stdout: {list_stdout}"
     );
+    assert!(list_stdout.contains("--no-pager"), "stdout: {list_stdout}");
 
     let create_output = gb_command()
         .args(["issue", "create", "--help"])

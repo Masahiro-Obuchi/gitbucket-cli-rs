@@ -231,10 +231,7 @@ async fn view(
     web: bool,
 ) -> Result<()> {
     let hostname = resolve_hostname(hostname, cli_profile)?;
-    let (owner, repo) = match repo_arg {
-        Some(r) => parse_owner_repo(&r)?,
-        None => resolve_repo(&None, cli_profile)?,
-    };
+    let (owner, repo) = resolve_repo(&repo_arg, cli_profile)?;
     let client = create_client(&hostname, cli_profile)?;
 
     if web {

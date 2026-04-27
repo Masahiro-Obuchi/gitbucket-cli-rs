@@ -48,6 +48,38 @@ fn repo_view_renders_repository_details() {
 }
 
 #[test]
+fn repo_view_uses_global_repo_argument() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
+        "GET /api/v3/repos/alice/demo HTTP/1.1",
+        "200 OK",
+        r#"{"name":"demo","full_name":"alice/demo","private":false,"fork":false}"#,
+    )]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .env("NO_COLOR", "1")
+        .args(["-R", "alice/demo", "repo", "view"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert_eq!(requests.len(), 1);
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("alice/demo"));
+}
+
+#[test]
 fn issue_view_with_comments_renders_details_and_comments() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_scripted_server(vec![

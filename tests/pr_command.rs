@@ -72,6 +72,21 @@ fn pr_diff_help_mentions_no_pager() {
 }
 
 #[test]
+fn pr_read_help_mentions_no_pager() {
+    for args in [
+        ["pr", "list", "--help"].as_slice(),
+        ["pr", "view", "--help"].as_slice(),
+        ["pr", "comment", "list", "--help"].as_slice(),
+    ] {
+        let output = gb_command().args(args).output().unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(output.status.success());
+        assert!(stdout.contains("--no-pager"), "stdout: {stdout}");
+    }
+}
+
+#[test]
 fn pr_create_rejects_head_owner_containing_colon() {
     let temp = tempdir().unwrap();
     let output = gb_command()

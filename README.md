@@ -108,6 +108,7 @@ gb issue list --state all
 gb issue create -t "Bug report"
 gb issue view 1
 gb issue view 1 --comments
+gb issue view 1 --comments --no-pager
 gb issue edit 1 --title "Updated bug report" --add-label urgent
 gb issue close 1
 gb issue comment 1 -b "Fixed!"
@@ -118,6 +119,7 @@ gb issue comment 1 --edit-last -b "Actually fixed!"
 
 ```bash
 gb pr list --state closed
+gb pr list --state open --json --no-pager
 gb pr create
 gb pr create -t "From fork" --head feature/x --head-owner alice -B main
 gb pr create --head feature/x -B main --detect-existing
@@ -128,7 +130,7 @@ gb pr merge 5
 gb pr checkout 5
 gb pr diff 5 --no-pager
 gb pr comment 5 --edit-last -b "Updated note" --json
-gb pr comment list 5 --json
+gb pr comment list 5 --json --no-pager
 ```
 
 ## Command reference
@@ -206,7 +208,7 @@ Supported remote URL formats include:
 
 ```bash
 gb issue list
-gb issue list --json
+gb issue list --json --no-pager
 gb issue view 1 --web
 ```
 
@@ -242,8 +244,8 @@ gb issue edit 1 --add-label needs-review --remove-assignee bob
 gb pr edit 5 --add-assignee alice,bob --remove-assignee carol
 ```
 
-`gb pr create --head` accepts a branch name for same-repository PRs. For cross-repository PRs, pass `OWNER:BRANCH` or use `--head-owner OWNER --head BRANCH`; after creation, the CLI prints the resolved `Head:` and `Base:` repositories and refs. Use `gb pr create --detect-existing` to return an existing open PR for the same head/base instead of creating a duplicate, including PRs that need to be recovered from GitBucket's issue listing. `gb pr create --json` and `gb pr view --json` print the API payload for automation; `gb pr view --comments --json` also includes a top-level `comments` array.
-`gb pr comment --json` prints the created or edited comment object; normal text output includes the comment ID and URL when GitBucket returns one. Use `gb pr comment list <NUMBER> --json` to inspect existing PR comments before retrying a comment mutation.
+`gb pr create --head` accepts a branch name for same-repository PRs. For cross-repository PRs, pass `OWNER:BRANCH` or use `--head-owner OWNER --head BRANCH`; after creation, the CLI prints the resolved `Head:` and `Base:` repositories and refs. Use `gb pr create --detect-existing` to return an existing open PR for the same head/base instead of creating a duplicate, including PRs that need to be recovered from GitBucket's issue listing. `gb pr create --json` and `gb pr view --json` print the API payload for automation; `gb pr view --comments --json` also includes a top-level `comments` array. `gb pr list --state open --json` fetches each open PR detail before printing JSON so fork head/base repository information matches `gb pr view --json` more closely.
+`gb pr comment --json` prints the created or edited comment object; normal text output includes the comment ID and URL when GitBucket returns one. Use `gb pr comment list <NUMBER> --json` to inspect existing PR comments before retrying a comment mutation. `gb issue list`, `gb issue view`, `gb pr list`, `gb pr view`, and `gb pr comment list` accept `--no-pager` to force direct stdout output.
 
 ## Pull Request Checkout And Diff
 
