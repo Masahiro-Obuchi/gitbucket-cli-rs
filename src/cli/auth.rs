@@ -295,10 +295,7 @@ fn status_output(
             profiles
         }
     };
-    let effective_actor = active_profile
-        .map(|profile| effective_actor(config, cli_hostname, Some(profile)))
-        .transpose()?
-        .flatten();
+    let effective_actor = effective_actor(config, cli_hostname, active_profile)?;
 
     Ok(AuthStatusOutput {
         active_profile: active_profile.map(str::to_string),

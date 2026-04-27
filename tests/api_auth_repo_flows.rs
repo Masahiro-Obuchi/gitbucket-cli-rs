@@ -228,6 +228,40 @@ protocol = "https"
 }
 
 #[test]
+fn auth_status_json_global_credentials_includes_effective_actor() {
+    let temp = tempdir().unwrap();
+    fs::write(
+        temp.path().join("config.toml"),
+        r#"
+[hosts."gitbucket.example.com"]
+token = "global-token"
+user = "global-user"
+protocol = "https"
+"#,
+    )
+    .unwrap();
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args(["auth", "status", "--json", "-H", "gitbucket.example.com"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(payload["active_profile"].is_null());
+    assert_eq!(payload["effective_actor"]["host"], "gitbucket.example.com");
+    assert_eq!(payload["effective_actor"]["user"], "global-user");
+    assert_eq!(payload["effective_actor"]["protocol"], "https");
+    assert_eq!(payload["effective_actor"]["credential_source"], "global");
+}
+
+#[test]
 fn auth_login_maps_401_to_user_friendly_error() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_server("401 Unauthorized", r#"{"message":"bad credentials"}"#);
