@@ -197,8 +197,11 @@ fn live_branch_diff(
         });
     }
 
-    let mut output = String::from_utf8_lossy(&status.stdout).to_string();
-    output.push_str(&String::from_utf8_lossy(&status.stderr));
+    if !status.stderr.is_empty() {
+        eprint!("{}", String::from_utf8_lossy(&status.stderr));
+    }
+
+    let output = String::from_utf8_lossy(&status.stdout).to_string();
     Ok(output)
 }
 

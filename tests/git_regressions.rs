@@ -867,7 +867,6 @@ fn pr_diff_uses_saved_diff_when_closed_branch_diff_is_empty() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("+saved"), "stdout: {stdout}");
 }
-
 #[test]
 fn pr_diff_rejects_non_diff_saved_diff_response() {
     let temp = tempdir().unwrap();
