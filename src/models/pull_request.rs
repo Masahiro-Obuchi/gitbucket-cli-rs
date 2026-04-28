@@ -27,6 +27,10 @@ pub struct PullRequest {
     #[serde(default)]
     pub html_url: Option<String>,
     #[serde(default)]
+    pub diff_url: Option<String>,
+    #[serde(default)]
+    pub patch_url: Option<String>,
+    #[serde(default)]
     pub head: Option<PullRequestHead>,
     #[serde(rename = "base", default)]
     pub base: Option<PullRequestHead>,

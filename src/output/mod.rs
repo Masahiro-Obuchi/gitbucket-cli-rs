@@ -3,6 +3,34 @@ pub mod table;
 use colored::Colorize;
 use std::io::{IsTerminal, Write};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static SUPPRESS_STDERR: AtomicBool = AtomicBool::new(false);
+
+pub fn set_suppress_stderr(suppress: bool) {
+    SUPPRESS_STDERR.store(suppress, Ordering::Relaxed);
+}
+
+pub fn suppress_stderr() -> bool {
+    SUPPRESS_STDERR.load(Ordering::Relaxed)
+}
+
+pub fn stderr_line(args: std::fmt::Arguments<'_>) {
+    if suppress_stderr() {
+        return;
+    }
+    let mut stderr = std::io::stderr().lock();
+    let _ = stderr.write_fmt(args);
+    let _ = stderr.write_all(b"\n");
+}
+
+pub fn stderr_write(args: std::fmt::Arguments<'_>) {
+    if suppress_stderr() {
+        return;
+    }
+    let mut stderr = std::io::stderr().lock();
+    let _ = stderr.write_fmt(args);
+}
 
 /// Format a state label with color
 pub fn format_state(state: &str) -> String {

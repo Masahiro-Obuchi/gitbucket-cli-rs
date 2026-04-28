@@ -1228,6 +1228,51 @@ fn pr_edit_fails_non_interactively_when_issue_patch_is_missing() {
 }
 
 #[test]
+fn json_errors_suppresses_notice_before_failure() {
+    let temp = tempdir().unwrap();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
+            "200 OK",
+            r#"{"number":5,"title":"Old","body":"","state":"open"}"#,
+        ),
+        ScriptedResponse::json(
+            "PATCH /api/v3/repos/alice/project/issues/5 HTTP/1.1",
+            "404 Not Found",
+            r#"{"message":"Not Found"}"#,
+        ),
+    ]);
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args([
+            "--json-errors",
+            "pr",
+            "edit",
+            "5",
+            "--title",
+            "New",
+            "--web",
+        ])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert_eq!(requests.len(), 2);
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let value: Value = serde_json::from_str(stderr.trim()).unwrap();
+    assert_eq!(value["error"]["code"], "auth_error");
+    assert!(!stderr.contains("Notice:"), "stderr: {stderr}");
+}
+
+#[test]
 fn pr_edit_uses_gitbucket_web_session_with_web_flag_when_issue_patch_is_missing() {
     let temp = tempdir().unwrap();
     let (port, server) = spawn_scripted_server(vec![

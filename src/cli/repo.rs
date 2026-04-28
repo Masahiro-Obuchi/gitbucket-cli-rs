@@ -9,6 +9,7 @@ use crate::cli::common::{
 };
 use crate::error::{GbError, Result};
 use crate::models::repository::CreateRepository;
+use crate::output;
 use crate::output::table::print_table;
 use crate::output::truncate;
 
@@ -31,6 +32,9 @@ pub enum RepoCommand {
     },
     /// View repository details
     View {
+        /// Target repository in OWNER/REPO format
+        #[arg(long = "repo", short = 'R', value_name = "OWNER/REPO")]
+        target_repo: Option<String>,
         /// Repository in OWNER/REPO format (defaults to -R or git remote)
         #[arg(value_name = "OWNER/REPO")]
         repo: Option<String>,
@@ -65,6 +69,9 @@ pub enum RepoCommand {
     },
     /// Delete a repository
     Delete {
+        /// Target repository in OWNER/REPO format
+        #[arg(long = "repo", short = 'R', value_name = "OWNER/REPO")]
+        target_repo: Option<String>,
         /// Skip confirmation
         #[arg(long)]
         yes: bool,
@@ -74,6 +81,9 @@ pub enum RepoCommand {
     },
     /// Fork a repository
     Fork {
+        /// Target repository in OWNER/REPO format
+        #[arg(long = "repo", short = 'R', value_name = "OWNER/REPO")]
+        target_repo: Option<String>,
         /// Repository to fork (OWNER/REPO, or -R/--repo)
         #[arg(value_name = "OWNER/REPO")]
         repo: Option<String>,
@@ -91,8 +101,18 @@ pub async fn run(
 ) -> Result<()> {
     match args.command {
         RepoCommand::List { owner, json } => list(cli_hostname, cli_profile, owner, json).await,
-        RepoCommand::View { repo, web } => {
-            view(cli_hostname, repo.or(cli_repo.clone()), cli_profile, web).await
+        RepoCommand::View {
+            target_repo,
+            repo,
+            web,
+        } => {
+            view(
+                cli_hostname,
+                repo.or(target_repo).or(cli_repo.clone()),
+                cli_profile,
+                web,
+            )
+            .await
         }
         RepoCommand::Create {
             name,
@@ -115,11 +135,31 @@ pub async fn run(
         RepoCommand::Clone { repo, directory } => {
             clone(cli_hostname, cli_profile, &repo, directory.as_deref()).await
         }
-        RepoCommand::Delete { repo, yes } => {
-            delete(cli_hostname, cli_profile, repo.or(cli_repo.clone()), yes).await
+        RepoCommand::Delete {
+            target_repo,
+            repo,
+            yes,
+        } => {
+            delete(
+                cli_hostname,
+                cli_profile,
+                repo.or(target_repo).or(cli_repo.clone()),
+                yes,
+            )
+            .await
         }
-        RepoCommand::Fork { repo, group } => {
-            fork(cli_hostname, repo.or(cli_repo.clone()), cli_profile, group).await
+        RepoCommand::Fork {
+            target_repo,
+            repo,
+            group,
+        } => {
+            fork(
+                cli_hostname,
+                repo.or(target_repo).or(cli_repo.clone()),
+                cli_profile,
+                group,
+            )
+            .await
         }
     }
 }
@@ -352,12 +392,38 @@ async fn clone(
         cmd.arg(dir);
     }
 
-    let status = cmd.status()?;
-    if !status.success() {
-        return Err(crate::error::GbError::Other("git clone failed".into()));
+    let output = cmd.output()?;
+    if output.status.success() {
+        if !output.stdout.is_empty() {
+            print!("{}", String::from_utf8_lossy(&output.stdout));
+        }
+        if !output.stderr.is_empty() && !output::suppress_stderr() {
+            eprint!("{}", String::from_utf8_lossy(&output.stderr));
+        }
+    } else {
+        return Err(crate::error::GbError::Other(format!(
+            "git clone failed. {}",
+            command_output_summary(&output)
+        )));
     }
 
     Ok(())
+}
+
+fn command_output_summary(output: &std::process::Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = stderr.trim();
+    if !stderr.is_empty() {
+        return stderr.lines().take(3).collect::<Vec<_>>().join(" ");
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = stdout.trim();
+    if !stdout.is_empty() {
+        return stdout.lines().take(3).collect::<Vec<_>>().join(" ");
+    }
+
+    "command did not provide output details.".into()
 }
 
 async fn delete(

@@ -35,6 +35,22 @@ impl ApiClient {
         self.request_json(Method::GET, path, None::<&()>).await
     }
 
+    /// Make a GET request for text from the configured GitBucket origin.
+    pub async fn get_text_from_origin(&self, path_or_url: &str) -> Result<String> {
+        let url = normalize_origin_path_or_url(path_or_url, &self.base_url)?;
+        let resp = self.client.get(&url).send().await?;
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        if status.is_success() {
+            Ok(body)
+        } else {
+            Err(GbError::Api {
+                status: status.as_u16(),
+                message: body,
+            })
+        }
+    }
+
     /// Make a GET request and return response headers with the deserialized body.
     pub(crate) async fn get_with_headers<T: DeserializeOwned>(
         &self,
@@ -188,6 +204,20 @@ fn normalize_path_or_url(path_or_url: &str, base_url: &str) -> Result<String> {
     }
 }
 
+fn normalize_origin_path_or_url(path_or_url: &str, base_url: &str) -> Result<String> {
+    let web_base_url = base_url.trim_end_matches("/api/v3");
+    if path_or_url.starts_with("http://") || path_or_url.starts_with("https://") {
+        validate_absolute_origin_url(path_or_url, web_base_url)?;
+        Ok(path_or_url.to_string())
+    } else {
+        Ok(format!(
+            "{}{}",
+            web_base_url,
+            normalize_relative_origin_path(path_or_url, web_base_url)
+        ))
+    }
+}
+
 fn validate_absolute_api_url(url: &str, base_url: &str) -> Result<()> {
     let target = Url::parse(url)?;
     let base = Url::parse(base_url)?;
@@ -205,6 +235,51 @@ fn validate_absolute_api_url(url: &str, base_url: &str) -> Result<()> {
             base_url
         )))
     }
+}
+
+fn validate_absolute_origin_url(url: &str, web_base_url: &str) -> Result<()> {
+    let target = Url::parse(url)?;
+    let base = Url::parse(web_base_url)?;
+
+    let same_origin = target.scheme() == base.scheme()
+        && target.host_str() == base.host_str()
+        && target.port_or_known_default() == base.port_or_known_default();
+    let same_base = path_has_base_prefix(target.path(), base.path());
+
+    if same_origin && same_base {
+        Ok(())
+    } else {
+        Err(GbError::Other(format!(
+            "Refusing to fetch URL outside configured GitBucket origin {}",
+            web_base_url
+        )))
+    }
+}
+
+fn ensure_leading_slash(path: &str) -> String {
+    if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("/{path}")
+    }
+}
+
+fn normalize_relative_origin_path(path: &str, web_base_url: &str) -> String {
+    if !path.starts_with('/') {
+        return ensure_leading_slash(path);
+    }
+
+    let Ok(base) = Url::parse(web_base_url) else {
+        return path.to_string();
+    };
+    let base_path = base.path().trim_end_matches('/');
+    if !base_path.is_empty() {
+        if let Some(stripped) = strip_prefix_with_boundary(path, base_path) {
+            return ensure_leading_slash(ensure_request_path(stripped));
+        }
+    }
+
+    path.to_string()
 }
 
 fn normalize_relative_api_path<'a>(path: &'a str, base_url: &str) -> &'a str {
@@ -314,8 +389,8 @@ mod tests {
     use serde::Deserialize;
 
     use super::{
-        normalize_base_url, normalize_path_or_url, normalize_relative_api_path,
-        normalize_web_base_url, parse_success_body, ApiClient,
+        normalize_base_url, normalize_origin_path_or_url, normalize_path_or_url,
+        normalize_relative_api_path, normalize_web_base_url, parse_success_body, ApiClient,
     };
 
     #[derive(Debug, Deserialize, PartialEq)]
@@ -394,6 +469,34 @@ mod tests {
                 "https://gitbucket.example.com/gitbucket/api/v3"
             ),
             "/repos/alice/project/issues/7/comments?page=2"
+        );
+    }
+
+    #[test]
+    fn normalizes_origin_root_relative_path_with_subpath_base() {
+        let normalized = normalize_origin_path_or_url(
+            "/gitbucket/alice/project/pull/9.diff",
+            "https://gitbucket.example.com/gitbucket/api/v3",
+        )
+        .unwrap();
+
+        assert_eq!(
+            normalized,
+            "https://gitbucket.example.com/gitbucket/alice/project/pull/9.diff"
+        );
+    }
+
+    #[test]
+    fn preserves_origin_root_relative_path_without_subpath_base() {
+        let normalized = normalize_origin_path_or_url(
+            "/alice/project/pull/9.diff",
+            "https://gitbucket.example.com/api/v3",
+        )
+        .unwrap();
+
+        assert_eq!(
+            normalized,
+            "https://gitbucket.example.com/alice/project/pull/9.diff"
         );
     }
 

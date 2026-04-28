@@ -118,3 +118,41 @@ fn pr_create_rejects_head_owner_containing_colon() {
         "stderr: {stderr}"
     );
 }
+
+#[test]
+fn json_errors_print_structured_failure() {
+    let temp = tempdir().unwrap();
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", "127.0.0.1:19999")
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args([
+            "--json-errors",
+            "pr",
+            "create",
+            "--head-owner",
+            "bad:owner",
+            "--head",
+            "feature",
+            "--title",
+            "Demo",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let value: serde_json::Value = serde_json::from_str(stderr.trim()).unwrap();
+    assert_eq!(value["error"]["code"], "error");
+    assert_eq!(value["error"]["exit_code"], 1);
+    assert!(
+        value["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("--head-owner cannot contain ':'"),
+        "stderr: {stderr}"
+    );
+}
