@@ -11,8 +11,12 @@ pub fn set_suppress_stderr(suppress: bool) {
     SUPPRESS_STDERR.store(suppress, Ordering::Relaxed);
 }
 
+pub fn suppress_stderr() -> bool {
+    SUPPRESS_STDERR.load(Ordering::Relaxed)
+}
+
 pub fn stderr_line(args: std::fmt::Arguments<'_>) {
-    if SUPPRESS_STDERR.load(Ordering::Relaxed) {
+    if suppress_stderr() {
         return;
     }
     let mut stderr = std::io::stderr().lock();
@@ -21,7 +25,7 @@ pub fn stderr_line(args: std::fmt::Arguments<'_>) {
 }
 
 pub fn stderr_write(args: std::fmt::Arguments<'_>) {
-    if SUPPRESS_STDERR.load(Ordering::Relaxed) {
+    if suppress_stderr() {
         return;
     }
     let mut stderr = std::io::stderr().lock();

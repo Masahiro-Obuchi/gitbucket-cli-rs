@@ -9,6 +9,7 @@ use crate::cli::common::{
 };
 use crate::error::{GbError, Result};
 use crate::models::repository::CreateRepository;
+use crate::output;
 use crate::output::table::print_table;
 use crate::output::truncate;
 
@@ -391,12 +392,38 @@ async fn clone(
         cmd.arg(dir);
     }
 
-    let status = cmd.status()?;
-    if !status.success() {
-        return Err(crate::error::GbError::Other("git clone failed".into()));
+    let output = cmd.output()?;
+    if output.status.success() {
+        if !output.stdout.is_empty() {
+            print!("{}", String::from_utf8_lossy(&output.stdout));
+        }
+        if !output.stderr.is_empty() && !output::suppress_stderr() {
+            eprint!("{}", String::from_utf8_lossy(&output.stderr));
+        }
+    } else {
+        return Err(crate::error::GbError::Other(format!(
+            "git clone failed. {}",
+            command_output_summary(&output)
+        )));
     }
 
     Ok(())
+}
+
+fn command_output_summary(output: &std::process::Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = stderr.trim();
+    if !stderr.is_empty() {
+        return stderr.lines().take(3).collect::<Vec<_>>().join(" ");
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = stdout.trim();
+    if !stdout.is_empty() {
+        return stdout.lines().take(3).collect::<Vec<_>>().join(" ");
+    }
+
+    "command did not provide output details.".into()
 }
 
 async fn delete(

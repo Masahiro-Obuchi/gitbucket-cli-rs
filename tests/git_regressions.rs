@@ -96,6 +96,38 @@ fn repo_clone_full_url_rejects_missing_profile() {
 }
 
 #[test]
+fn json_errors_captures_git_clone_stderr() {
+    let temp = tempdir().unwrap();
+    let missing_remote = temp.path().join("missing.git");
+    let clone_url = format!("file://{}", missing_remote.display());
+
+    let output = gb_command()
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args(["--json-errors", "repo", "clone", &clone_url, "cloned"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(
+        output.stdout.is_empty(),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let value: serde_json::Value = serde_json::from_str(stderr.trim()).unwrap();
+    assert_eq!(value["error"]["code"], "error");
+    assert!(
+        value["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("git clone failed"),
+        "stderr: {stderr}"
+    );
+    assert!(!temp.path().join("cloned").exists());
+}
+
+#[test]
 fn pr_merge_returns_non_zero_when_server_reports_not_merged() {
     let temp = tempdir().unwrap();
     let (port, server) = serve_json_once(

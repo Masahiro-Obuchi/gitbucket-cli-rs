@@ -1,5 +1,6 @@
 use crate::cli::common::{create_client, resolve_hostname, resolve_repo};
 use crate::error::{GbError, Result};
+use crate::output;
 
 use super::git::{pr_base_fetch_source, pr_head_fetch_source, resolve_git_fetch_source};
 
@@ -38,15 +39,25 @@ pub(super) async fn checkout(
         )));
     }
 
-    let checkout_status = std::process::Command::new("git")
+    let checkout_output = std::process::Command::new("git")
         .arg("checkout")
         .arg("-B")
         .arg(&local_branch)
         .arg(&head_ref)
-        .status()?;
+        .output()?;
 
-    if !checkout_status.success() {
-        return Err(GbError::Other("git checkout failed".into()));
+    if checkout_output.status.success() {
+        if !checkout_output.stdout.is_empty() {
+            print!("{}", String::from_utf8_lossy(&checkout_output.stdout));
+        }
+        if !checkout_output.stderr.is_empty() && !output::suppress_stderr() {
+            eprint!("{}", String::from_utf8_lossy(&checkout_output.stderr));
+        }
+    } else {
+        return Err(GbError::Other(format!(
+            "git checkout failed. {}",
+            command_stderr(&checkout_output)
+        )));
     }
 
     println!(
