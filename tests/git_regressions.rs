@@ -7,7 +7,7 @@ use tempfile::tempdir;
 
 use support::gb_cmd::gb_command;
 use support::git_repo::{git_output, run_git};
-use support::mock_http::{spawn_server, CapturedRequest};
+use support::mock_http::{spawn_scripted_server, spawn_server, CapturedRequest, ScriptedResponse};
 
 fn serve_json_once(
     expected_request_line: &str,
@@ -750,20 +750,24 @@ fn pr_diff_returns_non_zero_when_closed_pr_diff_is_unavailable() {
         ],
     );
 
-    let body = concat!(
-        "{",
-        "\"number\":9,",
-        "\"title\":\"Already merged\",",
-        "\"state\":\"closed\",",
-        "\"head\":{\"ref\":\"main\"},",
-        "\"base\":{\"ref\":\"main\"}",
-        "}"
-    );
-    let (port, server) = serve_json_once(
-        "GET /api/v3/repos/alice/project/pulls/9 HTTP/1.1",
-        "authorization: token test-token",
-        body,
-    );
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls/9 HTTP/1.1",
+            "200 OK",
+            "{\"number\":9,\"title\":\"Already merged\",\"state\":\"closed\",\"head\":{\"ref\":\"main\"},\"base\":{\"ref\":\"main\"}}",
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/issues/9 HTTP/1.1",
+            "404 Not Found",
+            "{\"message\":\"not found\"}",
+        ),
+        ScriptedResponse {
+            expected_request_line: "GET /alice/project/pull/9.diff HTTP/1.1".into(),
+            status_line: "404 Not Found".into(),
+            headers: vec![("content-type".into(), "text/plain".into())],
+            body: "not found".into(),
+        },
+    ]);
 
     let output = gb_command()
         .current_dir(&local_repo)
@@ -776,8 +780,9 @@ fn pr_diff_returns_non_zero_when_closed_pr_diff_is_unavailable() {
         .output()
         .unwrap();
 
-    server.join().unwrap();
+    let requests = server.join().unwrap();
 
+    assert_eq!(requests.len(), 3);
     assert!(
         !output.status.success(),
         "stdout: {}\nstderr: {}",
@@ -792,4 +797,156 @@ fn pr_diff_returns_non_zero_when_closed_pr_diff_is_unavailable() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("Diff unavailable"), "stderr: {stderr}");
     assert!(stderr.contains("pull request #9"), "stderr: {stderr}");
+}
+
+#[test]
+fn pr_diff_uses_saved_diff_when_closed_branch_diff_is_empty() {
+    let temp = tempdir().unwrap();
+    let remote = temp.path().join("remote.git");
+    run_git(temp.path(), &["init", "--bare", remote.to_str().unwrap()]);
+
+    let work = temp.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    run_git(&work, &["init"]);
+    run_git(&work, &["config", "user.name", "Test User"]);
+    run_git(&work, &["config", "user.email", "test@example.com"]);
+    std::fs::write(work.join("README.md"), "base\n").unwrap();
+    run_git(&work, &["add", "README.md"]);
+    run_git(&work, &["commit", "-m", "base"]);
+    run_git(&work, &["branch", "-M", "main"]);
+    run_git(
+        &work,
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    );
+    run_git(&work, &["push", "origin", "main"]);
+
+    let local_repo = temp.path().join("local-repo");
+    run_git(
+        temp.path(),
+        &[
+            "clone",
+            remote.to_str().unwrap(),
+            local_repo.to_str().unwrap(),
+        ],
+    );
+
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls/9 HTTP/1.1",
+            "200 OK",
+            "{\"number\":9,\"title\":\"Already merged\",\"state\":\"closed\",\"diff_url\":\"/alice/project/pull/9.diff\",\"head\":{\"ref\":\"main\"},\"base\":{\"ref\":\"main\"}}",
+        ),
+        ScriptedResponse {
+            expected_request_line: "GET /alice/project/pull/9.diff HTTP/1.1".into(),
+            status_line: "200 OK".into(),
+            headers: vec![("content-type".into(), "text/plain".into())],
+            body: "diff --git a/README.md b/README.md\n+saved\n".into(),
+        },
+    ]);
+
+    let output = gb_command()
+        .current_dir(&local_repo)
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["pr", "diff", "9", "--no-pager"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert_eq!(requests.len(), 2);
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("+saved"), "stdout: {stdout}");
+}
+
+#[test]
+fn pr_diff_rejects_non_diff_saved_diff_response() {
+    let temp = tempdir().unwrap();
+    let remote = temp.path().join("remote.git");
+    run_git(temp.path(), &["init", "--bare", remote.to_str().unwrap()]);
+
+    let work = temp.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    run_git(&work, &["init"]);
+    run_git(&work, &["config", "user.name", "Test User"]);
+    run_git(&work, &["config", "user.email", "test@example.com"]);
+    std::fs::write(work.join("README.md"), "base\n").unwrap();
+    run_git(&work, &["add", "README.md"]);
+    run_git(&work, &["commit", "-m", "base"]);
+    run_git(&work, &["branch", "-M", "main"]);
+    run_git(
+        &work,
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    );
+    run_git(&work, &["push", "origin", "main"]);
+
+    let local_repo = temp.path().join("local-repo");
+    run_git(
+        temp.path(),
+        &[
+            "clone",
+            remote.to_str().unwrap(),
+            local_repo.to_str().unwrap(),
+        ],
+    );
+
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls/9 HTTP/1.1",
+            "200 OK",
+            "{\"number\":9,\"title\":\"Already merged\",\"state\":\"closed\",\"diff_url\":\"/alice/project/pull/9.diff\",\"head\":{\"ref\":\"main\"},\"base\":{\"ref\":\"main\"}}",
+        ),
+        ScriptedResponse {
+            expected_request_line: "GET /alice/project/pull/9.diff HTTP/1.1".into(),
+            status_line: "200 OK".into(),
+            headers: vec![("content-type".into(), "text/html".into())],
+            body: "<html><body>Please sign in</body></html>".into(),
+        },
+        ScriptedResponse {
+            expected_request_line: "GET /alice/project/pull/9.diff HTTP/1.1".into(),
+            status_line: "404 Not Found".into(),
+            headers: vec![("content-type".into(), "text/plain".into())],
+            body: "not found".into(),
+        },
+    ]);
+
+    let output = gb_command()
+        .current_dir(&local_repo)
+        .env("GB_CONFIG_DIR", temp.path())
+        .env("GB_HOST", format!("127.0.0.1:{port}"))
+        .env("GB_REPO", "alice/project")
+        .env("GB_TOKEN", "test-token")
+        .env("GB_PROTOCOL", "http")
+        .args(["pr", "diff", "9", "--no-pager"])
+        .output()
+        .unwrap();
+
+    let requests = server.join().unwrap();
+
+    assert_eq!(requests.len(), 3);
+    assert!(
+        !output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("response was not a diff"),
+        "stderr: {stderr}"
+    );
 }

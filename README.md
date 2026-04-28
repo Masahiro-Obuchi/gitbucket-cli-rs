@@ -183,13 +183,14 @@ gb pr comment list 5 --json --no-pager
 ```text
 -H, --hostname <HOST>    GitBucket host or base URL
 -R, --repo <OWNER/REPO>  Target repository
+    --json-errors        Print failures as structured JSON on stderr
 -h, --help               Show help
 -V, --version            Show version
 ```
 
 ## Repository auto-resolution
 
-If `-R/--repo` is omitted, `gb` tries to detect `OWNER/REPO` from `git remote get-url origin`. For `gb repo view`, `gb repo delete`, and `gb repo fork`, you can also pass `OWNER/REPO` positionally after the subcommand.
+If `-R/--repo` is omitted, `gb` tries to detect `OWNER/REPO` from `git remote get-url origin`. For `gb repo view`, `gb repo delete`, and `gb repo fork`, you can pass `OWNER/REPO` positionally after the subcommand or pass `-R/--repo` at the subcommand.
 
 ```bash
 cd ~/projects/my-app
@@ -250,8 +251,10 @@ gb pr edit 5 --add-assignee alice,bob --remove-assignee carol
 ## Pull Request Checkout And Diff
 
 `gb pr checkout` and `gb pr diff` work with same-repository PRs and fork-based PRs.
-When a closed PR's diff cannot be reconstructed from fetched refs, `gb pr diff` exits non-zero and reports that the diff is unavailable on stderr instead of returning empty successful output.
+When a closed PR's diff cannot be reconstructed from fetched refs, `gb pr diff` tries the saved PR diff URL before failing. If no saved diff can be fetched, it exits non-zero and reports whether the live diff was unavailable because a ref was missing, a base/head fetch failed, or the fetched refs had no diff.
 When the PR head repository is available from the API response, `gb` fetches from that repository's clone URL and operates on `FETCH_HEAD`.
+
+For automation, pass global `--json-errors` or set `GB_JSON_ERRORS=true` to get a single JSON error object on stderr, including fields such as `error.code`, `error.cause`, `error.status`, and `error.exit_code`.
 
 ## Environment variables
 
@@ -265,6 +268,7 @@ When the PR head repository is available from the API response, `gb` fetches fro
 | `GB_PROTOCOL`   | Protocol override when using `GB_TOKEN` with a plain host |
 | `GB_USER`       | Username for GitBucket web-session fallbacks              |
 | `GB_PASSWORD`   | Password for GitBucket web-session fallbacks              |
+| `GB_JSON_ERRORS` | Print failures as structured JSON on stderr              |
 | `NO_COLOR`      | Disable colored output                                    |
 
 ## Configuration file

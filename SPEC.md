@@ -356,7 +356,8 @@ gb repo view [OWNER/REPO] [OPTIONS]
 
 | Argument/Option | Short | Description |
 | --- | --- | --- |
-| `OWNER/REPO` | — | Repository (omit to auto-detect from git remote or pass globally with `gb -R OWNER/REPO repo view`) |
+| `OWNER/REPO` | — | Repository (omit to auto-detect from git remote or pass with `-R/--repo`) |
+| `--repo <OWNER/REPO>` | `-R` | Target repository |
 | `--web` | `-w` | Open in browser |
 
 #### `gb repo create`
@@ -799,12 +800,13 @@ gb pr diff <NUMBER> [--no-pager]
 Execution flow:
 
 1. Fetch PR metadata from API.
-2. Run `git fetch origin <base>`.
-3. Resolve the fetch source from the PR head repository clone URL when available, otherwise use `origin`.
+2. Resolve the base and head fetch sources from PR repository clone URLs when available, otherwise use matching local remotes or `origin`.
+3. Run `git fetch <base-fetch-source> <base>`.
 4. Run `git fetch <fetch-source> <head>`.
-5. Run `git diff origin/<base>...FETCH_HEAD`.
+5. Run `git diff <base-ref>...<head-ref>`.
+6. If the live branch diff is unavailable, fetch a saved PR diff from `diff_url`/`patch_url`, the issue PR metadata, or the GitBucket web diff URL.
 
-If the API response lacks the PR head/base refs, or a non-open PR produces an empty local diff after fetching, `gb pr diff` exits non-zero and reports that the diff is unavailable on stderr.
+If the API response lacks the PR head/base refs, a branch fetch fails, or a non-open PR produces an empty local diff and no saved PR diff can be fetched, `gb pr diff` exits non-zero and reports that the diff is unavailable on stderr. With `--json-errors`, the error includes `code: "diff_unavailable"` and a machine-readable `cause` such as `missing_head_ref`, `base_fetch_failed`, `head_fetch_failed`, or `empty_live_diff`.
 
 #### `gb pr comment`
 
@@ -1004,6 +1006,7 @@ When a command falls back from a missing REST API endpoint to a GitBucket web UI
 - `Config(String)`
 - `NotAuthenticated`
 - `RepoNotFound`
+- `DiffUnavailable { number, cause, message }`
 - `Http(reqwest::Error)`
 - `Io(std::io::Error)`
 - `Json(serde_json::Error)`
@@ -1017,6 +1020,12 @@ When a command falls back from a missing REST API endpoint to a GitBucket web UI
 
 - `0`: Success
 - `1`: Error (`main` prints `Error: ...` and exits with code 1)
+
+Pass global `--json-errors` (or set `GB_JSON_ERRORS=true`) to print failures as a single JSON object on stderr:
+
+```json
+{"error":{"code":"diff_unavailable","message":"Diff unavailable for pull request #9: ...","cause":"empty_live_diff","exit_code":1}}
+```
 
 ---
 
