@@ -7,6 +7,7 @@ mod output;
 
 use clap::Parser;
 use cli::{Cli, Commands};
+use serde::Serialize;
 
 #[tokio::main]
 async fn main() {
@@ -32,8 +33,45 @@ async fn main() {
     };
 
     if let Err(e) = result {
-        eprintln!("Error: {}", e);
+        if cli.json_errors {
+            print_json_error(&e);
+        } else {
+            eprintln!("Error: {}", e);
+        }
         std::process::exit(1);
+    }
+}
+
+#[derive(Serialize)]
+struct ErrorOutput {
+    error: ErrorBody,
+}
+
+#[derive(Serialize)]
+struct ErrorBody {
+    code: &'static str,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cause: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    exit_code: Option<i32>,
+}
+
+fn print_json_error(error: &error::GbError) {
+    let output = ErrorOutput {
+        error: ErrorBody {
+            code: error.code(),
+            message: error.to_string(),
+            cause: error.cause_code(),
+            status: error.status(),
+            exit_code: Some(1),
+        },
+    };
+    match serde_json::to_string(&output) {
+        Ok(json) => eprintln!("{json}"),
+        Err(_) => eprintln!("Error: {}", error),
     }
 }
 

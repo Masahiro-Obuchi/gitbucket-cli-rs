@@ -39,6 +39,10 @@ pub struct Cli {
     /// Configuration profile name
     #[arg(long, global = true, env = "GB_PROFILE", value_name = "NAME")]
     pub profile: Option<String>,
+
+    /// Print command failures as structured JSON on stderr
+    #[arg(long, global = true, env = "GB_JSON_ERRORS")]
+    pub json_errors: bool,
 }
 
 #[derive(Subcommand)]
