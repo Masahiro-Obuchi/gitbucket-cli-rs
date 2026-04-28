@@ -1,3 +1,20 @@
+#[macro_export]
+macro_rules! eprintln {
+    () => {
+        $crate::output::stderr_line(format_args!(""))
+    };
+    ($($arg:tt)*) => {
+        $crate::output::stderr_line(format_args!($($arg)*))
+    };
+}
+
+#[macro_export]
+macro_rules! eprint {
+    ($($arg:tt)*) => {
+        $crate::output::stderr_write(format_args!($($arg)*))
+    };
+}
+
 mod api;
 mod cli;
 mod config;
@@ -12,6 +29,7 @@ use serde::Serialize;
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
+    output::set_suppress_stderr(cli.json_errors);
 
     let result = match cli.command {
         Commands::Api(args) => cli::api::run(args, &cli.hostname, &cli.profile).await,
@@ -36,7 +54,7 @@ async fn main() {
         if cli.json_errors {
             print_json_error(&e);
         } else {
-            eprintln!("Error: {}", e);
+            std::eprintln!("Error: {}", e);
         }
         std::process::exit(1);
     }
@@ -70,8 +88,8 @@ fn print_json_error(error: &error::GbError) {
         },
     };
     match serde_json::to_string(&output) {
-        Ok(json) => eprintln!("{json}"),
-        Err(_) => eprintln!("Error: {}", error),
+        Ok(json) => std::eprintln!("{json}"),
+        Err(_) => std::eprintln!("Error: {}", error),
     }
 }
 
