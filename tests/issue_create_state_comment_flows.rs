@@ -1,26 +1,19 @@
 mod support;
 
 use serde_json::Value;
-use tempfile::tempdir;
-
-use support::gb_cmd::gb_command;
+use support::gb_cmd::GbTestEnv;
 use support::mock_http::{spawn_scripted_server, spawn_server, ScriptedResponse};
 
 #[test]
 fn issue_create_sends_labels_assignees_and_body() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{"number":7,"title":"Bug report","state":"open","labels":[],"assignees":[]}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "issue",
             "create",
@@ -54,19 +47,14 @@ fn issue_create_sends_labels_assignees_and_body() {
 
 #[test]
 fn issue_create_supports_repeated_label_and_assignee_flags() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{"number":8,"title":"Another bug","state":"open","labels":[],"assignees":[]}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "issue",
             "create",
@@ -103,19 +91,14 @@ fn issue_create_supports_repeated_label_and_assignee_flags() {
 
 #[test]
 fn issue_close_sends_closed_state_patch() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{"number":7,"title":"Bug report","state":"closed","labels":[]}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["issue", "close", "7"])
         .output()
         .unwrap();
@@ -137,19 +120,14 @@ fn issue_close_sends_closed_state_patch() {
 
 #[test]
 fn issue_reopen_sends_open_state_patch() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{"number":7,"title":"Bug report","state":"open","labels":[]}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["issue", "reopen", "7"])
         .output()
         .unwrap();
@@ -171,16 +149,11 @@ fn issue_reopen_sends_open_state_patch() {
 
 #[test]
 fn issue_comment_sends_expected_payload() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server("200 OK", r#"{"id":11,"body":"Looks good"}"#);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["issue", "comment", "7", "--body", "Looks good"])
         .output()
         .unwrap();
@@ -203,7 +176,7 @@ fn issue_comment_sends_expected_payload() {
 
 #[test]
 fn issue_comment_edit_last_updates_authenticated_users_latest_comment() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/user HTTP/1.1",
@@ -226,13 +199,8 @@ fn issue_comment_edit_last_updates_authenticated_users_latest_comment() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["issue", "comment", "7", "--edit-last", "--body", "Edited"])
         .output()
         .unwrap();
@@ -268,7 +236,7 @@ fn issue_comment_edit_last_updates_authenticated_users_latest_comment() {
 
 #[test]
 fn issue_comment_edit_last_checks_paginated_comments_before_updating() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/user HTTP/1.1",
@@ -296,13 +264,8 @@ fn issue_comment_edit_last_checks_paginated_comments_before_updating() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["issue", "comment", "7", "--edit-last", "--body", "Edited"])
         .output()
         .unwrap();
@@ -343,7 +306,7 @@ fn issue_comment_edit_last_checks_paginated_comments_before_updating() {
 
 #[test]
 fn issue_comment_edit_last_rejects_external_pagination_link() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/user HTTP/1.1",
@@ -361,13 +324,8 @@ fn issue_comment_edit_last_rejects_external_pagination_link() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["issue", "comment", "7", "--edit-last", "--body", "Edited"])
         .output()
         .unwrap();
@@ -393,7 +351,7 @@ fn issue_comment_edit_last_rejects_external_pagination_link() {
 
 #[test]
 fn issue_close_falls_back_to_gitbucket_web_session() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "PATCH /gitbucket/api/v3/repos/alice/project/issues/7 HTTP/1.1",
@@ -409,13 +367,8 @@ fn issue_close_falls_back_to_gitbucket_web_session() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}/gitbucket"), "alice/project")
         .env("GB_USER", "alice")
         .env("GB_PASSWORD", "secret-pass")
         .args(["issue", "close", "7"])
@@ -448,7 +401,7 @@ fn issue_close_falls_back_to_gitbucket_web_session() {
 
 #[test]
 fn issue_reopen_falls_back_to_gitbucket_web_session() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "PATCH /gitbucket/api/v3/repos/alice/project/issues/8 HTTP/1.1",
@@ -464,13 +417,8 @@ fn issue_reopen_falls_back_to_gitbucket_web_session() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}/gitbucket"), "alice/project")
         .env("GB_USER", "alice")
         .env("GB_PASSWORD", "secret-pass")
         .args(["issue", "reopen", "8"])

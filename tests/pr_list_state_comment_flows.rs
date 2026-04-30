@@ -1,14 +1,12 @@
 mod support;
 
 use serde_json::Value;
-use tempfile::tempdir;
-
-use support::gb_cmd::gb_command;
+use support::gb_cmd::GbTestEnv;
 use support::mock_http::{spawn_scripted_server, spawn_server, ScriptedResponse};
 
 #[test]
 fn pr_list_includes_open_prs_visible_through_repo_issues() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
@@ -36,13 +34,8 @@ fn pr_list_includes_open_prs_visible_through_repo_issues() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["pr", "list", "--json"])
         .output()
         .unwrap();
@@ -65,19 +58,14 @@ fn pr_list_includes_open_prs_visible_through_repo_issues() {
 
 #[test]
 fn pr_close_sends_closed_state_patch() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{"number":9,"title":"Feature","state":"closed","labels":[]}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["pr", "close", "9"])
         .output()
         .unwrap();
@@ -99,16 +87,11 @@ fn pr_close_sends_closed_state_patch() {
 
 #[test]
 fn pr_merge_sends_expected_payload() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server("200 OK", r#"{"merged":true,"message":"merged"}"#);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["pr", "merge", "5", "--message", "Ship it"])
         .output()
         .unwrap();
@@ -130,19 +113,14 @@ fn pr_merge_sends_expected_payload() {
 
 #[test]
 fn pr_comment_sends_expected_payload() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{"id":12,"body":"Please rebase","html_url":"http://127.0.0.1/alice/project/pull/5#comment-12"}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["pr", "comment", "5", "--body", "Please rebase"])
         .output()
         .unwrap();
@@ -174,19 +152,14 @@ fn pr_comment_sends_expected_payload() {
 
 #[test]
 fn pr_comment_json_prints_comment_object() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{"id":12,"body":"Please rebase","html_url":"http://127.0.0.1/alice/project/pull/5#comment-12"}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["pr", "comment", "5", "--body", "Please rebase", "--json"])
         .output()
         .unwrap();
@@ -209,7 +182,7 @@ fn pr_comment_json_prints_comment_object() {
 
 #[test]
 fn pr_comment_list_json_prints_comments() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
         "GET /api/v3/repos/alice/project/issues/5/comments?per_page=100 HTTP/1.1",
         "200 OK",
@@ -219,13 +192,8 @@ fn pr_comment_list_json_prints_comments() {
         ]"#,
     )]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["pr", "comment", "list", "5", "--json"])
         .output()
         .unwrap();
@@ -246,7 +214,7 @@ fn pr_comment_list_json_prints_comments() {
 
 #[test]
 fn pr_comment_edit_last_updates_authenticated_users_latest_comment() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/user HTTP/1.1",
@@ -268,13 +236,8 @@ fn pr_comment_edit_last_updates_authenticated_users_latest_comment() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["pr", "comment", "5", "--edit-last", "--body", "Edited"])
         .output()
         .unwrap();
@@ -303,19 +266,14 @@ fn pr_comment_edit_last_updates_authenticated_users_latest_comment() {
 
 #[test]
 fn pr_merge_accepts_gitbucket_enveloped_response() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{"status":200,"body":"{\"sha\":\"abc123\",\"merged\":true,\"message\":\"Pull Request successfully merged\"}","headers":{}}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["pr", "merge", "9", "-m", "merge body"])
         .output()
         .unwrap();

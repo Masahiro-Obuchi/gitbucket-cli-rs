@@ -1,26 +1,19 @@
 mod support;
 
-use tempfile::tempdir;
-
-use support::gb_cmd::gb_command;
+use support::gb_cmd::GbTestEnv;
 use support::mock_http::{spawn_scripted_server, ScriptedResponse};
 
 #[test]
 fn repo_view_renders_repository_details() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
         "GET /api/v3/repos/alice/demo HTTP/1.1",
         "200 OK",
         r#"{"name":"demo","full_name":"alice/demo","description":"CLI repo","html_url":"https://gitbucket.example.com/alice/demo","clone_url":"https://gitbucket.example.com/alice/demo.git","private":false,"fork":false,"default_branch":"trunk","watchers_count":3,"forks_count":1,"open_issues_count":2}"#,
     )]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
-        .env("NO_COLOR", "1")
+    let output = env
+        .api_command(format!("127.0.0.1:{port}"))
         .args(["repo", "view", "alice/demo"])
         .output()
         .unwrap();
@@ -49,20 +42,15 @@ fn repo_view_renders_repository_details() {
 
 #[test]
 fn repo_view_uses_global_repo_argument() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
         "GET /api/v3/repos/alice/demo HTTP/1.1",
         "200 OK",
         r#"{"name":"demo","full_name":"alice/demo","private":false,"fork":false}"#,
     )]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
-        .env("NO_COLOR", "1")
+    let output = env
+        .api_command(format!("127.0.0.1:{port}"))
         .args(["-R", "alice/demo", "repo", "view"])
         .output()
         .unwrap();
@@ -81,20 +69,15 @@ fn repo_view_uses_global_repo_argument() {
 
 #[test]
 fn repo_view_accepts_repo_argument_after_subcommand() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
         "GET /api/v3/repos/alice/demo HTTP/1.1",
         "200 OK",
         r#"{"name":"demo","full_name":"alice/demo","private":false,"fork":false}"#,
     )]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
-        .env("NO_COLOR", "1")
+    let output = env
+        .api_command(format!("127.0.0.1:{port}"))
         .args(["repo", "view", "-R", "alice/demo"])
         .output()
         .unwrap();
@@ -113,7 +96,7 @@ fn repo_view_accepts_repo_argument_after_subcommand() {
 
 #[test]
 fn issue_view_with_comments_renders_details_and_comments() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/issues/7 HTTP/1.1",
@@ -127,14 +110,8 @@ fn issue_view_with_comments_renders_details_and_comments() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
-        .env("NO_COLOR", "1")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["issue", "view", "7", "--comments"])
         .output()
         .unwrap();
@@ -169,7 +146,7 @@ fn issue_view_with_comments_renders_details_and_comments() {
 
 #[test]
 fn pr_view_with_comments_renders_details_and_comments() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
@@ -183,14 +160,8 @@ fn pr_view_with_comments_renders_details_and_comments() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
-        .env("NO_COLOR", "1")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["pr", "view", "5", "--comments"])
         .output()
         .unwrap();
@@ -224,20 +195,15 @@ fn pr_view_with_comments_renders_details_and_comments() {
 
 #[test]
 fn pr_view_json_prints_pull_request_payload() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
         "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
         "200 OK",
         r#"{"number":5,"title":"Add feature","body":"PR body","state":"open","head":{"ref":"feature/demo"},"base":{"ref":"main"}}"#,
     )]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["pr", "view", "5", "--json"])
         .output()
         .unwrap();
@@ -258,7 +224,7 @@ fn pr_view_json_prints_pull_request_payload() {
 
 #[test]
 fn pr_view_json_with_comments_includes_comments_array() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
@@ -272,13 +238,8 @@ fn pr_view_json_with_comments_includes_comments_array() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["pr", "view", "5", "--comments", "--json"])
         .output()
         .unwrap();
@@ -300,19 +261,15 @@ fn pr_view_json_with_comments_includes_comments_array() {
 
 #[test]
 fn repo_view_surfaces_api_404() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
         "GET /api/v3/repos/alice/missing HTTP/1.1",
         "404 Not Found",
         r#"{"message":"missing repo"}"#,
     )]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .api_command(format!("127.0.0.1:{port}"))
         .args(["repo", "view", "alice/missing"])
         .output()
         .unwrap();
@@ -332,20 +289,15 @@ fn repo_view_surfaces_api_404() {
 
 #[test]
 fn issue_view_surfaces_api_404() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
         "GET /api/v3/repos/alice/project/issues/7 HTTP/1.1",
         "404 Not Found",
         r#"{"message":"missing issue"}"#,
     )]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["issue", "view", "7"])
         .output()
         .unwrap();
@@ -365,20 +317,15 @@ fn issue_view_surfaces_api_404() {
 
 #[test]
 fn pr_view_surfaces_api_404() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
         "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
         "404 Not Found",
         r#"{"message":"missing pr"}"#,
     )]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["pr", "view", "5"])
         .output()
         .unwrap();
@@ -398,7 +345,7 @@ fn pr_view_surfaces_api_404() {
 
 #[test]
 fn pr_view_falls_back_to_list_when_single_pr_response_is_empty() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
@@ -412,14 +359,8 @@ fn pr_view_falls_back_to_list_when_single_pr_response_is_empty() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
-        .env("NO_COLOR", "1")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["pr", "view", "5"])
         .output()
         .unwrap();
@@ -446,20 +387,15 @@ fn pr_view_falls_back_to_list_when_single_pr_response_is_empty() {
 
 #[test]
 fn issue_view_json_prints_issue_payload() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
         "GET /api/v3/repos/alice/project/issues/7 HTTP/1.1",
         "200 OK",
         r#"{"number":7,"title":"Bug report","body":"Body text","state":"open","user":{"login":"alice"},"labels":[],"assignees":[],"created_at":"2026-03-24T00:00:00Z"}"#,
     )]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["issue", "view", "7", "--json"])
         .output()
         .unwrap();

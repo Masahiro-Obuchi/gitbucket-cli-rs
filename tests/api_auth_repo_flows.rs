@@ -3,20 +3,17 @@ mod support;
 use std::fs;
 
 use serde_json::Value;
-use tempfile::tempdir;
-
-use support::gb_cmd::gb_command;
+use support::gb_cmd::GbTestEnv;
 use support::mock_http::{spawn_scripted_server, spawn_server, ScriptedResponse};
 
 #[test]
 fn auth_login_success_saves_default_host_and_user() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server("200 OK", r#"{"login":"alice"}"#);
 
     let host = format!("127.0.0.1:{port}/gitbucket");
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args([
             "auth",
             "login",
@@ -44,7 +41,7 @@ fn auth_login_success_saves_default_host_and_user() {
         Some("token secret-token")
     );
 
-    let config = fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    let config = fs::read_to_string(env.path().join("config.toml")).unwrap();
     assert!(config.contains("default_host = \"127.0.0.1:"));
     assert!(config.contains("token = \"secret-token\""));
     assert!(config.contains("user = \"alice\""));
@@ -53,13 +50,12 @@ fn auth_login_success_saves_default_host_and_user() {
 
 #[test]
 fn auth_login_with_profile_saves_profile_scoped_host() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server("200 OK", r#"{"login":"alice"}"#);
 
     let host = format!("127.0.0.1:{port}");
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args([
             "--profile",
             "work",
@@ -84,7 +80,7 @@ fn auth_login_with_profile_saves_profile_scoped_host() {
     );
     assert_eq!(request.target, "/api/v3/user");
 
-    let config = fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    let config = fs::read_to_string(env.path().join("config.toml")).unwrap();
     assert!(config.contains("[profiles.work]"));
     assert!(config.contains(&format!("default_host = \"{host}\"")));
     assert!(config.contains(&format!("[profiles.work.hosts.\"{host}\"]")));
@@ -94,11 +90,10 @@ fn auth_login_with_profile_saves_profile_scoped_host() {
 
 #[test]
 fn auth_login_rejects_empty_profile_before_api_call() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .env("GB_PROFILE", "")
         .args([
             "auth",
@@ -120,16 +115,16 @@ fn auth_login_rejects_empty_profile_before_api_call() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        !temp.path().join("config.toml").exists(),
+        !env.path().join("config.toml").exists(),
         "empty profile should not be written to config"
     );
 }
 
 #[test]
 fn auth_status_with_profile_prints_only_that_profile_and_effective_actor() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     fs::write(
-        temp.path().join("config.toml"),
+        env.path().join("config.toml"),
         r#"
 [hosts."gitbucket.example.com"]
 token = "global-token"
@@ -156,9 +151,8 @@ protocol = "https"
     )
     .unwrap();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args(["auth", "status", "--profile", "work"])
         .output()
         .unwrap();
@@ -180,9 +174,9 @@ protocol = "https"
 
 #[test]
 fn auth_status_json_includes_structured_effective_actor() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     fs::write(
-        temp.path().join("config.toml"),
+        env.path().join("config.toml"),
         r#"
 default_profile = "work"
 
@@ -203,9 +197,8 @@ protocol = "https"
     )
     .unwrap();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args(["auth", "status", "--json"])
         .output()
         .unwrap();
@@ -229,9 +222,9 @@ protocol = "https"
 
 #[test]
 fn auth_status_json_global_credentials_includes_effective_actor() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     fs::write(
-        temp.path().join("config.toml"),
+        env.path().join("config.toml"),
         r#"
 [hosts."gitbucket.example.com"]
 token = "global-token"
@@ -241,9 +234,8 @@ protocol = "https"
     )
     .unwrap();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args(["auth", "status", "--json", "-H", "gitbucket.example.com"])
         .output()
         .unwrap();
@@ -263,13 +255,12 @@ protocol = "https"
 
 #[test]
 fn auth_login_maps_401_to_user_friendly_error() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server("401 Unauthorized", r#"{"message":"bad credentials"}"#);
 
     let host = format!("127.0.0.1:{port}");
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args([
             "auth",
             "login",
@@ -294,13 +285,12 @@ fn auth_login_maps_401_to_user_friendly_error() {
 
 #[test]
 fn auth_login_maps_404_to_base_path_hint() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server("404 Not Found", r#"{"message":"not found"}"#);
 
     let host = format!("127.0.0.1:{port}");
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args([
             "auth",
             "login",
@@ -325,18 +315,14 @@ fn auth_login_maps_404_to_base_path_hint() {
 
 #[test]
 fn repo_create_user_sends_expected_payload() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{"name":"demo","full_name":"alice/demo","private":true,"fork":false}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .api_command(format!("127.0.0.1:{port}"))
         .args([
             "repo",
             "create",
@@ -367,18 +353,14 @@ fn repo_create_user_sends_expected_payload() {
 
 #[test]
 fn repo_create_org_sends_expected_payload() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{"name":"demo","full_name":"my-org/demo","private":false,"fork":false}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .api_command(format!("127.0.0.1:{port}"))
         .args([
             "repo",
             "create",
@@ -409,18 +391,14 @@ fn repo_create_org_sends_expected_payload() {
 
 #[test]
 fn repo_fork_posts_empty_json_body() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{"name":"project","full_name":"bob/project","private":false,"fork":true}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .api_command(format!("127.0.0.1:{port}"))
         .args(["repo", "fork", "alice/project"])
         .output()
         .unwrap();
@@ -440,19 +418,15 @@ fn repo_fork_posts_empty_json_body() {
 
 #[test]
 fn repo_fork_accepts_positional_repo_after_subcommand() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{"name":"project","full_name":"alice/project-fork","description":"","private":false,"fork":true}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
+    let output = env
+        .api_command(format!("127.0.0.1:{port}"))
         .env("GB_REPO", "ignored/from-env")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
         .args(["repo", "fork", "alice/project"])
         .output()
         .unwrap();
@@ -470,7 +444,7 @@ fn repo_fork_accepts_positional_repo_after_subcommand() {
 
 #[test]
 fn repo_fork_returns_existing_fork_when_fork_request_fails_after_creation() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "POST /api/v3/repos/alice/project/forks HTTP/1.1",
@@ -484,12 +458,8 @@ fn repo_fork_returns_existing_fork_when_fork_request_fails_after_creation() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .api_command(format!("127.0.0.1:{port}"))
         .env("GB_USER", "bob")
         .args(["repo", "fork", "alice/project"])
         .output()
@@ -514,7 +484,7 @@ fn repo_fork_returns_existing_fork_when_fork_request_fails_after_creation() {
 
 #[test]
 fn repo_fork_preserves_error_when_existing_fork_has_different_upstream() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "POST /api/v3/repos/alice/project/forks HTTP/1.1",
@@ -528,12 +498,8 @@ fn repo_fork_preserves_error_when_existing_fork_has_different_upstream() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .api_command(format!("127.0.0.1:{port}"))
         .env("GB_USER", "bob")
         .args(["repo", "fork", "alice/project"])
         .output()
@@ -557,19 +523,15 @@ fn repo_fork_preserves_error_when_existing_fork_has_different_upstream() {
 
 #[test]
 fn repo_fork_preserves_auth_error_without_existing_fork_recovery() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
         "POST /api/v3/repos/alice/project/forks HTTP/1.1",
         "403 Forbidden",
         r#"{"message":"forbidden"}"#,
     )]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .api_command(format!("127.0.0.1:{port}"))
         .env("GB_USER", "bob")
         .args(["repo", "fork", "alice/project"])
         .output()
@@ -587,19 +549,15 @@ fn repo_fork_preserves_auth_error_without_existing_fork_recovery() {
 
 #[test]
 fn repo_fork_preserves_non_404_api_error_when_fork_target_is_unknown() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
         "POST /api/v3/repos/alice/project/forks HTTP/1.1",
         "500 Internal Server Error",
         r#"{"message":"temporary fork failure"}"#,
     )]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .api_command(format!("127.0.0.1:{port}"))
         .args(["repo", "fork", "alice/project"])
         .output()
         .unwrap();
@@ -622,15 +580,11 @@ fn repo_fork_preserves_non_404_api_error_when_fork_target_is_unknown() {
 
 #[test]
 fn repo_delete_yes_skips_confirmation_and_sends_delete_request() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server("204 No Content", "");
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .api_command(format!("127.0.0.1:{port}"))
         .args(["repo", "delete", "--yes", "alice/project"])
         .output()
         .unwrap();
@@ -650,7 +604,7 @@ fn repo_delete_yes_skips_confirmation_and_sends_delete_request() {
 
 #[test]
 fn repo_delete_falls_back_to_gitbucket_web_session() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "DELETE /gitbucket/api/v3/repos/alice/project HTTP/1.1",
@@ -666,12 +620,8 @@ fn repo_delete_falls_back_to_gitbucket_web_session() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .api_command(format!("127.0.0.1:{port}/gitbucket"))
         .env("GB_USER", "alice")
         .env("GB_PASSWORD", "secret-pass")
         .env("GB_REPO", "ignored/from-env")
@@ -698,7 +648,7 @@ fn repo_delete_falls_back_to_gitbucket_web_session() {
 
 #[test]
 fn repo_fork_falls_back_to_gitbucket_web_session() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "POST /gitbucket/api/v3/repos/alice/project/forks HTTP/1.1",
@@ -719,12 +669,8 @@ fn repo_fork_falls_back_to_gitbucket_web_session() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .api_command(format!("127.0.0.1:{port}/gitbucket"))
         .env("GB_USER", "alice")
         .env("GB_PASSWORD", "secret-pass")
         .env("GB_REPO", "ignored/from-env")

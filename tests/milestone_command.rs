@@ -1,26 +1,19 @@
 mod support;
 
 use serde_json::Value;
-use tempfile::tempdir;
-
-use support::gb_cmd::gb_command;
+use support::gb_cmd::GbTestEnv;
 use support::mock_http::{spawn_scripted_server, spawn_server, ScriptedResponse};
 
 #[test]
 fn milestone_list_prints_json_and_state_query() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"[{"number":7,"title":"v1.0","state":"open","description":"First release","open_issues":3,"closed_issues":1,"due_on":"2026-04-01T00:00:00Z"}]"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["milestone", "list", "--state", "all", "--json"])
         .output()
         .unwrap();
@@ -39,19 +32,14 @@ fn milestone_list_prints_json_and_state_query() {
 
 #[test]
 fn milestone_view_prints_details() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{"number":7,"title":"v1.0","state":"open","description":"First release","open_issues":3,"closed_issues":1,"due_on":"2026-04-01T00:00:00Z","html_url":"http://example.test/alice/project/milestone/7"}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["milestone", "view", "7"])
         .output()
         .unwrap();
@@ -72,19 +60,14 @@ fn milestone_view_prints_details() {
 
 #[test]
 fn milestone_view_hides_unset_due_date_sentinel() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{"number":7,"title":"v1.0","state":"open","description":"First release","open_issues":3,"closed_issues":1,"due_on":"0001-01-01T00:00:00Z"}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["milestone", "view", "7"])
         .output()
         .unwrap();
@@ -100,19 +83,14 @@ fn milestone_view_hides_unset_due_date_sentinel() {
 
 #[test]
 fn milestone_create_sends_expected_payload() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "201 Created",
         r#"{"number":7,"title":"v1.0","state":"open","description":"First release","due_on":"2026-04-01T00:00:00Z"}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "milestone",
             "create",
@@ -144,15 +122,10 @@ fn milestone_create_sends_expected_payload() {
 
 #[test]
 fn milestone_create_rejects_invalid_due_on_before_api_call() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", "127.0.0.1:9")
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command("127.0.0.1:9", "alice/project")
         .args(["milestone", "create", "v1.0", "--due-on", "tomorrow"])
         .output()
         .unwrap();
@@ -168,7 +141,7 @@ fn milestone_create_rejects_invalid_due_on_before_api_call() {
 
 #[test]
 fn milestone_create_falls_back_to_gitbucket_web_session() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "POST /gitbucket/api/v3/repos/alice/project/milestones HTTP/1.1",
@@ -189,13 +162,8 @@ fn milestone_create_falls_back_to_gitbucket_web_session() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}/gitbucket"), "alice/project")
         .env("GB_USER", "alice")
         .env("GB_PASSWORD", "secret-pass")
         .args([
@@ -230,7 +198,7 @@ fn milestone_create_falls_back_to_gitbucket_web_session() {
 
 #[test]
 fn milestone_create_web_fallback_succeeds_when_follow_up_list_fails() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "POST /gitbucket/api/v3/repos/alice/project/milestones HTTP/1.1",
@@ -251,13 +219,8 @@ fn milestone_create_web_fallback_succeeds_when_follow_up_list_fails() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}/gitbucket"), "alice/project")
         .env("GB_USER", "alice")
         .env("GB_PASSWORD", "secret-pass")
         .args(["milestone", "create", "v1.0"])
@@ -281,15 +244,10 @@ fn milestone_create_web_fallback_succeeds_when_follow_up_list_fails() {
 
 #[test]
 fn milestone_edit_requires_an_explicit_change() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", "127.0.0.1:9")
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command("127.0.0.1:9", "alice/project")
         .args(["milestone", "edit", "7"])
         .output()
         .unwrap();
@@ -304,7 +262,7 @@ fn milestone_edit_requires_an_explicit_change() {
 
 #[test]
 fn milestone_edit_sends_expected_payload() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/milestones/7 HTTP/1.1",
@@ -318,13 +276,8 @@ fn milestone_edit_sends_expected_payload() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "milestone",
             "edit",
@@ -360,7 +313,7 @@ fn milestone_edit_sends_expected_payload() {
 
 #[test]
 fn milestone_edit_falls_back_to_gitbucket_web_session() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /gitbucket/api/v3/repos/alice/project/milestones/7 HTTP/1.1",
@@ -391,13 +344,8 @@ fn milestone_edit_falls_back_to_gitbucket_web_session() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}/gitbucket"), "alice/project")
         .env("GB_USER", "alice")
         .env("GB_PASSWORD", "secret-pass")
         .args([
@@ -439,7 +387,7 @@ fn milestone_edit_falls_back_to_gitbucket_web_session() {
 
 #[test]
 fn milestone_edit_fallback_keeps_unset_due_date_empty() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /gitbucket/api/v3/repos/alice/project/milestones/7 HTTP/1.1",
@@ -465,13 +413,8 @@ fn milestone_edit_fallback_keeps_unset_due_date_empty() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}/gitbucket"), "alice/project")
         .env("GB_USER", "alice")
         .env("GB_PASSWORD", "secret-pass")
         .args(["milestone", "edit", "7", "--title", "v1.1"])
@@ -493,16 +436,11 @@ fn milestone_edit_fallback_keeps_unset_due_date_empty() {
 
 #[test]
 fn milestone_delete_sends_delete_request_when_yes_is_used() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server("204 No Content", "");
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["milestone", "delete", "7", "--yes"])
         .output()
         .unwrap();
@@ -522,7 +460,7 @@ fn milestone_delete_sends_delete_request_when_yes_is_used() {
 
 #[test]
 fn milestone_delete_falls_back_to_gitbucket_web_session() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "DELETE /gitbucket/api/v3/repos/alice/project/milestones/7 HTTP/1.1",
@@ -538,13 +476,8 @@ fn milestone_delete_falls_back_to_gitbucket_web_session() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}/gitbucket"), "alice/project")
         .env("GB_USER", "alice")
         .env("GB_PASSWORD", "secret-pass")
         .args(["milestone", "delete", "7", "--yes"])

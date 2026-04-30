@@ -1,14 +1,12 @@
 mod support;
 
 use serde_json::Value;
-use tempfile::tempdir;
-
-use support::gb_cmd::gb_command;
+use support::gb_cmd::GbTestEnv;
 use support::mock_http::{spawn_scripted_server, ScriptedResponse};
 
 #[test]
 fn pr_edit_updates_title_body_state_and_assignees() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
@@ -27,13 +25,8 @@ fn pr_edit_updates_title_body_state_and_assignees() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "pr",
             "edit",
@@ -75,7 +68,7 @@ fn pr_edit_updates_title_body_state_and_assignees() {
 
 #[test]
 fn pr_edit_fails_non_interactively_when_issue_patch_is_missing() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /gitbucket/api/v3/repos/alice/project/pulls/5 HTTP/1.1",
@@ -94,13 +87,8 @@ fn pr_edit_fails_non_interactively_when_issue_patch_is_missing() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}/gitbucket"), "alice/project")
         .env("GB_USER", "alice")
         .env("GB_PASSWORD", "secret-pass")
         .args(["pr", "edit", "5", "--title", "New", "--add-assignee", "bob"])
@@ -121,7 +109,7 @@ fn pr_edit_fails_non_interactively_when_issue_patch_is_missing() {
 
 #[test]
 fn json_errors_suppresses_notice_before_failure() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
@@ -135,13 +123,8 @@ fn json_errors_suppresses_notice_before_failure() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "--json-errors",
             "pr",
@@ -166,7 +149,7 @@ fn json_errors_suppresses_notice_before_failure() {
 
 #[test]
 fn pr_edit_uses_gitbucket_web_session_with_web_flag_when_issue_patch_is_missing() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /gitbucket/api/v3/repos/alice/project/pulls/5 HTTP/1.1",
@@ -217,13 +200,8 @@ fn pr_edit_uses_gitbucket_web_session_with_web_flag_when_issue_patch_is_missing(
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}/gitbucket"), "alice/project")
         .env("GB_USER", "alice")
         .env("GB_PASSWORD", "secret-pass")
         .args([
@@ -279,20 +257,15 @@ fn pr_edit_uses_gitbucket_web_session_with_web_flag_when_issue_patch_is_missing(
 
 #[test]
 fn pr_edit_rejects_issue_number_that_is_not_a_pull_request() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
         "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
         "404 Not Found",
         r#"{"message":"not found"}"#,
     )]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["pr", "edit", "5", "--title", "Wrong target"])
         .output()
         .unwrap();

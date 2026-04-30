@@ -1,20 +1,18 @@
+mod support;
+
 use std::fs;
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use tempfile::tempdir;
+use support::gb_cmd::GbTestEnv;
 
 const SERVER_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn write_config(dir: &std::path::Path, content: &str) {
     fs::create_dir_all(dir).unwrap();
     fs::write(dir.join("config.toml"), content).unwrap();
-}
-
-fn gb_command() -> std::process::Command {
-    assert_cmd::cargo::CommandCargoExt::cargo_bin("gb").unwrap()
 }
 
 fn accept_with_timeout(listener: TcpListener) -> TcpStream {
@@ -91,13 +89,10 @@ fn serve_json_once(
 
 #[test]
 fn issue_list_rejects_invalid_state_before_api_call() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", "gitbucket.example.com")
-        .env("GB_REPO", "alice/my-repo")
+    let output = env
+        .repo_api_command("gitbucket.example.com", "alice/my-repo")
         .env("GB_TOKEN", "env-token")
         .args(["issue", "list", "--state", "draft"])
         .output()
@@ -111,13 +106,10 @@ fn issue_list_rejects_invalid_state_before_api_call() {
 
 #[test]
 fn pr_list_rejects_invalid_state_before_api_call() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", "gitbucket.example.com")
-        .env("GB_REPO", "alice/my-repo")
+    let output = env
+        .repo_api_command("gitbucket.example.com", "alice/my-repo")
         .env("GB_TOKEN", "env-token")
         .args(["pr", "list", "--state", "draft"])
         .output()
@@ -131,9 +123,9 @@ fn pr_list_rejects_invalid_state_before_api_call() {
 
 #[test]
 fn auth_token_uses_gb_host_over_default_host() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     write_config(
-        temp.path(),
+        env.path(),
         r#"
 default_host = "default.example.com"
 
@@ -149,9 +141,8 @@ protocol = "https"
 "#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .env("GB_HOST", "env.example.com")
         .args(["auth", "token"])
         .output()
@@ -166,9 +157,9 @@ protocol = "https"
 
 #[test]
 fn issue_list_uses_environment_precedence_for_host_repo_token_and_protocol() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     write_config(
-        temp.path(),
+        env.path(),
         r#"
 default_host = "bad host"
 
@@ -185,13 +176,9 @@ protocol = "https"
         r#"[{"number":1,"title":"From env","state":"open","labels":[]}]"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "env-owner/env-repo")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "env-owner/env-repo")
         .env("GB_TOKEN", "env-token")
-        .env("GB_PROTOCOL", "http")
         .args(["issue", "list", "--state", "open", "--json"])
         .output()
         .unwrap();
@@ -210,7 +197,7 @@ protocol = "https"
 
 #[test]
 fn issue_list_uses_default_profile_host_repo_and_scoped_credentials() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
 
     let (port, server) = serve_json_once(
         "GET /api/v3/repos/profile-owner/profile-repo/issues?state=open HTTP/1.1",
@@ -219,7 +206,7 @@ fn issue_list_uses_default_profile_host_repo_and_scoped_credentials() {
     );
 
     write_config(
-        temp.path(),
+        env.path(),
         &format!(
             r#"
 default_profile = "work"
@@ -236,9 +223,8 @@ protocol = "http"
         ),
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args(["issue", "list", "--state", "open", "--json"])
         .output()
         .unwrap();
@@ -256,7 +242,7 @@ protocol = "http"
 
 #[test]
 fn environment_host_and_repo_override_profile_defaults() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
 
     let (port, server) = serve_json_once(
         "GET /api/v3/repos/env-owner/env-repo/issues?state=open HTTP/1.1",
@@ -265,7 +251,7 @@ fn environment_host_and_repo_override_profile_defaults() {
     );
 
     write_config(
-        temp.path(),
+        env.path(),
         &format!(
             r#"
 default_profile = "work"
@@ -287,9 +273,8 @@ protocol = "http"
         ),
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .env("GB_HOST", format!("127.0.0.1:{port}"))
         .env("GB_REPO", "env-owner/env-repo")
         .args(["issue", "list", "--state", "open", "--json"])
@@ -309,12 +294,11 @@ protocol = "http"
 
 #[test]
 fn selected_missing_profile_fails_before_api_call() {
-    let temp = tempdir().unwrap();
-    write_config(temp.path(), "");
+    let env = GbTestEnv::new();
+    write_config(env.path(), "");
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .env("GB_PROFILE", "missing")
         .env("GB_HOST", "gitbucket.example.com")
         .env("GB_REPO", "alice/project")
@@ -333,10 +317,10 @@ fn selected_missing_profile_fails_before_api_call() {
 
 #[test]
 fn repo_delete_requires_explicit_repo_even_inside_git_repo() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let status = std::process::Command::new("git")
         .args(["init"])
-        .current_dir(temp.path())
+        .current_dir(env.path())
         .status()
         .unwrap();
     assert!(status.success());
@@ -348,14 +332,13 @@ fn repo_delete_requires_explicit_repo_even_inside_git_repo() {
             "origin",
             "https://gitbucket.example.com/alice/project.git",
         ])
-        .current_dir(temp.path())
+        .current_dir(env.path())
         .status()
         .unwrap();
     assert!(status.success());
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .env("GB_HOST", "gitbucket.example.com")
         .args(["repo", "delete", "--yes"])
         .output()

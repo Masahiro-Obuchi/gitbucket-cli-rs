@@ -1,26 +1,19 @@
 mod support;
 
 use serde_json::Value;
-use tempfile::tempdir;
-
-use support::gb_cmd::gb_command;
+use support::gb_cmd::GbTestEnv;
 use support::mock_http::spawn_server;
 
 #[test]
 fn label_list_prints_json() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"[{"name":"bug","color":"fc2929","description":"Broken behavior"}]"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["label", "list", "--json"])
         .output()
         .unwrap();
@@ -38,19 +31,14 @@ fn label_list_prints_json() {
 
 #[test]
 fn label_view_prints_details() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{"name":"bug","color":"fc2929","description":"Broken behavior","url":"http://example.test/api/v3/repos/alice/project/labels/bug"}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["label", "view", "bug"])
         .output()
         .unwrap();
@@ -71,19 +59,14 @@ fn label_view_prints_details() {
 
 #[test]
 fn label_view_url_encodes_label_name() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{"name":"needs review","color":"fc2929","description":"Broken behavior"}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["label", "view", "needs review"])
         .output()
         .unwrap();
@@ -100,19 +83,14 @@ fn label_view_url_encodes_label_name() {
 
 #[test]
 fn label_create_sends_expected_payload() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "201 Created",
         r#"{"name":"needs-review","color":"abcdef","description":"Needs extra review"}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "label",
             "create",
@@ -147,15 +125,10 @@ fn label_create_sends_expected_payload() {
 
 #[test]
 fn label_create_rejects_invalid_color_before_api_call() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", "127.0.0.1:9")
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command("127.0.0.1:9", "alice/project")
         .args(["label", "create", "bug", "--color", "zzz"])
         .output()
         .unwrap();
@@ -171,16 +144,11 @@ fn label_create_rejects_invalid_color_before_api_call() {
 
 #[test]
 fn label_delete_sends_delete_request_when_yes_is_used() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server("204 No Content", "");
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["label", "delete", "bug", "--yes"])
         .output()
         .unwrap();

@@ -3,33 +3,26 @@ mod support;
 use std::fs;
 
 use serde_json::Value;
-use tempfile::tempdir;
-
-use support::gb_cmd::gb_command;
+use support::gb_cmd::GbTestEnv;
 
 #[test]
 fn config_path_prints_config_file_path() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .args(["config", "path"])
-        .output()
-        .unwrap();
+    let output = env.command().args(["config", "path"]).output().unwrap();
 
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
-        temp.path().join("config.toml").display().to_string()
+        env.path().join("config.toml").display().to_string()
     );
 }
 
 #[test]
 fn config_list_json_shows_hosts_without_exposing_tokens() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     fs::write(
-        temp.path().join("config.toml"),
+        env.path().join("config.toml"),
         r#"
 default_host = "https://gitbucket.example.com/gitbucket"
 
@@ -46,9 +39,8 @@ protocol = "http"
     )
     .unwrap();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args(["config", "list", "--json"])
         .output()
         .unwrap();
@@ -76,9 +68,9 @@ protocol = "http"
 
 #[test]
 fn config_list_json_shows_profiles_without_exposing_tokens() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     fs::write(
-        temp.path().join("config.toml"),
+        env.path().join("config.toml"),
         r#"
 default_profile = "work"
 
@@ -94,9 +86,8 @@ protocol = "https"
     )
     .unwrap();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args(["config", "list", "--json"])
         .output()
         .unwrap();
@@ -122,9 +113,9 @@ protocol = "https"
 
 #[test]
 fn config_list_ignores_runtime_env_overrides() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     fs::write(
-        temp.path().join("config.toml"),
+        env.path().join("config.toml"),
         r#"
 default_host = "stored.example.com"
 
@@ -136,9 +127,8 @@ protocol = "https"
     )
     .unwrap();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .env("GB_HOST", "override.example.com")
         .env("GB_TOKEN", "override-token")
         .env("GB_PROTOCOL", "http")
@@ -155,9 +145,9 @@ protocol = "https"
 
 #[test]
 fn config_get_host_field_resolves_equivalent_hostname() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     fs::write(
-        temp.path().join("config.toml"),
+        env.path().join("config.toml"),
         r#"
 [hosts."https://gitbucket.example.com/gitbucket"]
 token = "secret-token"
@@ -167,9 +157,8 @@ protocol = "http"
     )
     .unwrap();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args([
             "config",
             "get",
@@ -188,9 +177,9 @@ protocol = "http"
 
 #[test]
 fn config_get_default_host_fails_when_unset() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     fs::write(
-        temp.path().join("config.toml"),
+        env.path().join("config.toml"),
         r#"
 [hosts."gitbucket.example.com"]
 token = "secret-token"
@@ -200,9 +189,8 @@ protocol = "https"
     )
     .unwrap();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args(["config", "get", "default-host"])
         .output()
         .unwrap();
@@ -217,9 +205,9 @@ protocol = "https"
 
 #[test]
 fn config_set_get_and_unset_default_profile() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     fs::write(
-        temp.path().join("config.toml"),
+        env.path().join("config.toml"),
         r#"
 [profiles.work]
 default_host = "gitbucket.example.com"
@@ -227,9 +215,8 @@ default_host = "gitbucket.example.com"
     )
     .unwrap();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args(["config", "set", "default-profile", "work"])
         .output()
         .unwrap();
@@ -239,18 +226,16 @@ default_host = "gitbucket.example.com"
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args(["config", "get", "default-profile"])
         .output()
         .unwrap();
     assert!(output.status.success());
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "work");
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args(["config", "unset", "default-profile"])
         .output()
         .unwrap();
@@ -259,18 +244,17 @@ default_host = "gitbucket.example.com"
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let config = fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    let config = fs::read_to_string(env.path().join("config.toml")).unwrap();
     assert!(!config.contains("default_profile"));
 }
 
 #[test]
 fn config_set_profile_updates_defaults() {
-    let temp = tempdir().unwrap();
-    fs::write(temp.path().join("config.toml"), "").unwrap();
+    let env = GbTestEnv::new();
+    fs::write(env.path().join("config.toml"), "").unwrap();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args([
             "config",
             "set",
@@ -290,9 +274,8 @@ fn config_set_profile_updates_defaults() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args(["config", "get", "profile", "work", "--json"])
         .output()
         .unwrap();
@@ -304,9 +287,9 @@ fn config_set_profile_updates_defaults() {
 
 #[test]
 fn config_set_default_host_uses_matching_saved_key() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     fs::write(
-        temp.path().join("config.toml"),
+        env.path().join("config.toml"),
         r#"
 [hosts."https://gitbucket.example.com/gitbucket"]
 token = "secret-token"
@@ -321,9 +304,8 @@ protocol = "http"
     )
     .unwrap();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args([
             "config",
             "set",
@@ -338,15 +320,15 @@ protocol = "http"
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let config = fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    let config = fs::read_to_string(env.path().join("config.toml")).unwrap();
     assert!(config.contains("default_host = \"https://gitbucket.example.com/gitbucket\""));
 }
 
 #[test]
 fn config_set_host_updates_fields_and_default() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     fs::write(
-        temp.path().join("config.toml"),
+        env.path().join("config.toml"),
         r#"
 [hosts."https://gitbucket.example.com/gitbucket"]
 token = "secret-token"
@@ -356,9 +338,8 @@ protocol = "https"
     )
     .unwrap();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args([
             "config",
             "set",
@@ -379,7 +360,7 @@ protocol = "https"
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let config = fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    let config = fs::read_to_string(env.path().join("config.toml")).unwrap();
     assert!(config.contains("default_host = \"https://gitbucket.example.com/gitbucket\""));
     assert!(config.contains("user = \"carol\""));
     assert!(config.contains("protocol = \"http\""));
@@ -387,9 +368,9 @@ protocol = "https"
 
 #[test]
 fn config_set_host_rejects_invalid_protocol() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     fs::write(
-        temp.path().join("config.toml"),
+        env.path().join("config.toml"),
         r#"
 [hosts."https://gitbucket.example.com/gitbucket"]
 token = "secret-token"
@@ -399,9 +380,8 @@ protocol = "https"
     )
     .unwrap();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args([
             "config",
             "set",
@@ -425,9 +405,9 @@ protocol = "https"
 
 #[test]
 fn config_set_host_requires_an_explicit_change() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     fs::write(
-        temp.path().join("config.toml"),
+        env.path().join("config.toml"),
         r#"
 [hosts."https://gitbucket.example.com/gitbucket"]
 token = "secret-token"
@@ -437,9 +417,8 @@ protocol = "https"
     )
     .unwrap();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args([
             "config",
             "set",
@@ -461,9 +440,9 @@ protocol = "https"
 
 #[test]
 fn config_unset_default_host_clears_value() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     fs::write(
-        temp.path().join("config.toml"),
+        env.path().join("config.toml"),
         r#"
 default_host = "https://gitbucket.example.com/gitbucket"
 
@@ -475,9 +454,8 @@ protocol = "https"
     )
     .unwrap();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
+    let output = env
+        .command()
         .args(["config", "unset", "default-host"])
         .output()
         .unwrap();
@@ -487,6 +465,6 @@ protocol = "https"
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let config = fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    let config = fs::read_to_string(env.path().join("config.toml")).unwrap();
     assert!(!config.contains("default_host"));
 }
