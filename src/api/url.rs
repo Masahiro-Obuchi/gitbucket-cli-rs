@@ -38,11 +38,18 @@ pub(crate) fn normalize_base_url(hostname: &str, protocol: &str) -> Result<Strin
     };
 
     let parsed = Url::parse(&candidate)?;
-    let host = parsed
-        .host_str()
-        .ok_or_else(|| GbError::Config(format!("Invalid GitBucket host or URL: {}", hostname)))?;
+    let host_part = match parsed.host() {
+        Some(url::Host::Ipv6(addr)) => format!("[{}]", addr),
+        Some(host) => host.to_string(),
+        None => {
+            return Err(GbError::Config(format!(
+                "Invalid GitBucket host or URL: {}",
+                hostname
+            )))
+        }
+    };
 
-    let mut base = format!("{}://{}", parsed.scheme(), host);
+    let mut base = format!("{}://{}", parsed.scheme(), host_part);
     if let Some(port) = parsed.port() {
         base.push_str(&format!(":{}", port));
     }
@@ -228,6 +235,18 @@ mod tests {
         let base =
             normalize_base_url("https://gitbucket.example.com:8443/gitbucket/", "http").unwrap();
         assert_eq!(base, "https://gitbucket.example.com:8443/gitbucket/api/v3");
+    }
+
+    #[test]
+    fn normalizes_ipv6_host_with_port() {
+        let base = normalize_base_url("http://[::1]:8080/gitbucket", "http").unwrap();
+        assert_eq!(base, "http://[::1]:8080/gitbucket/api/v3");
+    }
+
+    #[test]
+    fn normalizes_ipv6_host_without_port() {
+        let base = normalize_base_url("http://[::1]/gitbucket", "http").unwrap();
+        assert_eq!(base, "http://[::1]/gitbucket/api/v3");
     }
 
     #[test]

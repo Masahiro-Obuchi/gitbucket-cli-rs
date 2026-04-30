@@ -2,8 +2,7 @@ use dialoguer::{Confirm, Input};
 
 use crate::api::client::ApiClient;
 use crate::cli::common::{
-    create_web_session, parse_owner_repo, resolve_host_config, resolve_hostname, resolve_repo,
-    HostContext,
+    create_web_session, parse_owner_repo, resolve_host_config, resolve_repo, HostContext,
 };
 use crate::error::{GbError, Result};
 use crate::models::repository::{CreateRepository, Repository};
@@ -51,7 +50,6 @@ pub(super) async fn delete(
     repo_arg: Option<String>,
     yes: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname, cli_profile)?;
     let repo_arg = repo_arg.ok_or_else(|| {
         GbError::Other(
             "Refusing to delete without an explicit repository. Pass OWNER/REPO or -R/--repo."
@@ -74,7 +72,7 @@ pub(super) async fn delete(
         }
     }
 
-    let ctx = HostContext::resolve(&Some(hostname), cli_profile)?;
+    let ctx = HostContext::resolve(hostname, cli_profile)?;
     match ctx.client.delete_repo(&owner, &repo).await {
         Ok(()) => {
             println!("✓ Deleted repository {}/{}", owner, repo);
@@ -99,13 +97,12 @@ pub(super) async fn fork(
     cli_profile: &Option<String>,
     group: Option<String>,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname, cli_profile)?;
     let (owner, repo) = match repo_arg {
         Some(r) => parse_owner_repo(&r)?,
         None => resolve_repo(&None, cli_profile)?,
     };
 
-    let ctx = HostContext::resolve(&Some(hostname), cli_profile)?;
+    let ctx = HostContext::resolve(hostname, cli_profile)?;
     match ctx.client.fork_repo(&owner, &repo).await {
         Ok(forked) => {
             print_fork_result(&owner, &repo, &forked);
