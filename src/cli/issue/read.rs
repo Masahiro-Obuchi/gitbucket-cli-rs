@@ -1,8 +1,9 @@
 use colored::Colorize;
 
-use crate::cli::common::{create_client, resolve_hostname, resolve_repo};
-use crate::error::{GbError, Result};
+use crate::cli::common::RepoContext;
+use crate::error::Result;
 use crate::models::issue::Issue;
+use crate::output;
 use crate::output::table::format_table;
 use crate::output::{format_state, page_or_print, truncate};
 
@@ -22,19 +23,16 @@ pub(super) async fn list(
     json: bool,
     no_pager: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname, cli_profile)?;
-    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
-    let client = create_client(&hostname, cli_profile)?;
+    let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
     let state = crate::cli::common::normalize_list_state(state)?;
 
-    let issues = client.list_issues(&owner, &repo, &state).await?;
+    let issues = ctx
+        .client
+        .list_issues(&ctx.owner, &ctx.repo, &state)
+        .await?;
 
     if json {
-        page_or_print(
-            &format!("{}\n", serde_json::to_string_pretty(&issues)?),
-            no_pager,
-        )?;
-        return Ok(());
+        return output::page_json(&issues, no_pager);
     }
 
     let rows: Vec<Vec<String>> = issues
@@ -73,32 +71,30 @@ pub(super) async fn view(
     cli_profile: &Option<String>,
     options: ViewOptions,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname, cli_profile)?;
-    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
-    let client = create_client(&hostname, cli_profile)?;
+    let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
     if options.web {
-        let url = client.web_url(&format!("/{}/{}/issues/{}", owner, repo, options.number));
-        open::that(&url)
-            .map_err(|err| GbError::Other(format!("Failed to open browser: {}", err)))?;
-        println!("Opening {} in your browser.", url);
-        return Ok(());
+        let url = ctx.client.web_url(&format!(
+            "/{}/{}/issues/{}",
+            ctx.owner, ctx.repo, options.number
+        ));
+        return output::open_web_url(&url);
     }
 
-    let issue = client.get_issue(&owner, &repo, options.number).await?;
+    let issue = ctx
+        .client
+        .get_issue(&ctx.owner, &ctx.repo, options.number)
+        .await?;
 
     if options.json {
-        page_or_print(
-            &format!("{}\n", serde_json::to_string_pretty(&issue)?),
-            options.no_pager,
-        )?;
-        return Ok(());
+        return output::page_json(&issue, options.no_pager);
     }
 
     let mut output = format_issue_view(&issue);
     if options.show_comments {
-        let comments = client
-            .list_issue_comments(&owner, &repo, options.number)
+        let comments = ctx
+            .client
+            .list_issue_comments(&ctx.owner, &ctx.repo, options.number)
             .await?;
         if !comments.is_empty() {
             output.push_str(&format!("\n{}\n", "--- Comments ---".dimmed()));

@@ -1,7 +1,8 @@
 use colored::Colorize;
 
-use crate::cli::common::{create_client, normalize_list_state, resolve_hostname, resolve_repo};
+use crate::cli::common::{normalize_list_state, RepoContext};
 use crate::error::Result;
+use crate::output;
 use crate::output::table::print_table;
 use crate::output::{format_state, truncate};
 
@@ -14,15 +15,15 @@ pub(super) async fn list(
     state: &str,
     json: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname, cli_profile)?;
-    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
-    let client = create_client(&hostname, cli_profile)?;
+    let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
     let state = normalize_list_state(state)?;
-    let milestones = client.list_milestones(&owner, &repo, &state).await?;
+    let milestones = ctx
+        .client
+        .list_milestones(&ctx.owner, &ctx.repo, &state)
+        .await?;
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&milestones)?);
-        return Ok(());
+        return output::print_json(&milestones);
     }
 
     let rows: Vec<Vec<String>> = milestones
@@ -49,10 +50,11 @@ pub(super) async fn view(
     cli_profile: &Option<String>,
     number: u64,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname, cli_profile)?;
-    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
-    let client = create_client(&hostname, cli_profile)?;
-    let milestone = client.get_milestone(&owner, &repo, number).await?;
+    let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
+    let milestone = ctx
+        .client
+        .get_milestone(&ctx.owner, &ctx.repo, number)
+        .await?;
 
     println!(
         "{} {}",

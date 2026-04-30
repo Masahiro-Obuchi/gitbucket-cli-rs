@@ -184,16 +184,18 @@ pub async fn run(
                 cli_hostname,
                 cli_repo,
                 cli_profile,
-                number,
-                title,
-                body,
-                normalize_str_vec(add_label),
-                normalize_str_vec(remove_label),
-                normalize_str_vec(add_assignee),
-                normalize_str_vec(remove_assignee),
-                milestone,
-                remove_milestone,
-                state,
+                write::EditRequest {
+                    number,
+                    title,
+                    body,
+                    add_labels: normalize_str_vec(add_label),
+                    remove_labels: normalize_str_vec(remove_label),
+                    add_assignees: normalize_str_vec(add_assignee),
+                    remove_assignees: normalize_str_vec(remove_assignee),
+                    milestone,
+                    remove_milestone,
+                    state,
+                },
             )
             .await
         }

@@ -206,13 +206,15 @@ pub async fn run(
                 cli_hostname,
                 cli_repo,
                 cli_profile,
-                title,
-                body,
-                head,
-                head_owner,
-                base,
-                json,
-                detect_existing,
+                write::CreateRequest {
+                    title,
+                    body,
+                    head,
+                    head_owner,
+                    base,
+                    json,
+                    detect_existing,
+                },
             )
             .await
         }
@@ -229,13 +231,15 @@ pub async fn run(
                 cli_hostname,
                 cli_repo,
                 cli_profile,
-                number,
-                title,
-                body,
-                normalize_str_vec(add_assignee),
-                normalize_str_vec(remove_assignee),
-                state,
-                web,
+                write::EditRequest {
+                    number,
+                    title,
+                    body,
+                    add_assignees: normalize_str_vec(add_assignee),
+                    remove_assignees: normalize_str_vec(remove_assignee),
+                    state,
+                    web,
+                },
             )
             .await
         }
