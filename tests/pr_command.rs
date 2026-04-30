@@ -1,8 +1,6 @@
 mod support;
 
-use tempfile::tempdir;
-
-use support::gb_cmd::gb_command;
+use support::gb_cmd::{gb_command, GbTestEnv};
 
 #[test]
 fn pr_create_help_mentions_cross_repo_head_syntax() {
@@ -88,14 +86,9 @@ fn pr_read_help_mentions_no_pager() {
 
 #[test]
 fn pr_create_rejects_head_owner_containing_colon() {
-    let temp = tempdir().unwrap();
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", "127.0.0.1:19999")
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let env = GbTestEnv::new();
+    let output = env
+        .repo_api_command("127.0.0.1:19999", "alice/project")
         .args([
             "pr",
             "create",
@@ -121,14 +114,9 @@ fn pr_create_rejects_head_owner_containing_colon() {
 
 #[test]
 fn json_errors_print_structured_failure() {
-    let temp = tempdir().unwrap();
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", "127.0.0.1:19999")
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let env = GbTestEnv::new();
+    let output = env
+        .repo_api_command("127.0.0.1:19999", "alice/project")
         .args([
             "--json-errors",
             "pr",

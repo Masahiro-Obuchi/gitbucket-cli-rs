@@ -1,14 +1,12 @@
 mod support;
 
 use serde_json::Value;
-use tempfile::tempdir;
-
-use support::gb_cmd::gb_command;
+use support::gb_cmd::GbTestEnv;
 use support::mock_http::{spawn_scripted_server, ScriptedResponse};
 
 #[test]
 fn issue_edit_sends_expected_payload() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/issues/7 HTTP/1.1",
@@ -22,13 +20,8 @@ fn issue_edit_sends_expected_payload() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "issue",
             "edit",
@@ -75,7 +68,7 @@ fn issue_edit_sends_expected_payload() {
 
 #[test]
 fn issue_edit_can_clear_milestone() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/issues/7 HTTP/1.1",
@@ -89,13 +82,8 @@ fn issue_edit_can_clear_milestone() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["issue", "edit", "7", "--remove-milestone"])
         .output()
         .unwrap();
@@ -113,7 +101,7 @@ fn issue_edit_can_clear_milestone() {
 
 #[test]
 fn issue_edit_falls_back_to_gitbucket_web_session_for_supported_fields() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /gitbucket/api/v3/repos/alice/project/issues/7 HTTP/1.1",
@@ -154,13 +142,8 @@ fn issue_edit_falls_back_to_gitbucket_web_session_for_supported_fields() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}/gitbucket"), "alice/project")
         .env("GB_USER", "alice")
         .env("GB_PASSWORD", "secret-pass")
         .args([
@@ -206,7 +189,7 @@ fn issue_edit_falls_back_to_gitbucket_web_session_for_supported_fields() {
 
 #[test]
 fn issue_edit_uses_web_fallback_for_assignee_changes() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /gitbucket/api/v3/repos/alice/project/issues/7 HTTP/1.1",
@@ -237,13 +220,8 @@ fn issue_edit_uses_web_fallback_for_assignee_changes() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}/gitbucket"), "alice/project")
         .env("GB_USER", "alice")
         .env("GB_PASSWORD", "secret-pass")
         .args([
@@ -277,7 +255,7 @@ fn issue_edit_uses_web_fallback_for_assignee_changes() {
 
 #[test]
 fn issue_edit_rejects_label_changes_when_only_web_fallback_is_available() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /gitbucket/api/v3/repos/alice/project/issues/7 HTTP/1.1",
@@ -291,13 +269,8 @@ fn issue_edit_rejects_label_changes_when_only_web_fallback_is_available() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}/gitbucket"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}/gitbucket"), "alice/project")
         .args(["issue", "edit", "7", "--add-label", "urgent"])
         .output()
         .unwrap();
@@ -315,15 +288,10 @@ fn issue_edit_rejects_label_changes_when_only_web_fallback_is_available() {
 
 #[test]
 fn issue_edit_requires_an_explicit_change() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", "127.0.0.1:9")
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command("127.0.0.1:9", "alice/project")
         .args(["issue", "edit", "7"])
         .output()
         .unwrap();
@@ -338,15 +306,10 @@ fn issue_edit_requires_an_explicit_change() {
 
 #[test]
 fn issue_edit_rejects_conflicting_milestone_flags() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", "127.0.0.1:9")
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command("127.0.0.1:9", "alice/project")
         .args([
             "issue",
             "edit",
@@ -369,15 +332,10 @@ fn issue_edit_rejects_conflicting_milestone_flags() {
 
 #[test]
 fn issue_edit_rejects_invalid_state() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", "127.0.0.1:9")
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command("127.0.0.1:9", "alice/project")
         .args(["issue", "edit", "7", "--state", "all"])
         .output()
         .unwrap();

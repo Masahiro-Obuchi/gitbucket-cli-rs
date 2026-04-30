@@ -1,26 +1,19 @@
 mod support;
 
 use serde_json::Value;
-use tempfile::tempdir;
-
-use support::gb_cmd::gb_command;
+use support::gb_cmd::GbTestEnv;
 use support::mock_http::{spawn_scripted_server, spawn_server, ScriptedResponse};
 
 #[test]
 fn pr_create_sends_expected_payload() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{"number":5,"title":"Add feature","state":"open"}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "pr",
             "create",
@@ -54,7 +47,7 @@ fn pr_create_sends_expected_payload() {
 
 #[test]
 fn pr_create_supports_head_owner_and_prints_resolved_refs() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{
@@ -67,13 +60,8 @@ fn pr_create_supports_head_owner_and_prints_resolved_refs() {
         }"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "pr",
             "create",
@@ -113,19 +101,14 @@ fn pr_create_supports_head_owner_and_prints_resolved_refs() {
 
 #[test]
 fn pr_create_json_prints_created_pull_request() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#"{"number":5,"title":"Add feature","state":"open","head":{"ref":"feature/branch"},"base":{"ref":"main"}}"#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "pr",
             "create",
@@ -157,7 +140,7 @@ fn pr_create_json_prints_created_pull_request() {
 
 #[test]
 fn pr_create_detect_existing_returns_matching_open_pull_request() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
         "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
         "200 OK",
@@ -166,13 +149,8 @@ fn pr_create_detect_existing_returns_matching_open_pull_request() {
         ]"#,
     )]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "pr",
             "create",
@@ -202,7 +180,7 @@ fn pr_create_detect_existing_returns_matching_open_pull_request() {
 
 #[test]
 fn pr_create_detect_existing_ignores_qualified_head_from_different_repo() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
@@ -223,13 +201,8 @@ fn pr_create_detect_existing_ignores_qualified_head_from_different_repo() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "pr",
             "create",
@@ -268,7 +241,7 @@ fn pr_create_detect_existing_ignores_qualified_head_from_different_repo() {
 
 #[test]
 fn pr_create_detect_existing_continues_when_issue_fallback_fails() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
@@ -287,13 +260,8 @@ fn pr_create_detect_existing_continues_when_issue_fallback_fails() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "pr",
             "create",
@@ -333,7 +301,7 @@ fn pr_create_detect_existing_continues_when_issue_fallback_fails() {
 
 #[test]
 fn pr_create_detect_existing_preserves_create_error_when_recheck_fails() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
@@ -357,13 +325,8 @@ fn pr_create_detect_existing_preserves_create_error_when_recheck_fails() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "pr",
             "create",
@@ -397,7 +360,7 @@ fn pr_create_detect_existing_preserves_create_error_when_recheck_fails() {
 
 #[test]
 fn pr_create_detect_existing_finds_pull_request_from_issue_listing_gap() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
@@ -416,13 +379,8 @@ fn pr_create_detect_existing_finds_pull_request_from_issue_listing_gap() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "pr",
             "create",
@@ -453,7 +411,7 @@ fn pr_create_detect_existing_finds_pull_request_from_issue_listing_gap() {
 
 #[test]
 fn pr_create_detect_existing_fetches_details_when_list_item_lacks_head_identity() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
@@ -469,13 +427,8 @@ fn pr_create_detect_existing_fetches_details_when_list_item_lacks_head_identity(
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "pr",
             "create",
@@ -507,7 +460,7 @@ fn pr_create_detect_existing_fetches_details_when_list_item_lacks_head_identity(
 
 #[test]
 fn pr_create_detect_existing_continues_when_pr_detail_fetch_fails() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
@@ -533,13 +486,8 @@ fn pr_create_detect_existing_continues_when_pr_detail_fetch_fails() {
         ),
     ]);
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "pr",
             "create",
@@ -579,19 +527,14 @@ fn pr_create_detect_existing_continues_when_pr_detail_fetch_fails() {
 
 #[test]
 fn pr_create_accepts_gitbucket_wrapped_json_response() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
         r#""{\"number\":9,\"title\":\"Wrapped PR\",\"state\":\"open\",\"merged\":false,\"head\":{\"ref\":\"feature/demo\"},\"base\":{\"ref\":\"main\"}}""#,
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
             "pr",
             "create",

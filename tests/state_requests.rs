@@ -1,15 +1,13 @@
+mod support;
+
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use tempfile::tempdir;
+use support::gb_cmd::GbTestEnv;
 
 const SERVER_TIMEOUT: Duration = Duration::from_secs(5);
-
-fn gb_command() -> std::process::Command {
-    assert_cmd::cargo::CommandCargoExt::cargo_bin("gb").unwrap()
-}
 
 fn accept_with_timeout(listener: TcpListener) -> TcpStream {
     listener.set_nonblocking(true).unwrap();
@@ -85,20 +83,15 @@ fn serve_json_once(
 
 #[test]
 fn issue_list_sends_closed_state_query_parameter() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = serve_json_once(
         "GET /api/v3/repos/alice/project/issues?state=closed HTTP/1.1",
         "authorization: token test-token",
         "[]",
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["issue", "list", "--state", "closed", "--json"])
         .output()
         .unwrap();
@@ -115,20 +108,15 @@ fn issue_list_sends_closed_state_query_parameter() {
 
 #[test]
 fn pr_list_sends_all_state_query_parameter() {
-    let temp = tempdir().unwrap();
+    let env = GbTestEnv::new();
     let (port, server) = serve_json_once(
         "GET /api/v3/repos/alice/project/pulls?state=all HTTP/1.1",
         "authorization: token test-token",
         "[]",
     );
 
-    let output = gb_command()
-        .current_dir(temp.path())
-        .env("GB_CONFIG_DIR", temp.path())
-        .env("GB_HOST", format!("127.0.0.1:{port}"))
-        .env("GB_REPO", "alice/project")
-        .env("GB_TOKEN", "test-token")
-        .env("GB_PROTOCOL", "http")
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["pr", "list", "--state", "all", "--json"])
         .output()
         .unwrap();
