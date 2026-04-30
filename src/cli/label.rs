@@ -2,9 +2,10 @@ use clap::{Args, Subcommand};
 use colored::Colorize;
 use dialoguer::{Confirm, Input};
 
-use crate::cli::common::{create_client, resolve_hostname, resolve_repo};
+use crate::cli::common::RepoContext;
 use crate::error::{GbError, Result};
 use crate::models::label::CreateLabel;
+use crate::output;
 use crate::output::table::print_table;
 use crate::output::truncate;
 
@@ -84,14 +85,11 @@ async fn list(
     cli_profile: &Option<String>,
     json: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname, cli_profile)?;
-    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
-    let client = create_client(&hostname, cli_profile)?;
-    let labels = client.list_labels(&owner, &repo).await?;
+    let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
+    let labels = ctx.client.list_labels(&ctx.owner, &ctx.repo).await?;
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&labels)?);
-        return Ok(());
+        return output::print_json(&labels);
     }
 
     let rows: Vec<Vec<String>> = labels
@@ -114,10 +112,8 @@ async fn view(
     cli_profile: &Option<String>,
     name: &str,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname, cli_profile)?;
-    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
-    let client = create_client(&hostname, cli_profile)?;
-    let label = client.get_label(&owner, &repo, name).await?;
+    let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
+    let label = ctx.client.get_label(&ctx.owner, &ctx.repo, name).await?;
 
     println!("{}", label.name.bold());
     if let Some(color) = label.color.as_deref() {
@@ -143,9 +139,7 @@ async fn create(
     color: Option<String>,
     description: Option<String>,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname, cli_profile)?;
-    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
-    let client = create_client(&hostname, cli_profile)?;
+    let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
     let name = match name {
         Some(name) => name,
@@ -160,10 +154,11 @@ async fn create(
     };
     let color = normalize_label_color(&raw_color)?;
 
-    let label = client
+    let label = ctx
+        .client
         .create_label(
-            &owner,
-            &repo,
+            &ctx.owner,
+            &ctx.repo,
             &CreateLabel {
                 name: name.clone(),
                 color,
@@ -186,14 +181,13 @@ async fn delete(
     name: &str,
     yes: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname, cli_profile)?;
-    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
+    let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
     if !yes {
         let confirmed = Confirm::new()
             .with_prompt(format!(
                 "Are you sure you want to delete label '{}' from {}/{}?",
-                name, owner, repo
+                name, ctx.owner, ctx.repo
             ))
             .default(false)
             .interact()?;
@@ -203,8 +197,7 @@ async fn delete(
         }
     }
 
-    let client = create_client(&hostname, cli_profile)?;
-    client.delete_label(&owner, &repo, name).await?;
+    ctx.client.delete_label(&ctx.owner, &ctx.repo, name).await?;
     println!("✓ Deleted label {}", name);
     Ok(())
 }

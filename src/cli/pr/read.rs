@@ -1,8 +1,9 @@
 use colored::Colorize;
 
-use crate::cli::common::{create_client, resolve_hostname, resolve_repo};
+use crate::cli::common::RepoContext;
 use crate::error::{GbError, Result};
 use crate::models::pull_request::PullRequest;
+use crate::output;
 use crate::output::table::format_table;
 use crate::output::{format_state, page_or_print, truncate};
 
@@ -22,21 +23,16 @@ pub(super) async fn list(
     json: bool,
     no_pager: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname, cli_profile)?;
-    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
-    let client = create_client(&hostname, cli_profile)?;
+    let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
     let state = crate::cli::common::normalize_list_state(state)?;
 
-    let prs = client
-        .list_repository_pull_requests(&owner, &repo, &state, json)
+    let prs = ctx
+        .client
+        .list_repository_pull_requests(&ctx.owner, &ctx.repo, &state, json)
         .await?;
 
     if json {
-        page_or_print(
-            &format!("{}\n", serde_json::to_string_pretty(&prs)?),
-            no_pager,
-        )?;
-        return Ok(());
+        return output::page_json(&prs, no_pager);
     }
 
     let rows: Vec<Vec<String>> = prs
@@ -76,18 +72,15 @@ pub(super) async fn list_comments(
     json: bool,
     no_pager: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname, cli_profile)?;
-    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
-    let client = create_client(&hostname, cli_profile)?;
+    let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
-    let comments = client.list_all_pr_comments(&owner, &repo, number).await?;
+    let comments = ctx
+        .client
+        .list_all_pr_comments(&ctx.owner, &ctx.repo, number)
+        .await?;
 
     if json {
-        page_or_print(
-            &format!("{}\n", serde_json::to_string_pretty(&comments)?),
-            no_pager,
-        )?;
-        return Ok(());
+        return output::page_json(&comments, no_pager);
     }
 
     let rows: Vec<Vec<String>> = comments
@@ -125,48 +118,43 @@ pub(super) async fn view(
     cli_profile: &Option<String>,
     options: ViewOptions,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname, cli_profile)?;
-    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
-    let client = create_client(&hostname, cli_profile)?;
+    let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
     if options.web {
-        let url = client.web_url(&format!("/{}/{}/pull/{}", owner, repo, options.number));
-        open::that(&url).map_err(|e| GbError::Other(format!("Failed to open browser: {}", e)))?;
-        println!("Opening {} in your browser.", url);
-        return Ok(());
+        let url = ctx.client.web_url(&format!(
+            "/{}/{}/pull/{}",
+            ctx.owner, ctx.repo, options.number
+        ));
+        return output::open_web_url(&url);
     }
 
-    let pr = client
-        .get_pull_request(&owner, &repo, options.number)
+    let pr = ctx
+        .client
+        .get_pull_request(&ctx.owner, &ctx.repo, options.number)
         .await?;
 
     if options.json {
         if options.show_comments {
-            let comments = client
-                .list_pr_comments(&owner, &repo, options.number)
+            let comments = ctx
+                .client
+                .list_pr_comments(&ctx.owner, &ctx.repo, options.number)
                 .await?;
             let mut value = serde_json::to_value(&pr)?;
             let object = value.as_object_mut().ok_or_else(|| {
                 GbError::Other("Failed to serialize pull request as JSON object".into())
             })?;
             object.insert("comments".into(), serde_json::to_value(comments)?);
-            page_or_print(
-                &format!("{}\n", serde_json::to_string_pretty(&value)?),
-                options.no_pager,
-            )?;
+            output::page_json(&value, options.no_pager)?;
         } else {
-            page_or_print(
-                &format!("{}\n", serde_json::to_string_pretty(&pr)?),
-                options.no_pager,
-            )?;
+            output::page_json(&pr, options.no_pager)?;
         }
         return Ok(());
     }
 
     let output = format_pr_view(
-        &client,
-        &owner,
-        &repo,
+        &ctx.client,
+        &ctx.owner,
+        &ctx.repo,
         options.number,
         options.show_comments,
         &pr,

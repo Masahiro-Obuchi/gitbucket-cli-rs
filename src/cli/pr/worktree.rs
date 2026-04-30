@@ -1,4 +1,4 @@
-use crate::cli::common::{create_client, resolve_hostname, resolve_repo};
+use crate::cli::common::RepoContext;
 use crate::error::{GbError, Result};
 use crate::output;
 
@@ -10,11 +10,12 @@ pub(super) async fn checkout(
     cli_profile: &Option<String>,
     number: u64,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname, cli_profile)?;
-    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
-    let client = create_client(&hostname, cli_profile)?;
+    let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
-    let pr = client.get_pull_request(&owner, &repo, number).await?;
+    let pr = ctx
+        .client
+        .get_pull_request(&ctx.owner, &ctx.repo, number)
+        .await?;
     let branch = pr
         .head
         .as_ref()
@@ -22,7 +23,8 @@ pub(super) async fn checkout(
         .ok_or_else(|| GbError::Other("PR has no head branch".into()))?;
     let local_branch = format!("pr-{}", number);
 
-    let fetch_source = resolve_git_fetch_source(&hostname, cli_profile, &pr_head_fetch_source(&pr));
+    let fetch_source =
+        resolve_git_fetch_source(&ctx.hostname, cli_profile, &pr_head_fetch_source(&pr));
     let head_ref = format!("refs/gb/pr/{}/head", number);
 
     let fetch_output = std::process::Command::new("git")
@@ -74,27 +76,30 @@ pub(super) async fn diff(
     number: u64,
     no_pager: bool,
 ) -> Result<()> {
-    let hostname = resolve_hostname(hostname, cli_profile)?;
-    let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
-    let client = create_client(&hostname, cli_profile)?;
+    let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
-    let pr = client.get_pull_request(&owner, &repo, number).await?;
-    match live_branch_diff(&hostname, cli_profile, number, no_pager, &pr) {
+    let pr = ctx
+        .client
+        .get_pull_request(&ctx.owner, &ctx.repo, number)
+        .await?;
+    match live_branch_diff(&ctx.hostname, cli_profile, number, no_pager, &pr) {
         Ok(diff) => {
             print!("{diff}");
             Ok(())
         }
-        Err(live_error) => match saved_pr_diff(&client, &owner, &repo, number, &pr).await {
-            Ok(diff) => {
-                print!("{diff}");
-                Ok(())
+        Err(live_error) => {
+            match saved_pr_diff(&ctx.client, &ctx.owner, &ctx.repo, number, &pr).await {
+                Ok(diff) => {
+                    print!("{diff}");
+                    Ok(())
+                }
+                Err(saved_error) => Err(GbError::DiffUnavailable {
+                    number,
+                    cause: live_error.cause,
+                    message: format!("{} {}", live_error.message, saved_error),
+                }),
             }
-            Err(saved_error) => Err(GbError::DiffUnavailable {
-                number,
-                cause: live_error.cause,
-                message: format!("{} {}", live_error.message, saved_error),
-            }),
-        },
+        }
     }
 }
 

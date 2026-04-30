@@ -98,12 +98,7 @@ async fn browse(
     cli_repo: &Option<String>,
     cli_profile: &Option<String>,
 ) -> error::Result<()> {
-    let hostname = cli::common::resolve_hostname(hostname, cli_profile)?;
-    let (owner, repo) = cli::common::resolve_repo(cli_repo, cli_profile)?;
-    let client = cli::common::create_client(&hostname, cli_profile)?;
-    let url = client.web_url(&format!("/{}/{}", owner, repo));
-    open::that(&url)
-        .map_err(|e| error::GbError::Other(format!("Failed to open browser: {}", e)))?;
-    println!("Opening {} in your browser.", url);
-    Ok(())
+    let ctx = cli::common::RepoContext::resolve(hostname, cli_repo, cli_profile)?;
+    let url = ctx.client.web_url(&format!("/{}/{}", ctx.owner, ctx.repo));
+    output::open_web_url(&url)
 }

@@ -109,11 +109,13 @@ pub async fn run(
                 cli_hostname,
                 cli_repo,
                 cli_profile,
-                number,
-                title,
-                description,
-                due_on,
-                state,
+                write::EditRequest {
+                    number,
+                    title,
+                    description,
+                    due_on,
+                    state,
+                },
             )
             .await
         }

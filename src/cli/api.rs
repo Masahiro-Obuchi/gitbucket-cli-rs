@@ -9,6 +9,7 @@ use url::Url;
 use crate::api::client::{normalize_base_url, ApiClient};
 use crate::cli::common::{resolve_host_config, resolve_hostname};
 use crate::error::{GbError, Result};
+use crate::output;
 
 #[derive(Args)]
 pub struct ApiArgs {
@@ -136,8 +137,7 @@ fn read_json_input(input: &str) -> Result<Value> {
 }
 
 fn print_response(value: &Value) -> Result<()> {
-    println!("{}", serde_json::to_string_pretty(value)?);
-    Ok(())
+    output::print_json(value)
 }
 
 #[cfg(test)]

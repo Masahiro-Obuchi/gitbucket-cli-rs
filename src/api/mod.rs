@@ -4,5 +4,6 @@ pub mod label;
 pub mod milestone;
 pub mod pull_request;
 pub mod repository;
+pub mod url;
 pub mod user;
 pub mod web;

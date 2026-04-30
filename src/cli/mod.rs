@@ -1,9 +1,12 @@
 pub mod api;
 pub mod auth;
+pub mod auth_status;
 pub mod common;
 pub mod completion;
 pub mod config;
+pub mod config_output;
 pub mod issue;
+pub mod issue_like;
 pub mod label;
 pub mod milestone;
 pub mod pr;
