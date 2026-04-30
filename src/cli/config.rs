@@ -1,12 +1,6 @@
-use std::collections::{BTreeMap, HashMap};
-
 use clap::{Args, Subcommand, ValueEnum};
-use serde::Serialize;
 
-use crate::config::{
-    auth::{AuthConfig, HostConfig, ProfileConfig},
-    config_dir,
-};
+use crate::config::{auth::AuthConfig, config_dir};
 use crate::error::{GbError, Result};
 
 #[derive(Args)]
@@ -126,38 +120,6 @@ pub enum HostField {
     HasToken,
 }
 
-#[derive(Serialize)]
-struct ConfigListOutput {
-    path: String,
-    default_host: Option<String>,
-    default_profile: Option<String>,
-    hosts: BTreeMap<String, HostSummary>,
-    profiles: BTreeMap<String, ProfileOutput>,
-}
-
-#[derive(Serialize)]
-struct HostOutput {
-    hostname: String,
-    user: String,
-    protocol: String,
-    has_token: bool,
-}
-
-#[derive(Serialize)]
-struct ProfileOutput {
-    name: String,
-    default_host: Option<String>,
-    default_repo: Option<String>,
-    hosts: BTreeMap<String, HostSummary>,
-}
-
-#[derive(Serialize)]
-struct HostSummary {
-    user: String,
-    protocol: String,
-    has_token: bool,
-}
-
 pub async fn run(args: ConfigArgs, _cli_profile: &Option<String>) -> Result<()> {
     match args.command {
         ConfigCommand::Path => path(),
@@ -177,98 +139,7 @@ fn list(json: bool) -> Result<()> {
     let config = AuthConfig::load()?;
     let path = config_dir()?.join("config.toml");
 
-    let hosts = summarize_hosts(&config.hosts);
-    let profiles = summarize_profiles(&config.profiles);
-
-    if json {
-        let payload = ConfigListOutput {
-            path: path.display().to_string(),
-            default_host: config.default_host.clone(),
-            default_profile: config.default_profile.clone(),
-            hosts,
-            profiles,
-        };
-        println!("{}", serde_json::to_string_pretty(&payload)?);
-        return Ok(());
-    }
-
-    println!("Path: {}", path.display());
-    match &config.default_host {
-        Some(hostname) => {
-            if config.hosts.contains_key(hostname) {
-                println!("Default host: {}", hostname);
-            } else {
-                println!("Default host: {} (missing saved host entry)", hostname);
-            }
-        }
-        None => println!("Default host: <unset>"),
-    }
-    match &config.default_profile {
-        Some(profile) => {
-            if config.profiles.contains_key(profile) {
-                println!("Default profile: {}", profile);
-            } else {
-                println!("Default profile: {} (missing saved profile entry)", profile);
-            }
-        }
-        None => println!("Default profile: <unset>"),
-    }
-
-    if hosts.is_empty() {
-        println!("Hosts: <none>");
-    } else {
-        println!("Hosts:");
-        for (hostname, host) in hosts {
-            println!("{}", hostname);
-            println!("  User: {}", display_user(&host.user));
-            println!("  Protocol: {}", host.protocol);
-            println!(
-                "  Token: {}",
-                if host.has_token {
-                    "configured"
-                } else {
-                    "missing"
-                }
-            );
-        }
-    }
-
-    if profiles.is_empty() {
-        println!("Profiles: <none>");
-    } else {
-        println!("Profiles:");
-        for (name, profile) in profiles {
-            println!("{}", name);
-            println!(
-                "  Default host: {}",
-                profile.default_host.as_deref().unwrap_or("<unset>")
-            );
-            println!(
-                "  Default repo: {}",
-                profile.default_repo.as_deref().unwrap_or("<unset>")
-            );
-            if profile.hosts.is_empty() {
-                println!("  Hosts: <none>");
-            } else {
-                println!("  Hosts:");
-                for (hostname, host) in profile.hosts {
-                    println!("  {}", hostname);
-                    println!("    User: {}", display_user(&host.user));
-                    println!("    Protocol: {}", host.protocol);
-                    println!(
-                        "    Token: {}",
-                        if host.has_token {
-                            "configured"
-                        } else {
-                            "missing"
-                        }
-                    );
-                }
-            }
-        }
-    }
-
-    Ok(())
+    crate::cli::config_output::print_list(&config, &path, json)
 }
 
 fn get(key: ConfigGetKey) -> Result<()> {
@@ -290,73 +161,11 @@ fn get(key: ConfigGetKey) -> Result<()> {
         ConfigGetKey::Host { host, field, json } => {
             let stored_hostname = resolve_saved_hostname(&config, &host)?;
             let stored = config.hosts.get(&stored_hostname).unwrap();
-            let output = HostOutput {
-                hostname: stored_hostname.clone(),
-                user: stored.user.clone(),
-                protocol: stored.protocol.clone(),
-                has_token: !stored.token.is_empty(),
-            };
-
-            if json {
-                println!("{}", serde_json::to_string_pretty(&output)?);
-                return Ok(());
-            }
-
-            match field {
-                Some(HostField::User) => println!("{}", output.user),
-                Some(HostField::Protocol) => println!("{}", output.protocol),
-                Some(HostField::HasToken) => println!("{}", output.has_token),
-                None => {
-                    println!("Host: {}", output.hostname);
-                    println!("User: {}", display_user(&output.user));
-                    println!("Protocol: {}", output.protocol);
-                    println!(
-                        "Token: {}",
-                        if output.has_token {
-                            "configured"
-                        } else {
-                            "missing"
-                        }
-                    );
-                }
-            }
+            crate::cli::config_output::print_host(&stored_hostname, stored, field.as_ref(), json)?;
         }
         ConfigGetKey::Profile { name, json } => {
             let profile = config.profile(&name)?;
-            let output = profile_output(&name, profile);
-
-            if json {
-                println!("{}", serde_json::to_string_pretty(&output)?);
-                return Ok(());
-            }
-
-            println!("Profile: {}", output.name);
-            println!(
-                "Default host: {}",
-                output.default_host.as_deref().unwrap_or("<unset>")
-            );
-            println!(
-                "Default repo: {}",
-                output.default_repo.as_deref().unwrap_or("<unset>")
-            );
-            if output.hosts.is_empty() {
-                println!("Hosts: <none>");
-            } else {
-                println!("Hosts:");
-                for (hostname, host) in output.hosts {
-                    println!("{}", hostname);
-                    println!("  User: {}", display_user(&host.user));
-                    println!("  Protocol: {}", host.protocol);
-                    println!(
-                        "  Token: {}",
-                        if host.has_token {
-                            "configured"
-                        } else {
-                            "missing"
-                        }
-                    );
-                }
-            }
+            crate::cli::config_output::print_profile(&name, profile, json)?;
         }
     }
 
@@ -476,53 +285,11 @@ fn resolve_saved_hostname(config: &AuthConfig, host: &str) -> Result<String> {
     })
 }
 
-fn summarize_hosts(hosts: &HashMap<String, HostConfig>) -> BTreeMap<String, HostSummary> {
-    hosts
-        .iter()
-        .map(|(hostname, host)| {
-            (
-                hostname.clone(),
-                HostSummary {
-                    user: host.user.clone(),
-                    protocol: host.protocol.clone(),
-                    has_token: !host.token.is_empty(),
-                },
-            )
-        })
-        .collect()
-}
-
-fn summarize_profiles(
-    profiles: &HashMap<String, ProfileConfig>,
-) -> BTreeMap<String, ProfileOutput> {
-    profiles
-        .iter()
-        .map(|(name, profile)| (name.clone(), profile_output(name, profile)))
-        .collect()
-}
-
-fn profile_output(name: &str, profile: &ProfileConfig) -> ProfileOutput {
-    ProfileOutput {
-        name: name.to_string(),
-        default_host: profile.default_host.clone(),
-        default_repo: profile.default_repo.clone(),
-        hosts: summarize_hosts(&profile.hosts),
-    }
-}
-
 fn validate_protocol(protocol: &str) -> Result<()> {
     match protocol {
         "http" | "https" => Ok(()),
         _ => Err(GbError::Config(
             "Protocol must be `http` or `https`.".into(),
         )),
-    }
-}
-
-fn display_user(user: &str) -> &str {
-    if user.is_empty() {
-        "<unset>"
-    } else {
-        user
     }
 }

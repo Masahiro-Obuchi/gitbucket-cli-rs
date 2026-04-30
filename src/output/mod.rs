@@ -1,9 +1,12 @@
 pub mod table;
 
 use colored::Colorize;
+use serde::Serialize;
 use std::io::{IsTerminal, Write};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
+
+use crate::error::{GbError, Result};
 
 static SUPPRESS_STDERR: AtomicBool = AtomicBool::new(false);
 
@@ -30,6 +33,25 @@ pub fn stderr_write(args: std::fmt::Arguments<'_>) {
     }
     let mut stderr = std::io::stderr().lock();
     let _ = stderr.write_fmt(args);
+}
+
+pub fn print_json<T: Serialize>(value: &T) -> Result<()> {
+    println!("{}", serde_json::to_string_pretty(value)?);
+    Ok(())
+}
+
+pub fn page_json<T: Serialize>(value: &T, no_pager: bool) -> Result<()> {
+    page_or_print(
+        &format!("{}\n", serde_json::to_string_pretty(value)?),
+        no_pager,
+    )?;
+    Ok(())
+}
+
+pub fn open_web_url(url: &str) -> Result<()> {
+    open::that(url).map_err(|err| GbError::Other(format!("Failed to open browser: {}", err)))?;
+    println!("Opening {} in your browser.", url);
+    Ok(())
 }
 
 /// Format a state label with color
