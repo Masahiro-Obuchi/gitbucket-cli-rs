@@ -48,11 +48,8 @@ fn e2e_repo_fork_against_live_instance() {
 #[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
 fn e2e_label_list_create_and_delete_against_live_instance() {
     let temp = tempdir().unwrap();
-    let unique_suffix = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis();
-    let label_name = format!("e2e-label-{}-{unique_suffix}", std::process::id());
+    let suffix = unique_suffix();
+    let label_name = format!("e2e-label-{}-{suffix}", std::process::id());
 
     login(temp.path());
 
@@ -125,11 +122,7 @@ fn e2e_label_list_create_and_delete_against_live_instance() {
 #[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
 fn e2e_milestone_list_create_edit_and_delete_against_live_instance() {
     let temp = tempdir().unwrap();
-    let unique_suffix = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis();
-    let title = format!("e2e-milestone-{unique_suffix}");
+    let title = format!("e2e-milestone-{}", unique_suffix());
     let updated_title = format!("{title}-updated");
 
     login(temp.path());
