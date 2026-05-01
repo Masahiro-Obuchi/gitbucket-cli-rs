@@ -7,7 +7,7 @@ usage() {
 Usage: scripts/release-tag.sh <tag>
 
 Example:
-  scripts/release-tag.sh v0.1.0
+  scripts/release-tag.sh v0.5.1
 
 This script:
   - validates the release tag format
@@ -26,7 +26,7 @@ fi
 TAG="$1"
 
 if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z._-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
-  echo "error: tag must look like v0.1.0, v0.1.0-rc_1, or v0.1.0+build.5" >&2
+  echo "error: tag must look like v0.5.1, v0.5.1-rc.1, or v0.5.1+build.5" >&2
   exit 1
 fi
 

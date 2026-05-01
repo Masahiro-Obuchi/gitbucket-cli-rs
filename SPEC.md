@@ -52,6 +52,7 @@ Available on all commands:
 | `--hostname <HOST>` | `-H` | `GB_HOST` | GitBucket host or base URL (e.g. `gitbucket.example.com` or `https://gitbucket.example.com/gitbucket`) |
 | `--repo <OWNER/REPO>` | `-R` | `GB_REPO` | Target repository |
 | `--profile <NAME>` | — | `GB_PROFILE` | Configuration profile |
+| `--json-errors` | — | `GB_JSON_ERRORS` | Print command failures as structured JSON on stderr |
 | `--help` | `-h` | — | Show help |
 | `--version` | `-V` | — | Show version |
 
@@ -993,6 +994,7 @@ When a command falls back from a missing REST API endpoint to a GitBucket web UI
 | `GB_USER` | Username for GitBucket web-session fallbacks |
 | `GB_PASSWORD` | Password for GitBucket web-session fallbacks |
 | `GB_CONFIG_DIR` | Custom config directory |
+| `GB_JSON_ERRORS` | Print command failures as structured JSON on stderr |
 | `NO_COLOR` | Disable colored output (terminal/toolchain dependent) |
 
 ---
@@ -1158,10 +1160,11 @@ Milestone:
 
 - Keep strengthening test and E2E coverage around the current command set
 - Keep `cargo clippy --all-targets --all-features -- -D warnings` green in CI
+- Keep release automation and package metadata aligned before tagging
 
 ### Phase 2
 
-- Expand issue/PR metadata handling
+- Expand issue/PR metadata handling where GitBucket exposes additional compatible APIs
 
 ### Phase 3
 
@@ -1169,8 +1172,6 @@ Milestone:
 
 ### Phase 4
 
-- More tests (unit + integration)
-- Packaging/release automation
 - Documentation refinements
 
 ### Backlog / re-evaluate later
