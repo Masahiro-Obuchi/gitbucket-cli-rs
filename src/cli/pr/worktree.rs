@@ -1,3 +1,5 @@
+use std::process::{Command, Output};
+
 use crate::cli::common::RepoContext;
 use crate::error::{GbError, Result};
 use crate::output;
@@ -27,12 +29,7 @@ pub(super) async fn checkout(
         resolve_git_fetch_source(&ctx.hostname, cli_profile, &pr_head_fetch_source(&pr));
     let head_ref = format!("refs/gb/pr/{}/head", number);
 
-    let fetch_output = std::process::Command::new("git")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .arg("fetch")
-        .arg(&fetch_source.command_source)
-        .arg(format!("{}:{}", branch, head_ref))
-        .output()?;
+    let fetch_output = git_fetch_ref(&fetch_source.command_source, branch, &head_ref)?;
 
     if !fetch_output.status.success() {
         return Err(GbError::Other(format!(
@@ -41,20 +38,10 @@ pub(super) async fn checkout(
         )));
     }
 
-    let checkout_output = std::process::Command::new("git")
-        .arg("checkout")
-        .arg("-B")
-        .arg(&local_branch)
-        .arg(&head_ref)
-        .output()?;
+    let checkout_output = git_checkout_branch(&local_branch, &head_ref)?;
 
     if checkout_output.status.success() {
-        if !checkout_output.stdout.is_empty() {
-            print!("{}", String::from_utf8_lossy(&checkout_output.stdout));
-        }
-        if !checkout_output.stderr.is_empty() && !output::suppress_stderr() {
-            eprint!("{}", String::from_utf8_lossy(&checkout_output.stderr));
-        }
+        print_command_output(&checkout_output);
     } else {
         return Err(GbError::Other(format!(
             "git checkout failed. {}",
@@ -138,15 +125,12 @@ fn live_branch_diff(
     let base_ref = format!("refs/gb/pr/{}/base", number);
     let head_ref = format!("refs/gb/pr/{}/head", number);
 
-    let base_fetch = std::process::Command::new("git")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .arg("fetch")
-        .arg(&base_fetch_source.command_source)
-        .arg(format!("{}:{}", base, base_ref))
-        .output()
-        .map_err(|err| DiffFailure {
-            cause: "base_fetch_failed",
-            message: format!("failed to run git fetch for base branch '{base}': {err}"),
+    let base_fetch =
+        git_fetch_ref(&base_fetch_source.command_source, base, &base_ref).map_err(|err| {
+            DiffFailure {
+                cause: "base_fetch_failed",
+                message: format!("failed to run git fetch for base branch '{base}': {err}"),
+            }
         })?;
     if !base_fetch.status.success() {
         return Err(DiffFailure {
@@ -160,15 +144,12 @@ fn live_branch_diff(
         });
     }
 
-    let head_fetch = std::process::Command::new("git")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .arg("fetch")
-        .arg(&fetch_source.command_source)
-        .arg(format!("{}:{}", head, head_ref))
-        .output()
-        .map_err(|err| DiffFailure {
-            cause: "head_fetch_failed",
-            message: format!("failed to run git fetch for head branch '{head}': {err}"),
+    let head_fetch =
+        git_fetch_ref(&fetch_source.command_source, head, &head_ref).map_err(|err| {
+            DiffFailure {
+                cause: "head_fetch_failed",
+                message: format!("failed to run git fetch for head branch '{head}': {err}"),
+            }
         })?;
     if !head_fetch.status.success() {
         return Err(DiffFailure {
@@ -182,19 +163,10 @@ fn live_branch_diff(
         });
     }
 
-    let mut diff_command = std::process::Command::new("git");
-    if no_pager {
-        diff_command.env("GIT_PAGER", "cat");
-        diff_command.arg("--no-pager");
-    }
-    let status = diff_command
-        .arg("diff")
-        .arg(format!("{}...{}", base_ref, head_ref))
-        .output()
-        .map_err(|err| DiffFailure {
-            cause: "git_diff_failed",
-            message: format!("failed to run git diff: {err}"),
-        })?;
+    let status = git_diff_refs(&base_ref, &head_ref, no_pager).map_err(|err| DiffFailure {
+        cause: "git_diff_failed",
+        message: format!("failed to run git diff: {err}"),
+    })?;
 
     if !status.status.success() {
         return Err(DiffFailure {
@@ -278,7 +250,47 @@ fn push_url(urls: &mut Vec<String>, url: Option<&str>) {
     }
 }
 
-fn command_stderr(output: &std::process::Output) -> String {
+fn git_fetch_ref(source: &str, branch: &str, target_ref: &str) -> std::io::Result<Output> {
+    Command::new("git")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .arg("fetch")
+        .arg(source)
+        .arg(format!("{branch}:{target_ref}"))
+        .output()
+}
+
+fn git_checkout_branch(branch: &str, start_point: &str) -> std::io::Result<Output> {
+    Command::new("git")
+        .arg("checkout")
+        .arg("-B")
+        .arg(branch)
+        .arg(start_point)
+        .output()
+}
+
+fn git_diff_refs(base_ref: &str, head_ref: &str, no_pager: bool) -> std::io::Result<Output> {
+    let mut command = Command::new("git");
+    if no_pager {
+        command.env("GIT_PAGER", "cat");
+        command.arg("--no-pager");
+    }
+
+    command
+        .arg("diff")
+        .arg(format!("{base_ref}...{head_ref}"))
+        .output()
+}
+
+fn print_command_output(output: &Output) {
+    if !output.stdout.is_empty() {
+        print!("{}", String::from_utf8_lossy(&output.stdout));
+    }
+    if !output.stderr.is_empty() && !output::suppress_stderr() {
+        eprint!("{}", String::from_utf8_lossy(&output.stderr));
+    }
+}
+
+fn command_stderr(output: &Output) -> String {
     let stderr = String::from_utf8_lossy(&output.stderr);
     let trimmed = stderr.trim();
     if trimmed.is_empty() {
