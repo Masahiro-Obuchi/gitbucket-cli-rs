@@ -143,6 +143,123 @@ fn label_create_rejects_invalid_color_before_api_call() {
 }
 
 #[test]
+fn label_edit_sends_expected_payload() {
+    let env = GbTestEnv::new();
+    let (port, server) = spawn_server(
+        "200 OK",
+        r#"{"name":"needs-review","color":"123abc","description":"Needs another look"}"#,
+    );
+
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
+        .args([
+            "label",
+            "edit",
+            "needs review",
+            "--name",
+            "needs-review",
+            "--color",
+            "#123ABC",
+            "--description",
+            "Needs another look",
+        ])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(request.method, "PATCH");
+    assert_eq!(
+        request.target,
+        "/api/v3/repos/alice/project/labels/needs%20review"
+    );
+    let body: Value = serde_json::from_str(&request.body).unwrap();
+    assert_eq!(body["name"], "needs-review");
+    assert_eq!(body["color"], "123abc");
+    assert_eq!(body["description"], "Needs another look");
+    assert!(
+        stdout.contains("✓ Updated label needs-review"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("Color: #123abc"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("Description: Needs another look"),
+        "stdout: {stdout}"
+    );
+}
+
+#[test]
+fn label_edit_can_clear_description() {
+    let env = GbTestEnv::new();
+    let (port, server) = spawn_server("200 OK", r#"{"name":"bug","color":"fc2929"}"#);
+
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
+        .args(["label", "edit", "bug", "--remove-description"])
+        .output()
+        .unwrap();
+
+    let request = server.join().unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(request.method, "PATCH");
+    assert_eq!(request.target, "/api/v3/repos/alice/project/labels/bug");
+    let body: Value = serde_json::from_str(&request.body).unwrap();
+    assert_eq!(body["description"], "");
+    assert!(body.get("name").is_none());
+    assert!(body.get("color").is_none());
+}
+
+#[test]
+fn label_edit_requires_a_change_before_api_call() {
+    let env = GbTestEnv::new();
+
+    let output = env
+        .repo_api_command("127.0.0.1:9", "alice/project")
+        .args(["label", "edit", "bug"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains(
+            "No label changes requested. Pass at least one of --name, --color, --description, or --remove-description."
+        ),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn label_edit_rejects_invalid_color_before_api_call() {
+    let env = GbTestEnv::new();
+
+    let output = env
+        .repo_api_command("127.0.0.1:9", "alice/project")
+        .args(["label", "edit", "bug", "--color", "zzz"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("Invalid label color 'zzz'. Expected a 6-digit hex value like ff0000."),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn label_delete_sends_delete_request_when_yes_is_used() {
     let env = GbTestEnv::new();
     let (port, server) = spawn_server("204 No Content", "");

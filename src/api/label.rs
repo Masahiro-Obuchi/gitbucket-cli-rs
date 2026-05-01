@@ -1,6 +1,6 @@
 use crate::api::client::ApiClient;
 use crate::error::Result;
-use crate::models::label::{CreateLabel, Label};
+use crate::models::label::{CreateLabel, Label, UpdateLabel};
 use url::Url;
 
 impl ApiClient {
@@ -18,6 +18,17 @@ impl ApiClient {
     pub async fn create_label(&self, owner: &str, repo: &str, body: &CreateLabel) -> Result<Label> {
         self.post(&format!("/repos/{owner}/{repo}/labels"), body)
             .await
+    }
+
+    /// Update a label.
+    pub async fn update_label(
+        &self,
+        owner: &str,
+        repo: &str,
+        name: &str,
+        body: &UpdateLabel,
+    ) -> Result<Label> {
+        self.patch(&label_path(owner, repo, name), body).await
     }
 
     /// Delete a label.
