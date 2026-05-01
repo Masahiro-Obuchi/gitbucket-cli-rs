@@ -4,7 +4,7 @@ use dialoguer::{Confirm, Input};
 
 use crate::cli::common::RepoContext;
 use crate::error::{GbError, Result};
-use crate::models::label::CreateLabel;
+use crate::models::label::{CreateLabel, UpdateLabel};
 use crate::output;
 use crate::output::table::print_table;
 use crate::output::truncate;
@@ -13,6 +13,13 @@ use crate::output::truncate;
 pub struct LabelArgs {
     #[command(subcommand)]
     pub command: LabelCommand,
+}
+
+struct LabelEditRequest {
+    new_name: Option<String>,
+    color: Option<String>,
+    description: Option<String>,
+    remove_description: bool,
 }
 
 #[derive(Subcommand)]
@@ -38,6 +45,23 @@ pub enum LabelCommand {
         /// Optional label description
         #[arg(long, short)]
         description: Option<String>,
+    },
+    /// Edit a label
+    Edit {
+        /// Current label name
+        name: String,
+        /// New label name
+        #[arg(long = "name")]
+        new_name: Option<String>,
+        /// New label color as 6-digit hex, with or without '#'
+        #[arg(long, short)]
+        color: Option<String>,
+        /// New label description
+        #[arg(long, short, conflicts_with = "remove_description")]
+        description: Option<String>,
+        /// Clear the label description
+        #[arg(long)]
+        remove_description: bool,
     },
     /// Delete a label
     Delete {
@@ -70,6 +94,27 @@ pub async fn run(
                 name,
                 color,
                 description,
+            )
+            .await
+        }
+        LabelCommand::Edit {
+            name,
+            new_name,
+            color,
+            description,
+            remove_description,
+        } => {
+            edit(
+                cli_hostname,
+                cli_repo,
+                cli_profile,
+                &name,
+                LabelEditRequest {
+                    new_name,
+                    color,
+                    description,
+                    remove_description,
+                },
             )
             .await
         }
@@ -170,6 +215,62 @@ async fn create(
     println!("✓ Created label {}", label.name);
     if let Some(color) = label.color.as_deref() {
         println!("Color: {}", format_color(color));
+    }
+    Ok(())
+}
+
+async fn edit(
+    hostname: &Option<String>,
+    cli_repo: &Option<String>,
+    cli_profile: &Option<String>,
+    name: &str,
+    request: LabelEditRequest,
+) -> Result<()> {
+    if request.new_name.is_none()
+        && request.color.is_none()
+        && request.description.is_none()
+        && !request.remove_description
+    {
+        return Err(GbError::Other(
+            "No label changes requested. Pass at least one of --name, --color, --description, or --remove-description."
+                .into(),
+        ));
+    }
+
+    let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
+    let color = request
+        .color
+        .as_deref()
+        .map(normalize_label_color)
+        .transpose()?;
+    let description = if request.remove_description {
+        Some(String::new())
+    } else {
+        request.description
+    };
+
+    let label = ctx
+        .client
+        .update_label(
+            &ctx.owner,
+            &ctx.repo,
+            name,
+            &UpdateLabel {
+                name: request.new_name,
+                color,
+                description,
+            },
+        )
+        .await?;
+
+    println!("✓ Updated label {}", label.name);
+    if let Some(color) = label.color.as_deref() {
+        println!("Color: {}", format_color(color));
+    }
+    if let Some(description) = label.description.as_deref() {
+        if !description.is_empty() {
+            println!("Description: {}", description);
+        }
     }
     Ok(())
 }

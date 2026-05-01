@@ -88,6 +88,7 @@ gb repo fork alice/my-app
 gb label list
 gb label create bug --color fc2929 --description "Broken behavior"
 gb label view bug
+gb label edit bug --name defect --color cc0000 --description "Confirmed defect"
 gb label delete bug --yes
 ```
 
@@ -153,6 +154,7 @@ gb pr comment list 5 --json --no-pager
 | `gb label list`                | List labels                          |
 | `gb label view <NAME>`         | Show label details                   |
 | `gb label create [NAME]`       | Create a label                       |
+| `gb label edit <NAME>`         | Edit a label                         |
 | `gb label delete <NAME>`       | Delete a label                       |
 | `gb milestone list`            | List milestones                      |
 | `gb milestone view <NUMBER>`   | Show milestone details               |
@@ -411,11 +413,12 @@ gb label list
 gb label list --json
 gb label view bug
 gb label create needs-review --color abcdef --description "Needs extra review"
+gb label edit needs-review --color 123abc --remove-description
 gb label delete needs-review --yes
 ```
 
 `gb label` manages repository label definitions through the GitBucket REST API.
-It currently supports listing, viewing, creating, and deleting labels in the target repository.
+It currently supports listing, viewing, creating, editing, and deleting labels in the target repository.
 Colors accept 6-digit hex values with or without a leading `#`.
 
 ## Milestone commands

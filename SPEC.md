@@ -23,7 +23,7 @@ It follows the command design style of GitHub CLI (`gh`) and uses the GitBucket 
 | `gh issue` | `gb issue` | ✅ Implemented | Issue create/view/edit/comment/state workflows |
 | `gh pr` | `gb pr` | ✅ Implemented | PR create/view/edit/comment/state/merge/worktree workflows |
 | `gh browse` | `gb browse` | ✅ Implemented | Opens browser |
-| `gh label` | `gb label` | ✅ Implemented | Label definition CRUD (no edit yet) |
+| `gh label` | `gb label` | ✅ Implemented | Label definition CRUD |
 | `gh api` | `gb api` | ✅ Implemented | Raw REST API access |
 | `gh config` | `gb config` | ✅ Implemented | Local config inspection and updates |
 | `gh completion` | `gb completion` | ✅ Implemented | Shell completion generation |
@@ -462,6 +462,26 @@ Behavior:
 - Prompts for the label name when omitted
 - Accepts colors with or without a leading `#`
 - Normalizes colors to lowercase 6-digit hex before sending the API request
+
+#### `gb label edit`
+
+```text
+gb label edit <NAME> [OPTIONS]
+```
+
+| Option | Short | Description |
+| --- | --- | --- |
+| `--name <NAME>` | — | Rename the label |
+| `--color <HEX>` | `-c` | New 6-digit hex color |
+| `--description <TEXT>` | `-d` | New label description |
+| `--remove-description` | — | Clear the label description |
+
+Behavior:
+
+- Requires at least one change option
+- Accepts colors with or without a leading `#`
+- Normalizes colors to lowercase 6-digit hex before sending the API request
+- Percent-encodes the current label name in the API path
 
 #### `gb label delete`
 
@@ -1137,6 +1157,7 @@ Label:
 - `GET /repos/{owner}/{repo}/labels`
 - `GET /repos/{owner}/{repo}/labels/{name}`
 - `POST /repos/{owner}/{repo}/labels`
+- `PATCH /repos/{owner}/{repo}/labels/{name}`
 - `DELETE /repos/{owner}/{repo}/labels/{name}`
 
 Milestone:
