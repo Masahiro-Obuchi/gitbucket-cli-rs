@@ -31,7 +31,7 @@ cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-cli-rs --locked
 To install a specific version tag:
 
 ```bash
-cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-cli-rs --tag v0.1.0 --locked gb
+cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-cli-rs --tag v0.5.1 --locked gb
 ```
 
 ### Build from source
@@ -183,6 +183,7 @@ gb pr comment list 5 --json --no-pager
 ```text
 -H, --hostname <HOST>    GitBucket host or base URL
 -R, --repo <OWNER/REPO>  Target repository
+    --profile <NAME>     Configuration profile
     --json-errors        Print failures as structured JSON on stderr
 -h, --help               Show help
 -V, --version            Show version
@@ -434,7 +435,7 @@ It currently supports listing, viewing, creating, editing, and deleting mileston
 
 ## Testing
 
-For the current automated test layout and recommended commands, see [TESTING.md](./TESTING.md).
+For the current automated test layout, release checks, and Docker-backed E2E workflow, see [TESTING.md](./TESTING.md).
 
 ## Acknowledgements
 

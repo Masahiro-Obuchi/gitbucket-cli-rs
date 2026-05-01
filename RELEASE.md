@@ -4,18 +4,18 @@ This project publishes prebuilt `gb` binaries to GitHub Releases from version ta
 
 ## Versioning
 
-Use SemVer-style tags with a leading `v`, such as `v0.1.0`.
+Use SemVer-style tags with a leading `v`, such as `v0.5.1`.
 
 The tag version must match the package version in `Cargo.toml`. For example:
 
 ```toml
-version = "0.1.0"
+version = "0.5.1"
 ```
 
 matches:
 
 ```text
-v0.1.0
+v0.5.1
 ```
 
 ## Release Checklist
@@ -27,13 +27,13 @@ v0.1.0
 
 ```bash
 git add Cargo.toml Cargo.lock README.md  # include any other updated files
-git commit -m "chore: release v0.1.0"
+git commit -m "chore: release v0.5.1"
 ```
 
 5. Create the release tag with the helper script:
 
 ```bash
-scripts/release-tag.sh v0.1.0
+scripts/release-tag.sh v0.5.1
 ```
 
 This command validates the tag format, checks the Cargo version, verifies a clean working tree, runs the release checks, and creates the local tag.
@@ -41,10 +41,12 @@ This command validates the tag format, checks the Cargo version, verifies a clea
 6. Push the release tag:
 
 ```bash
-git push origin v0.1.0
+git push origin v0.5.1
 ```
 
 The `Release` workflow validates the tag, builds release binaries for Linux, macOS Intel, macOS Apple Silicon, and Windows, generates `SHA256SUMS`, and publishes a GitHub Release.
+
+Do not move a published release tag for a normal release. If a tag was pushed before the Cargo package version was updated, update `Cargo.toml` and `Cargo.lock`, commit the fix, and then either create the next patch tag or deliberately force-update the failed tag before any release artifacts are consumed.
 
 ## Re-running a Release
 
