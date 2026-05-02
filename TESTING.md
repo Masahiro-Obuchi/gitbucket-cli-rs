@@ -194,7 +194,7 @@ The normal Rust workflow in `.github/workflows/rust.yml` runs `cargo check`, `ca
 The release helper runs the locked release checks before creating a local tag:
 
 ```bash
-scripts/release-tag.sh v0.5.1
+scripts/release-tag.sh v0.6.0
 ```
 
 The tag version must match the root package version in `Cargo.toml` and `Cargo.lock`. After pushing a `v*` tag, the `Release` workflow repeats the release validation, builds platform archives, generates `SHA256SUMS`, and publishes the GitHub Release.

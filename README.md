@@ -25,13 +25,13 @@ URL: https://gitbucket.example.com/alice/my-app/pull/5
 ### Install with Cargo
 
 ```bash
-cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-cli-rs --locked gb
+cargo install gitbucket-cli --locked
 ```
 
 To install a specific version tag:
 
 ```bash
-cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-cli-rs --tag v0.5.1 --locked gb
+cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-cli-rs --tag v0.6.0 --locked
 ```
 
 ### Build from source

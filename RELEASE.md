@@ -1,21 +1,21 @@
 # Release Process
 
-This project publishes prebuilt `gb` binaries to GitHub Releases from version tags.
+This project publishes the `gitbucket-cli` crate to crates.io and prebuilt `gb` binaries to GitHub Releases from version tags.
 
 ## Versioning
 
-Use SemVer-style tags with a leading `v`, such as `v0.5.1`.
+Use SemVer-style tags with a leading `v`, such as `v0.6.0`.
 
 The tag version must match the package version in `Cargo.toml`. For example:
 
 ```toml
-version = "0.5.1"
+version = "0.6.0"
 ```
 
 matches:
 
 ```text
-v0.5.1
+v0.6.0
 ```
 
 ## Release Checklist
@@ -23,25 +23,37 @@ v0.5.1
 1. Choose the next version.
 2. Update `Cargo.toml` and refresh `Cargo.lock` if the package version changed.
 3. Update user-facing release notes or README content when behavior changed.
-4. Commit all version and documentation changes:
+4. Run the crates.io package validation:
+
+```bash
+cargo publish --dry-run
+```
+
+5. Commit all version and documentation changes:
 
 ```bash
 git add Cargo.toml Cargo.lock README.md  # include any other updated files
-git commit -m "chore: release v0.5.1"
+git commit -m "chore: release v0.6.0"
 ```
 
-5. Create the release tag with the helper script:
+6. Publish the crate:
 
 ```bash
-scripts/release-tag.sh v0.5.1
+cargo publish
+```
+
+7. Create the release tag with the helper script:
+
+```bash
+scripts/release-tag.sh v0.6.0
 ```
 
 This command validates the tag format, checks the Cargo version, verifies a clean working tree, runs the release checks, and creates the local tag.
 
-6. Push the release tag:
+8. Push the release tag:
 
 ```bash
-git push origin v0.5.1
+git push origin v0.6.0
 ```
 
 The `Release` workflow validates the tag, builds release binaries for Linux, macOS Intel, macOS Apple Silicon, and Windows, generates `SHA256SUMS`, and publishes a GitHub Release.

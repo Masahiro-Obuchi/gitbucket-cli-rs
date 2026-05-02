@@ -1,10 +1,18 @@
 [package]
-name = "gb"
+name = "gitbucket-cli"
 version = "0.6.0"
 edition = "2021"
 description = "A command-line tool for GitBucket, inspired by GitHub CLI"
 license = "MIT"
 repository = "https://github.com/Masahiro-Obuchi/gitbucket-cli-rs"
+readme = "README.md"
+keywords = ["gitbucket", "cli", "git"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = [".codex", ".codex/**"]
+
+[[bin]]
+name = "gb"
+path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive", "env"] }
