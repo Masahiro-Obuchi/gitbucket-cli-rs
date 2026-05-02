@@ -451,7 +451,7 @@ dependencies = [
 
 [[package]]
 name = "gitbucket-cli"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "assert_cmd",
  "clap",

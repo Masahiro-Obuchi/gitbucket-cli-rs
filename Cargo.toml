@@ -1,6 +1,6 @@
 [package]
 name = "gitbucket-cli"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 description = "A command-line tool for GitBucket, inspired by GitHub CLI"
 license = "MIT"
@@ -8,7 +8,21 @@ repository = "https://github.com/Masahiro-Obuchi/gitbucket-cli-rs"
 readme = "README.md"
 keywords = ["gitbucket", "cli", "git"]
 categories = ["command-line-utilities", "development-tools"]
-exclude = [".codex", ".codex/**"]
+exclude = [
+  ".codex",
+  ".codex/**",
+  ".github",
+  ".github/**",
+  "AGENTS.md",
+  "docker",
+  "docker/**",
+  "RELEASE.md",
+  "scripts",
+  "scripts/**",
+  "skills",
+  "skills/**",
+  "TESTING.md",
+]
 
 [[bin]]
 name = "gb"
