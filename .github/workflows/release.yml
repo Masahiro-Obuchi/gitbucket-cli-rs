@@ -46,7 +46,7 @@ jobs:
             exit 1
           fi
 
-          manifest_version="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "gb") | .version')"
+          manifest_version="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "gitbucket-cli") | .version')"
           tag_version="${RELEASE_TAG#v}"
 
           if [ "${manifest_version}" != "${tag_version}" ]; then
