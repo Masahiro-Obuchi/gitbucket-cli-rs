@@ -37,6 +37,10 @@ async fn success(response: Response) -> Value {
     serde_json::from_str(&text).unwrap()
 }
 
+async fn stored(client: &Client, path: &str) -> Value {
+    success(request(client, Method::GET, path, None).await).await
+}
+
 #[tokio::test]
 #[ignore = "requires the pinned Docker GitBucket fixture"]
 async fn contract_pr_patch_and_inline_comments_have_distinct_api_paths() {
@@ -59,7 +63,12 @@ async fn contract_pr_patch_and_inline_comments_have_distinct_api_paths() {
     )
     .await;
     assert_eq!(updated["title"], title);
+    assert_eq!(updated["body"], "REST edited body");
     assert_eq!(updated["state"], "closed");
+    let persisted = stored(&client, &path).await;
+    assert_eq!(persisted["title"], title);
+    assert_eq!(persisted["body"], "REST edited body");
+    assert_eq!(persisted["state"], "closed");
     let reopened = success(
         request(
             &client,
@@ -82,9 +91,28 @@ async fn contract_pr_patch_and_inline_comments_have_distinct_api_paths() {
     )
     .await;
     assert_eq!(issue_patch.status(), StatusCode::NOT_FOUND);
-    let pr = success(request(&client, Method::GET, &path, None).await).await;
+    let pr = stored(&client, &path).await;
     assert_eq!(pr["title"], title);
+    assert_eq!(pr["body"], "REST edited body");
+    assert_eq!(pr["state"], "open");
     let head_sha = pr["head"]["sha"].as_str().unwrap();
+
+    // A positive control ensures an empty/broken listing cannot prove that
+    // inline comments are excluded from an otherwise working comments API.
+    let comments_path = format!("repos/{repo}/issues/{number}/comments");
+    let ordinary_marker = format!("ordinary-contract-{}", unique_suffix());
+    let ordinary = success(
+        request(
+            &client,
+            Method::POST,
+            &comments_path,
+            Some(json!({"body": ordinary_marker})),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(ordinary["body"], ordinary_marker);
+    let ordinary_id = ordinary["id"].as_u64().unwrap();
 
     let marker = format!("inline-contract-{}", unique_suffix());
     let web = Client::builder()
@@ -118,35 +146,35 @@ async fn contract_pr_patch_and_inline_comments_have_distinct_api_paths() {
         .await
         .unwrap();
     assert!(response.status().is_success());
-    let html = web
+    let page = web
         .get(format!("{base}/{repo}/pull/{number}"))
         .send()
         .await
-        .unwrap()
-        .text()
-        .await
         .unwrap();
+    assert!(page.status().is_success());
+    let html = page.text().await.unwrap();
     assert!(
         html.contains(&marker),
         "inline comment missing from PR page"
     );
     assert!(html.contains(&file), "inline file missing from PR page");
-    let comments = success(
-        request(
-            &client,
-            Method::GET,
-            &format!("repos/{repo}/issues/{number}/comments"),
-            None,
-        )
-        .await,
-    )
-    .await;
-    assert!(comments.is_array());
-    assert!(comments.as_array().unwrap().iter().all(|comment| {
-        comment["body"]
+    let comments = stored(&client, &comments_path).await;
+    let comments = comments.as_array().unwrap();
+    assert!(
+        comments
+            .iter()
+            .any(|comment| { comment["id"] == ordinary_id && comment["body"] == ordinary_marker }),
+        "ordinary comment missing from Issue comments API"
+    );
+    for comment in comments {
+        let body = comment["body"]
             .as_str()
-            .is_none_or(|body| !body.contains(&marker))
-    }));
+            .expect("comment body must be a string");
+        assert!(
+            !body.contains(&marker),
+            "inline comment leaked into Issue comments API"
+        );
+    }
     assert_eq!(
         request(&client, Method::GET, &format!("{path}/comments"), None)
             .await
@@ -173,6 +201,11 @@ async fn contract_milestone_patch_requires_complete_preserved_values() {
     .await;
     let number = created["number"].as_u64().unwrap();
     let item = format!("{path}/{number}");
+    let initial = stored(&client, &item).await;
+    assert_eq!(initial["title"], title);
+    assert_eq!(initial["state"], "open");
+    assert_eq!(initial["description"], "preserve-description");
+    assert_eq!(initial["due_on"], "2027-04-01T00:00:00Z");
     let state_only = request(
         &client,
         Method::PATCH,
@@ -181,26 +214,43 @@ async fn contract_milestone_patch_requires_complete_preserved_values() {
     )
     .await;
     assert_eq!(state_only.status(), StatusCode::NOT_FOUND);
+    let unchanged = stored(&client, &item).await;
+    for field in ["title", "state", "description", "due_on"] {
+        assert_eq!(
+            unchanged[field], initial[field],
+            "state-only PATCH changed {field}"
+        );
+    }
     let updated = success(
         request(
             &client,
             Method::PATCH,
             &item,
-            Some(json!({"title": title, "state": "closed", "description": created["description"], "due_on": created["due_on"]})),
+            Some(json!({"title": title, "state": "closed", "description": initial["description"], "due_on": initial["due_on"]})),
         )
         .await,
     )
     .await;
     assert_eq!(updated["state"], "closed");
-    assert_eq!(updated["description"], created["description"]);
-    assert_eq!(updated["due_on"], created["due_on"]);
+    assert_eq!(updated["description"], initial["description"]);
+    assert_eq!(updated["due_on"], initial["due_on"]);
+    let persisted = stored(&client, &item).await;
+    assert_eq!(persisted["title"], title);
+    assert_eq!(persisted["state"], "closed");
+    assert_eq!(persisted["description"], "preserve-description");
+    assert_eq!(persisted["due_on"], "2027-04-01T00:00:00Z");
 
     // Document the server's replacement semantics; the CLI must compensate.
     let replaced =
         success(request(&client, Method::PATCH, &item, Some(json!({"title": title}))).await).await;
     assert_eq!(replaced["state"], "open");
-    assert_ne!(replaced["description"], created["description"]);
-    assert_ne!(replaced["due_on"], created["due_on"]);
+    let persisted = stored(&client, &item).await;
+    assert_eq!(persisted["title"], title);
+    assert_eq!(persisted["state"], "open");
+    assert_eq!(persisted["description"], "");
+    assert!(persisted.get("due_on").is_none_or(Value::is_null));
+    assert_eq!(replaced["description"], persisted["description"]);
+    assert_eq!(replaced["due_on"], persisted["due_on"]);
     assert_eq!(
         request(
             &client,
@@ -212,8 +262,19 @@ async fn contract_milestone_patch_requires_complete_preserved_values() {
         .status(),
         StatusCode::NOT_FOUND
     );
+    let unchanged = stored(&client, &item).await;
+    for field in ["title", "state", "description", "due_on"] {
+        assert_eq!(
+            unchanged[field], persisted[field],
+            "invalid title PATCH changed {field}"
+        );
+    }
     let deleted = request(&client, Method::DELETE, &item, None).await;
     assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        request(&client, Method::GET, &item, None).await.status(),
+        StatusCode::NOT_FOUND
+    );
 }
 
 #[tokio::test]
@@ -234,12 +295,28 @@ async fn contract_label_updates_require_name_and_color_and_reject_same_name() {
     .await;
     assert!(created.get("description").is_none_or(Value::is_null));
     let item = format!("{path}/{name}");
+    let initial = stored(&client, &item).await;
+    assert_eq!(initial["name"], name);
+    assert_eq!(initial["color"], "123abc");
+    assert!(initial.get("description").is_none_or(Value::is_null));
     assert_eq!(
         request(
             &client,
             Method::PATCH,
             &item,
             Some(json!({"color": "abcdef"}))
+        )
+        .await
+        .status(),
+        StatusCode::NOT_FOUND
+    );
+    let renamed = format!("{name}-renamed");
+    assert_eq!(
+        request(
+            &client,
+            Method::PATCH,
+            &item,
+            Some(json!({"name": renamed})),
         )
         .await
         .status(),
@@ -256,8 +333,37 @@ async fn contract_label_updates_require_name_and_color_and_reject_same_name() {
         .status(),
         StatusCode::UNPROCESSABLE_ENTITY
     );
-    let unchanged = success(request(&client, Method::GET, &item, None).await).await;
+    let unchanged = stored(&client, &item).await;
+    assert_eq!(unchanged["name"], name);
     assert_eq!(unchanged["color"], "123abc");
-    let deleted = request(&client, Method::DELETE, &item, None).await;
+
+    // A complete PATCH to a fresh name proves the update route itself works.
+    let updated = success(
+        request(
+            &client,
+            Method::PATCH,
+            &item,
+            Some(json!({"name": renamed, "color": "abcdef"})),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(updated["name"], renamed);
+    assert_eq!(updated["color"], "abcdef");
+    let renamed_item = format!("{path}/{renamed}");
+    let persisted = stored(&client, &renamed_item).await;
+    assert_eq!(persisted["name"], renamed);
+    assert_eq!(persisted["color"], "abcdef");
+    assert_eq!(
+        request(&client, Method::GET, &item, None).await.status(),
+        StatusCode::NOT_FOUND
+    );
+    let deleted = request(&client, Method::DELETE, &renamed_item, None).await;
     assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        request(&client, Method::GET, &renamed_item, None)
+            .await
+            .status(),
+        StatusCode::NOT_FOUND
+    );
 }

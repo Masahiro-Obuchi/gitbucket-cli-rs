@@ -207,6 +207,13 @@ inline comment visibility, milestone replacement semantics, and label update
 constraints. See [the compatibility baseline](docs/GITBUCKET_COMPATIBILITY.md)
 for verified behavior and remaining fixture gaps.
 
+The contracts read back persisted values after writes, verify rejected milestone
+edits leave existing fields intact, and confirm deletion with a subsequent GET.
+The comment-listing contract includes an ordinary comment as a positive control,
+so an empty or malformed response cannot establish that inline comments are
+excluded. Label PATCH coverage checks each missing required field and a
+successful rename as well as the same-name failure.
+
 After bootstrapping the disposable instance and exporting its runtime environment,
 run only the contract tests with:
 
@@ -227,3 +234,6 @@ panic unwinding. Do not introduce a module-local environment mutex or manually
 clear variables without restoring them. This lock coordinates participating unit
 tests; it does not make concurrent environment access by arbitrary threads safe.
 Integration tests should continue to set environment variables on child commands.
+The guard's restoration regression test runs in an isolated child test process
+and covers absent, empty and populated values, panic unwinding, and poisoned-lock
+recovery (including non-Unicode values on Unix).
