@@ -198,3 +198,42 @@ scripts/release-tag.sh v0.6.0
 ```
 
 The tag version must match the root package version in `Cargo.toml` and `Cargo.lock`. After pushing a `v*` tag, the `Release` workflow repeats the release validation, builds platform archives, generates `SHA256SUMS`, and publishes the GitHub Release.
+
+## Pinned Server Contract Tests
+
+`tests/e2e_smoke/api_contract.rs` exercises the pinned GitBucket 4.44.0 REST/Web
+contracts directly, alongside the CLI smoke tests. It verifies PR editing,
+inline comment visibility, milestone replacement semantics, and label update
+constraints. See [the compatibility baseline](docs/GITBUCKET_COMPATIBILITY.md)
+for verified behavior and remaining fixture gaps.
+
+The contracts read back persisted values after writes, verify rejected milestone
+edits leave existing fields intact, and confirm deletion with a subsequent GET.
+The comment-listing contract includes an ordinary comment as a positive control,
+so an empty or malformed response cannot establish that inline comments are
+excluded. Label PATCH coverage checks each missing required field and a
+successful rename as well as the same-name failure.
+
+After bootstrapping the disposable instance and exporting its runtime environment,
+run only the contract tests with:
+
+```bash
+cargo test --locked --test e2e_smoke api_contract -- --ignored --nocapture
+```
+
+The existing E2E command and CI workflow run these tests too. Both root and
+`/gitbucket` deployments must pass. Some assertions intentionally document
+undesirable server behavior; they are not the desired user-facing CLI behavior.
+When fixing the CLI, add a separate regression test proving the CLI compensates
+for that behavior. Do not change the server contract to match a CLI workaround.
+
+Unit tests that read or modify process-wide `GB_*` configuration must acquire
+`crate::test_support::TestEnv`. It uses one shared lock, clears inherited CLI
+configuration, and restores the original values when dropped, including during
+panic unwinding. Do not introduce a module-local environment mutex or manually
+clear variables without restoring them. This lock coordinates participating unit
+tests; it does not make concurrent environment access by arbitrary threads safe.
+Integration tests should continue to set environment variables on child commands.
+The guard's restoration regression test runs in an isolated child test process
+and covers absent, empty and populated values, panic unwinding, and poisoned-lock
+recovery (including non-Unicode values on Unix).

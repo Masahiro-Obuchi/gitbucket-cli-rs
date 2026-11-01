@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::test_support::TestEnv;
 
 use super::model::{AuthConfig, HostConfig, ProfileConfig};
 use super::resolve::{canonical_hostname, protocol_from_hostname};
@@ -24,24 +25,9 @@ fn temp_path(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("gb-tests-{name}-{}-{nanos}", std::process::id()))
 }
 
-fn env_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
-
-fn clear_auth_env() {
-    unsafe {
-        std::env::remove_var("GB_HOST");
-        std::env::remove_var("GB_PROFILE");
-        std::env::remove_var("GB_TOKEN");
-        std::env::remove_var("GB_PROTOCOL");
-    }
-}
-
 #[test]
 fn set_host_updates_default_host() {
-    let _guard = env_lock().lock().unwrap();
-    clear_auth_env();
+    let _env = TestEnv::new();
     let mut config = AuthConfig::default();
 
     config.set_host("gitbucket.example.com".into(), host("alice"));
@@ -54,8 +40,7 @@ fn set_host_updates_default_host() {
 
 #[test]
 fn default_hostname_prefers_explicit_default() {
-    let _guard = env_lock().lock().unwrap();
-    clear_auth_env();
+    let _env = TestEnv::new();
     let mut config = AuthConfig {
         hosts: HashMap::new(),
         default_host: Some("b.example.com".into()),
@@ -72,8 +57,7 @@ fn default_hostname_prefers_explicit_default() {
 
 #[test]
 fn default_hostname_falls_back_to_sorted_hostnames() {
-    let _guard = env_lock().lock().unwrap();
-    clear_auth_env();
+    let _env = TestEnv::new();
     let mut config = AuthConfig::default();
     config.hosts.insert("z.example.com".into(), host("zoe"));
     config.hosts.insert("a.example.com".into(), host("alice"));
@@ -86,23 +70,16 @@ fn default_hostname_falls_back_to_sorted_hostnames() {
 
 #[test]
 fn default_hostname_prefers_environment_variable() {
-    let _guard = env_lock().lock().unwrap();
-    clear_auth_env();
+    let env = TestEnv::new();
     let mut config = AuthConfig::default();
     config.hosts.insert("a.example.com".into(), host("alice"));
 
-    unsafe {
-        std::env::set_var("GB_HOST", "env.example.com");
-    }
+    env.set("GB_HOST", "env.example.com");
 
     assert_eq!(
         config.resolve_hostname(None, None).unwrap().as_deref(),
         Some("env.example.com")
     );
-
-    unsafe {
-        std::env::remove_var("GB_HOST");
-    }
 }
 
 #[test]
@@ -132,8 +109,7 @@ fn canonical_hostname_ignores_scheme_and_api_suffix() {
 
 #[test]
 fn get_host_matches_equivalent_hostnames() {
-    let _guard = env_lock().lock().unwrap();
-    clear_auth_env();
+    let _env = TestEnv::new();
     let mut config = AuthConfig::default();
     config.set_host(
         "https://gitbucket.example.com/gitbucket".into(),
@@ -152,13 +128,10 @@ fn get_host_matches_equivalent_hostnames() {
 
 #[test]
 fn get_host_prefers_environment_token() {
-    let _guard = env_lock().lock().unwrap();
-    clear_auth_env();
+    let env = TestEnv::new();
     let config = AuthConfig::default();
 
-    unsafe {
-        std::env::set_var("GB_TOKEN", "env-token");
-    }
+    env.set("GB_TOKEN", "env-token");
 
     let host = config
         .get_host_for_profile("https://gitbucket.example.com/gitbucket", None)
@@ -166,16 +139,11 @@ fn get_host_prefers_environment_token() {
     assert_eq!(host.token, "env-token");
     assert_eq!(host.protocol, "https");
     assert_eq!(host.user, "");
-
-    unsafe {
-        std::env::remove_var("GB_TOKEN");
-    }
 }
 
 #[test]
 fn resolve_hostname_uses_selected_profile_default_host() {
-    let _guard = env_lock().lock().unwrap();
-    clear_auth_env();
+    let _env = TestEnv::new();
     let mut config = AuthConfig::default();
     config.profiles.insert(
         "work".into(),
@@ -196,8 +164,7 @@ fn resolve_hostname_uses_selected_profile_default_host() {
 
 #[test]
 fn resolve_repo_uses_profile_default_repo_after_cli_and_env() {
-    let _guard = env_lock().lock().unwrap();
-    clear_auth_env();
+    let _env = TestEnv::new();
     let mut config = AuthConfig::default();
     config.profiles.insert(
         "work".into(),
@@ -222,8 +189,7 @@ fn resolve_repo_uses_profile_default_repo_after_cli_and_env() {
 
 #[test]
 fn get_host_prefers_profile_scoped_credentials() {
-    let _guard = env_lock().lock().unwrap();
-    clear_auth_env();
+    let _env = TestEnv::new();
     let mut config = AuthConfig::default();
     config
         .hosts
@@ -244,8 +210,7 @@ fn get_host_prefers_profile_scoped_credentials() {
 
 #[test]
 fn selected_missing_profile_returns_clear_error() {
-    let _guard = env_lock().lock().unwrap();
-    clear_auth_env();
+    let _env = TestEnv::new();
     let config = AuthConfig::default();
 
     let err = config
@@ -257,8 +222,7 @@ fn selected_missing_profile_returns_clear_error() {
 
 #[test]
 fn remove_host_promotes_next_sorted_host() {
-    let _guard = env_lock().lock().unwrap();
-    clear_auth_env();
+    let _env = TestEnv::new();
     let mut config = AuthConfig {
         hosts: HashMap::new(),
         default_host: Some("b.example.com".into()),

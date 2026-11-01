@@ -84,13 +84,9 @@ fn strip_api_prefix(endpoint: &str) -> Option<&str> {
 }
 
 fn strip_prefix_with_boundary<'a>(value: &'a str, prefix: &str) -> Option<&'a str> {
-    value.strip_prefix(prefix).and_then(|rest| {
-        if rest.is_empty() || rest.starts_with('/') || rest.starts_with('?') {
-            Some(rest)
-        } else {
-            None
-        }
-    })
+    value
+        .strip_prefix(prefix)
+        .filter(|rest| rest.is_empty() || rest.starts_with('/') || rest.starts_with('?'))
 }
 
 fn validate_absolute_endpoint(endpoint: &str, allowed_base_url: &str) -> Result<()> {
