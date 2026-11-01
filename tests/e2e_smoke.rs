@@ -9,3 +9,6 @@ mod issue;
 mod pr;
 #[path = "e2e_smoke/repo_label_milestone.rs"]
 mod repo_label_milestone;
+
+#[path = "e2e_smoke/api_contract.rs"]
+mod api_contract;

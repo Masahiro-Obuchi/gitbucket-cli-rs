@@ -22,6 +22,9 @@ mod error;
 mod models;
 mod output;
 
+#[cfg(test)]
+mod test_support;
+
 use clap::Parser;
 use cli::{Cli, Commands};
 use serde::Serialize;
