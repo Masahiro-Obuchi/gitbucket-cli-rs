@@ -88,7 +88,11 @@ impl RepositoryTarget {
         let same_server = if http {
             same_origin(&instance, &url)
         } else {
-            url.scheme() == "ssh" && instance.host_str() == url.host_str()
+            url.scheme() == "ssh"
+                && instance
+                    .host_str()
+                    .zip(url.host_str())
+                    .is_some_and(|(expected, actual)| expected.eq_ignore_ascii_case(actual))
         };
         if !same_server
             || url.query().is_some()
@@ -114,6 +118,7 @@ impl RepositoryTarget {
         } else {
             relative
         };
+        let relative = relative.trim_end_matches('/');
         let relative = relative.strip_suffix(".git").unwrap_or(relative);
         let name = RepositoryName::parse(relative).map_err(|_| mismatch())?;
         Ok(Self { instance, name })
@@ -178,6 +183,38 @@ mod tests {
                 "{remote}"
             );
         }
+    }
+
+    #[test]
+    fn remote_repository_urls_can_end_in_a_slash() {
+        let instance = Url::parse("https://example.com/bucket").unwrap();
+        for remote in [
+            "https://example.com/bucket/git/a/r.git/",
+            "https://example.com/bucket/a/r.git/",
+            "ssh://git@example.com:29418/bucket/a/r.git/",
+            "git@example.com:bucket/a/r.git/",
+        ] {
+            let target = RepositoryTarget::from_remote(instance.clone(), remote).unwrap();
+            assert_eq!(target.name, RepositoryName::parse("a/r").unwrap());
+        }
+    }
+
+    #[test]
+    fn ssh_hostname_comparison_ignores_ascii_case() {
+        let instance = Url::parse("https://example.com/bucket").unwrap();
+        for remote in [
+            "ssh://git@EXAMPLE.COM:29418/bucket/a/r.git",
+            "git@ExAmPlE.com:bucket/a/r.git",
+        ] {
+            assert!(
+                RepositoryTarget::from_remote(instance.clone(), remote).is_ok(),
+                "{remote}"
+            );
+        }
+        assert!(
+            RepositoryTarget::from_remote(instance, "git@other.EXAMPLE.COM:bucket/a/r.git")
+                .is_err()
+        );
     }
 
     #[test]

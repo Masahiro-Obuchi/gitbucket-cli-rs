@@ -197,8 +197,9 @@ Repository selection uses `-R/--repo`, then `GB_REPO`, then the active profile's
 `default_repo`. If none is set, `gb` reads `git remote get-url origin` and checks
 it against the selected GitBucket instance before making any API request.
 HTTP(S) origin URLs must match its scheme, host, port, and deployment path.
-SSH URLs must match its hostname and deployment path; the SSH port is independent
-of the HTTP port. A root-level SSH URL cannot identify a path-prefixed instance
+SSH URLs must match its hostname (ignoring ASCII case) and deployment path; the
+SSH port is independent of the HTTP port. Matching clone URLs may end in `/`.
+A root-level SSH URL cannot identify a path-prefixed instance
 unambiguously, so specify `-R` in that case. SSH aliases are not expanded.
 
 On a mismatch, select the intended target explicitly:
@@ -434,7 +435,8 @@ echo '{"state":"closed"}' | gb api repos/alice/my-app/issues/1 -X PATCH --input 
 `gb api` calls the GitBucket REST API directly using the configured host and token.
 It accepts endpoint paths relative to `/api/v3`, full API paths such as `/api/v3/user`, or absolute URLs under the configured GitBucket API base.
 All authenticated API requests are checked after URL normalization, including
-relative and percent-encoded paths. Paths that escape the API base, URL
+relative and percent-encoded paths. Encoded deployment names and equivalent
+encodings in pagination links are supported. Paths that escape the API base, URL
 credentials, and fragments are rejected before the request. Authenticated API
 requests do not follow redirects; configure the direct GitBucket base URL.
 Base URLs must use HTTP(S), without credentials, query strings, or fragments.

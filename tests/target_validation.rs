@@ -124,6 +124,83 @@ fn matching_http_and_ssh_origins_resolve_the_same_instance_and_repository() {
 }
 
 #[test]
+fn matching_origins_with_trailing_slashes_resolve_before_a_request() {
+    for (base, ssh) in [
+        ("", false),
+        ("/gitbucket", false),
+        ("", true),
+        ("/gitbucket", true),
+    ] {
+        let env = GbTestEnv::new();
+        let (port, server) = spawn_server("200 OK", "[]");
+        let remote = if ssh {
+            format!("ssh://git@127.0.0.1:29418{base}/alice/demo.git/")
+        } else {
+            format!("http://127.0.0.1:{port}{base}/git/alice/demo.git/")
+        };
+        origin(&env, &remote);
+        let output = env
+            .api_command(format!("127.0.0.1:{port}{base}"))
+            .env_remove("GB_REPO")
+            .args(["issue", "list", "--json"])
+            .output()
+            .unwrap();
+        let request = server.join().unwrap();
+        assert_success(&output);
+        assert_eq!(
+            request.target,
+            format!("{base}/api/v3/repos/alice/demo/issues?state=open")
+        );
+    }
+}
+
+#[test]
+fn encoded_deployments_work_for_raw_and_repository_api_requests() {
+    for base in [
+        "/git%62ucket",
+        "/%e6%97%a5%e6%9c%ac",
+        "/bucket%25site",
+        "/bucket%2520site",
+    ] {
+        for raw_api in [false, true] {
+            let env = GbTestEnv::new();
+            let (port, server) = spawn_server("200 OK", "[]");
+            let mut command = env.repo_api_command(format!("127.0.0.1:{port}{base}"), "alice/demo");
+            if raw_api {
+                command.args(["api", "user"]);
+            } else {
+                command.args(["issue", "list", "--json"]);
+            }
+            let output = command.output().unwrap();
+            let request = server.join().unwrap();
+            assert_success(&output);
+            let endpoint = if raw_api {
+                "/user"
+            } else {
+                "/repos/alice/demo/issues?state=open"
+            };
+            assert_eq!(request.target, format!("{base}/api/v3{endpoint}"));
+        }
+    }
+}
+
+#[test]
+fn ssh_origin_hostname_case_does_not_change_the_selected_repository() {
+    let env = GbTestEnv::new();
+    let (port, server) = spawn_server("200 OK", "[]");
+    origin(&env, "git@LOCALHOST:alice/demo.git");
+    let output = env
+        .api_command(format!("localhost:{port}"))
+        .env_remove("GB_REPO")
+        .args(["issue", "list", "--json"])
+        .output()
+        .unwrap();
+    let request = server.join().unwrap();
+    assert_success(&output);
+    assert_eq!(request.target, "/api/v3/repos/alice/demo/issues?state=open");
+}
+
+#[test]
 fn explicit_and_profile_repositories_do_not_depend_on_origin() {
     for profile in [false, true] {
         let env = GbTestEnv::new();

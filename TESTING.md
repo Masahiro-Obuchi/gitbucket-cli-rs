@@ -271,6 +271,11 @@ listeners to verify that origin mismatches, malformed repository names, API path
 escapes, and redirects are rejected before sending requests to an unintended
 endpoint. Positive cases cover root/subpath HTTP URLs, SSH URLs with independent
 ports, and explicit/profile repository precedence.
+Regression cases also cover trailing slashes in clone URLs, ASCII hostname case
+in SSH origins, and raw/repository API requests under encoded deployment paths.
+Equivalent encodings in root-relative pagination and origin-text paths must not
+duplicate the deployment prefix. Encoded separators across boundary components
+and decoded traversal remain rejected.
 
 ```bash
 cargo test --locked --test target_validation --test api_command

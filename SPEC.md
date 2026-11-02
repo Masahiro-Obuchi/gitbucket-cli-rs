@@ -979,7 +979,9 @@ API requests, including `gb api` and pagination, are validated in the HTTP clien
 against the normalized API base. Web-origin text fetches are restricted to the
 configured deployment base. Validation includes percent-decoded traversal paths;
 encoded path separators are allowed only when the interpreted path remains
-inside the boundary. URL credentials and fragments are rejected. Authenticated
+inside the boundary. Request and configured base paths are compared at the same
+decoding level; equivalent encoded path segments also match in pagination and
+origin-text URLs. URL credentials and fragments are rejected. Authenticated
 API client requests do not follow redirects, so proxies must expose a direct
 base URL. The separate password-based Web session flow retains its own redirect
 handling; this change does not replace that flow.
@@ -1011,8 +1013,9 @@ When CLI/environment/profile repository selection is absent, `gb` parses and val
 
 For origin-derived targets, HTTP(S) scheme/hostname/port and deployment path must
 match the configured instance. The relative path must be `OWNER/REPO[.git]` or,
-for HTTP(S), `git/OWNER/REPO[.git]`. SSH matches hostname and deployment path, not
-the HTTP port; SSH aliases are not resolved. If a subpath cannot be established
+for HTTP(S), `git/OWNER/REPO[.git]`; a trailing slash is accepted. SSH matches
+hostname ignoring ASCII case and matches the deployment path, not the HTTP port;
+SSH aliases are not resolved. If a subpath cannot be established
 from SSH, the command fails before any API request and suggests an explicit
 `--hostname`/`--repo`. Explicit/environment/profile repository choices bypass
 origin inference, preserving intentional cross-repository operations.

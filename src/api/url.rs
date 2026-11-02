@@ -59,29 +59,38 @@ fn checked_request_url(candidate: &str, allowed_base: &str) -> Result<Url> {
     // than once by proxies; labels containing encoded separators remain valid
     // as long as no decoding level escapes the configured boundary.
     let mut path = target.path().to_string();
+    let mut base_path = base.path().to_string();
     for _ in 0..8 {
         let decoded = percent_encoding::percent_decode_str(&path)
             .decode_utf8()
             .map_err(|_| refused())?;
-        if decoded == path {
-            return Ok(target);
-        }
-        if decoded.contains('\\') || decoded.chars().any(char::is_control) {
+        let decoded_base = percent_encoding::percent_decode_str(&base_path)
+            .decode_utf8()
+            .map_err(|_| refused())?;
+        if decoded.contains('\\')
+            || decoded.chars().any(char::is_control)
+            || decoded_base.contains('\\')
+            || decoded_base.chars().any(char::is_control)
+            || decoded_base
+                .split('/')
+                .any(|part| matches!(part, "." | ".."))
+        {
             return Err(refused());
         }
-        // Encoded ?/# remain path data at the server. Do not accidentally
-        // turn them into query/fragment delimiters while checking traversal.
-        let path_only = decoded.replace('?', "%3F").replace('#', "%23");
-        let interpreted = Url::parse(&format!(
-            "{}{}",
-            target.origin().ascii_serialization(),
-            path_only
-        ))
-        .map_err(|_| refused())?;
-        if !path_has_base_prefix(interpreted.path(), base.path()) {
+        if decoded == path && decoded_base == base_path {
+            return Ok(target);
+        }
+        // Compare both sides at the same decoding level. The path setter
+        // normalizes dot segments while keeping ?/# and spaces as path data.
+        let mut interpreted = target.clone();
+        interpreted.set_path(&decoded);
+        let mut interpreted_base = base.clone();
+        interpreted_base.set_path(&decoded_base);
+        if !path_has_base_prefix(interpreted.path(), interpreted_base.path()) {
             return Err(refused());
         }
         path = decoded.into_owned();
+        base_path = decoded_base.into_owned();
     }
     Err(refused())
 }
@@ -182,9 +191,20 @@ fn normalize_relative_api_path<'a>(path: &'a str, base_url: &str) -> &'a str {
 }
 
 fn strip_prefix_with_boundary<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
-    path.strip_prefix(prefix).filter(|rest| {
-        rest.is_empty() || rest.starts_with('/') || rest.starts_with('?') || rest.starts_with('#')
-    })
+    let path_end = path.find(['?', '#']).unwrap_or(path.len());
+    let mut segments = path[..path_end].split('/');
+    let mut consumed = 0;
+    for (index, expected) in prefix.split('/').enumerate() {
+        let actual = segments.next()?;
+        // Split before decoding so an encoded separator remains segment data.
+        if !percent_encoding::percent_decode_str(actual)
+            .eq(percent_encoding::percent_decode_str(expected))
+        {
+            return None;
+        }
+        consumed += actual.len() + usize::from(index > 0);
+    }
+    Some(&path[consumed..])
 }
 
 fn ensure_request_path(path: &str) -> &str {
@@ -203,10 +223,7 @@ fn path_has_base_prefix(path: &str, base: &str) -> bool {
         return true;
     }
 
-    path == normalized_base
-        || path
-            .strip_prefix(normalized_base)
-            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+    strip_prefix_with_boundary(path, normalized_base).is_some()
 }
 
 #[cfg(test)]
@@ -216,6 +233,56 @@ mod tests {
         normalize_relative_api_path, normalize_web_base_url,
     };
     use crate::api::client::ApiClient;
+
+    #[test]
+    fn encoded_deployment_paths_keep_their_request_boundary() {
+        for deployment in [
+            "/git%62ucket",
+            "/%e6%97%a5%e6%9c%ac",
+            "/bucket%25site",
+            "/bucket%2520site",
+        ] {
+            let base = format!("https://example.com{deployment}/api/v3");
+            assert_eq!(
+                normalize_path_or_url("/user", &base).unwrap(),
+                format!("{base}/user")
+            );
+            assert_eq!(
+                normalize_origin_path_or_url("/a/r/pull/1.diff", &base).unwrap(),
+                format!("https://example.com{deployment}/a/r/pull/1.diff")
+            );
+            for escape in [
+                "/../../../outside",
+                "/%252e%252e/%252e%252e/%252e%252e/outside",
+            ] {
+                assert!(normalize_path_or_url(escape, &base).is_err());
+            }
+        }
+        let base = "https://example.com/git%62ucket/api/v3";
+        assert_eq!(
+            normalize_path_or_url("/gitbucket/api/v3/user?page=2", base).unwrap(),
+            "https://example.com/git%62ucket/api/v3/user?page=2"
+        );
+        assert_eq!(
+            normalize_origin_path_or_url("/gitbucket/a/r/pull/1.diff", base).unwrap(),
+            "https://example.com/git%62ucket/a/r/pull/1.diff"
+        );
+        assert!(
+            normalize_path_or_url("https://example.com/gitbucket/api/v3/user?page=2", base).is_ok()
+        );
+        assert!(
+            normalize_path_or_url("https://example.com/gitbucket-other/api/v3/user", base).is_err()
+        );
+        for target in [
+            "https://example.com/gitbucket%2fapi/v3/user",
+            "https://example.com/gitbucket/api%2fv3/user",
+            "https://example.com/gitbucket/api/v30/user",
+        ] {
+            assert!(normalize_path_or_url(target, base).is_err(), "{target}");
+        }
+        let ambiguous_base = "https://example.com/a/%252e%252e/bucket/api/v3";
+        assert!(normalize_path_or_url("/user", ambiguous_base).is_err());
+    }
 
     #[test]
     fn checks_the_final_normalized_request_path() {
