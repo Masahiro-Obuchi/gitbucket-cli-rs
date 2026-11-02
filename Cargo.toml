@@ -46,6 +46,7 @@ dialoguer = "0.11"
 toml = "0.8"
 open = "5"
 url = "2"
+percent-encoding = "2"
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 
 [dev-dependencies]

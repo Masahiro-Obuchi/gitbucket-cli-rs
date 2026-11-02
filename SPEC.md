@@ -398,8 +398,11 @@ HTTP URLs containing a password are rejected before invoking Git.
 The helper only supplies credentials within the configured scheme/host/port/base
 path, and validates the exact Git credential context again after URL rewriting.
 It does not persist credentials, invoke configured credential-store helpers, or
-put the token in argv/remote URLs. Token-bearing transfers reject redirects and
-restrict rewritten transports to HTTP(S).
+put the token in argv/remote URLs. Token-bearing transfers reject redirects,
+including URL-specific redirect settings for the rewritten URL, and restrict
+rewritten transports to HTTP(S). Credential path checks account for Git's
+percent-decoding and removal of leading/trailing slashes, and reject other
+path differences.
 Secrets are passed through the subprocess environment and remain accessible to
 local processes with sufficient inspection privileges. SSH/external origins do
 not receive the selected GitBucket token.

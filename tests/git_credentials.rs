@@ -220,13 +220,56 @@ fn url_rewrite_to_other_origin_does_not_receive_token() {
 
 #[test]
 fn authenticated_fetch_does_not_follow_redirects() {
+    assert_fetch_does_not_follow_redirects(false, false);
+}
+
+#[test]
+fn authenticated_fetch_does_not_follow_redirects_after_username_rewrite() {
+    assert_fetch_does_not_follow_redirects(true, false);
+}
+
+#[test]
+fn authenticated_fetch_overrides_redirect_setting_with_trailing_slash() {
+    assert_fetch_does_not_follow_redirects(false, true);
+}
+
+fn assert_fetch_does_not_follow_redirects(rewrite_username: bool, trailing_slash: bool) {
     use std::net::TcpListener;
+    use std::sync::mpsc;
+    use std::time::Duration;
     let foreign = TcpListener::bind("127.0.0.1:0").unwrap();
     foreign.set_nonblocking(true).unwrap();
     let location = format!(
         "http://127.0.0.1:{}/stolen",
         foreign.local_addr().unwrap().port()
     );
+    // Reply if a regression follows the redirect, so Git can exit and the
+    // assertion fails instead of waiting forever on an unserved listener.
+    let (stop, stopped) = mpsc::channel();
+    let foreign = std::thread::spawn(move || {
+        let mut connections = 0;
+        loop {
+            match foreign.accept() {
+                Ok((mut stream, _)) => {
+                    connections += 1;
+                    stream.set_nonblocking(false).unwrap();
+                    stream
+                        .set_write_timeout(Some(Duration::from_secs(5)))
+                        .unwrap();
+                    let _ = stream.write_all(
+                        b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                    );
+                }
+                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                    match stopped.recv_timeout(Duration::from_millis(10)) {
+                        Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => return connections,
+                        Err(mpsc::RecvTimeoutError::Timeout) => {}
+                    }
+                }
+                Err(err) => panic!("redirect listener failed: {err}"),
+            }
+        }
+    });
     let target = "GET /git/alice/demo.git/info/refs?service=git-upload-pack HTTP/1.1";
     let (port, server) = spawn_scripted_server(vec![
         pr_response(""),
@@ -245,11 +288,30 @@ fn authenticated_fetch_does_not_follow_redirects() {
             &format!("http://127.0.0.1:{port}/git/alice/demo.git"),
         ],
     );
+    let configured_url = if rewrite_username {
+        let rewritten = format!("http://alice@127.0.0.1:{port}/git/alice/demo.git");
+        run_git(
+            env.path(),
+            &[
+                "config",
+                &format!("url.{rewritten}.insteadOf"),
+                &format!("http://127.0.0.1:{port}/git/alice/demo.git"),
+            ],
+        );
+        rewritten
+    } else {
+        format!("http://127.0.0.1:{port}/git/alice/demo.git")
+    };
+    let configured_url = if trailing_slash {
+        format!("{configured_url}/")
+    } else {
+        configured_url
+    };
     run_git(
         env.path(),
         &[
             "config",
-            &format!("http.http://127.0.0.1:{port}/git/alice/demo.git.followRedirects"),
+            &format!("http.{configured_url}.followRedirects"),
             "true",
         ],
     );
@@ -259,12 +321,47 @@ fn authenticated_fetch_does_not_follow_redirects() {
         .args(["pr", "checkout", "7"])
         .output()
         .unwrap();
+    stop.send(()).unwrap();
+    let redirected = foreign.join().unwrap();
     let requests = server.join().unwrap();
     assert!(!output.status.success());
     assert!(requests[2].headers.contains_key("authorization"));
+    assert_eq!(redirected, 0, "authenticated fetch followed a redirect");
+}
+
+#[test]
+fn private_fetch_supports_percent_encoded_deployment_paths() {
+    let mut pr = pr_response("");
+    pr.expected_request_line = "GET /bucket%20site/api/v3/repos/alice/demo/pulls/7 HTTP/1.1".into();
+    let target = "GET /bucket%20site/alice/demo.git/info/refs?service=git-upload-pack HTTP/1.1";
+    let (port, server) = spawn_scripted_server(vec![
+        pr,
+        ScriptedResponse::json(target, "401 Unauthorized", "")
+            .with_header("www-authenticate", "Basic realm=GitBucket"),
+        ScriptedResponse::json(target, "404 Not Found", ""),
+    ]);
+    let env = GbTestEnv::new();
+    init_work_repo(env.path());
+    run_git(
+        env.path(),
+        &[
+            "remote",
+            "add",
+            "origin",
+            &format!("http://127.0.0.1:{port}/bucket%20site/alice/demo.git"),
+        ],
+    );
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}/bucket%20site"), "alice/demo")
+        .env("GB_USER", "alice")
+        .args(["pr", "checkout", "7"])
+        .output()
+        .unwrap();
+    let requests = server.join().unwrap();
+    assert!(!output.status.success());
     assert_eq!(
-        foreign.accept().unwrap_err().kind(),
-        std::io::ErrorKind::WouldBlock
+        requests[2].headers.get("authorization").map(String::as_str),
+        Some("Basic YWxpY2U6dGVzdC10b2tlbg==")
     );
 }
 
@@ -296,6 +393,34 @@ fn clone_uses_scoped_credentials_and_does_not_store_them() {
     );
     assert!(!String::from_utf8_lossy(&output.stderr).contains("test-token"));
     assert!(!env.path().join("demo").exists());
+}
+
+#[test]
+fn private_clone_supports_trailing_slash_in_api_url() {
+    let target = "GET /git/alice/demo.git/info/refs?service=git-upload-pack HTTP/1.1";
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/demo HTTP/1.1",
+            "200 OK",
+            r#"{"name":"demo","full_name":"alice/demo","private":true,"clone_url":"http://gitbucket:8080/git/alice/demo.git/"}"#,
+        ),
+        ScriptedResponse::json(target, "401 Unauthorized", "")
+            .with_header("www-authenticate", "Basic realm=GitBucket"),
+        ScriptedResponse::json(target, "404 Not Found", ""),
+    ]);
+    let env = GbTestEnv::new();
+    let output = env
+        .api_command(format!("127.0.0.1:{port}"))
+        .env("GB_USER", "alice")
+        .args(["repo", "clone", "alice/demo"])
+        .output()
+        .unwrap();
+    let requests = server.join().unwrap();
+    assert!(!output.status.success());
+    assert_eq!(
+        requests[2].headers.get("authorization").map(String::as_str),
+        Some("Basic YWxpY2U6dGVzdC10b2tlbg==")
+    );
 }
 
 #[test]

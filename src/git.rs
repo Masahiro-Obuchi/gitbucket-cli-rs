@@ -13,6 +13,41 @@ const TARGET_ENV: &str = "GB_INTERNAL_GIT_TARGET";
 const USER_ENV: &str = "GB_INTERNAL_GIT_USER";
 const TOKEN_ENV: &str = "GB_INTERNAL_GIT_TOKEN";
 
+fn git_command() -> Command {
+    let mut command = Command::new("git");
+    command
+        .env_remove(TARGET_ENV)
+        .env_remove(USER_ENV)
+        .env_remove(TOKEN_ENV)
+        .env_remove("GB_TOKEN")
+        .env_remove("GB_PASSWORD")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_TRACE_REDACT", "1");
+    command
+}
+
+fn rewritten_http_url(source: &str) -> Result<Option<Url>> {
+    // --get-url performs only local URL rewriting, without contacting a remote.
+    // Resolve before adding credentials to the child environment.
+    let output = git_command()
+        .args(["ls-remote", "--get-url", "--", source])
+        .output()?;
+    if !output.status.success() {
+        return Err(GbError::Other("Unable to resolve Git URL rewriting".into()));
+    }
+    let Ok(mut url) = Url::parse(String::from_utf8_lossy(&output.stdout).trim()) else {
+        return Ok(None);
+    };
+    if !matches!(url.scheme(), "http" | "https") {
+        return Ok(None);
+    }
+    // Passwords do not participate in Git's HTTP configuration matching.
+    // Never copy a password from an insteadOf rule into command arguments.
+    url.set_password(None)
+        .map_err(|_| GbError::Other("Invalid rewritten Git URL".into()))?;
+    Ok(Some(url))
+}
+
 // Deliberately no Debug/Serialize: this value contains authentication material.
 pub(crate) struct GitAuth {
     instance: Url,
@@ -50,18 +85,10 @@ impl GitAuth {
     /// The helper is ephemeral: no URL, argv, or Git config file contains a token.
     /// Git passes the rewritten URL to the helper, which validates it again.
     pub(crate) fn command(&self, source: &str) -> Result<Command> {
-        let mut command = Command::new("git");
-        command
-            .env_remove(TARGET_ENV)
-            .env_remove(USER_ENV)
-            .env_remove(TOKEN_ENV);
-        command
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .env_remove("GB_TOKEN")
-            .env_remove("GB_PASSWORD")
-            .env("GIT_TRACE_REDACT", "1");
+        let mut command = git_command();
         if let Ok(target) = Url::parse(source) {
             if matches!(target.scheme(), "http" | "https") && self.permits(&target) {
+                let rewritten = rewritten_http_url(source)?;
                 let executable = std::env::current_exe()?;
                 let executable = executable.to_str().ok_or_else(|| {
                     GbError::Other("Git authentication requires a UTF-8 executable path".into())
@@ -97,6 +124,14 @@ impl GitAuth {
                     .env(TARGET_ENV, target.as_str())
                     .env(USER_ENV, &self.user)
                     .env(TOKEN_ENV, &self.token);
+                if let Some(rewritten) = rewritten {
+                    // A rewrite can add a username, giving a URL-specific
+                    // setting precedence over the original URL's setting.
+                    command.args([
+                        "-c",
+                        &format!("http.{}.followRedirects=false", rewritten.as_str()),
+                    ]);
+                }
             }
         }
         Ok(command)
@@ -278,13 +313,18 @@ fn credential_reply(target: &str, user: &str, token: &str, input: &str) -> Optio
         return None;
     }
     let actual = Url::parse(&format!("{protocol}://{host}/")).ok()?;
+    // Git decodes the path and removes leading/trailing slashes before
+    // calling credential helpers.
+    let expected_path = percent_encoding::percent_decode_str(expected.path())
+        .decode_utf8()
+        .ok()?;
     if !same_origin(&expected, &actual)
         || !actual.username().is_empty()
         || actual.password().is_some()
         || actual.path() != "/"
         || actual.query().is_some()
         || actual.fragment().is_some()
-        || path? != expected.path().trim_start_matches('/')
+        || path? != expected_path.trim_matches('/')
     {
         return None;
     }
@@ -419,5 +459,22 @@ mod tests {
             assert!(credential_reply(target, "alice", "secret", &input).is_none());
         }
         assert!(credential_reply(target, "alice", "secret\nmalicious=value", valid).is_none());
+    }
+
+    #[test]
+    fn helper_matches_git_normalized_paths_without_double_decoding() {
+        let target = "https://example.com//bucket%20site/git/a/r%2520.git///";
+        let valid = "protocol=https\nhost=example.com\npath=bucket site/git/a/r%20.git\n\n";
+        assert_eq!(
+            credential_reply(target, "alice", "secret", valid).as_deref(),
+            Some("username=alice\npassword=secret\n\n")
+        );
+        for input in [
+            valid.replace("r%20.git", "r .git"),
+            valid.replace("bucket site", "bucket%20site"),
+            valid.replace("r%20.git", "r%20.git/extra"),
+        ] {
+            assert!(credential_reply(target, "alice", "secret", &input).is_none());
+        }
     }
 }

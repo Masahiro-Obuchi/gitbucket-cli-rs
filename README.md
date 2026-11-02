@@ -271,7 +271,8 @@ Git command arguments, clone URLs, or Git configuration files. The helper checks
 the exact URL Git requests, including after `url.*.insteadOf` rewriting, and does
 not save credentials through existing helpers. Token-bearing commands allow only
 HTTP(S) transports, even if a local URL rewrite enables another transport.
-Token-bearing HTTP transfers do not follow redirects; configure the direct clone URL if a proxy redirects it.
+Token-bearing HTTP transfers do not follow redirects, including after URL rewriting;
+configure the direct clone URL if a proxy redirects it.
 The token is passed to the helper in the Git subprocess environment, so this does
 not protect against a local process with permission to inspect that environment.
 

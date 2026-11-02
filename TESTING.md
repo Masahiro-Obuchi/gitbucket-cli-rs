@@ -244,7 +244,14 @@ recovery (including non-Unicode values on Unix).
 challenge servers. It checks scoped authentication, URL rewrites to another
 origin/deployment, rejection of authenticated redirects and non-HTTP transports,
 private clone authentication, password-URL rejection, and non-persistence through
-an existing credential-store helper. The helper executable path deliberately
+an existing credential-store helper. Redirect coverage includes URL-specific
+settings after a rewrite adds a username and settings with a trailing slash.
+Encoded deployment paths and clone URLs ending in a slash exercise Git's
+normalized credential context.
+The redirect target replies on unexpected connections so a regression fails
+without hanging Git. Accepted mock sockets explicitly use blocking I/O with
+timeouts on every platform, including Windows.
+The helper executable path deliberately
 contains a space and a single quote. Run it with:
 
 ```bash
