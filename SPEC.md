@@ -939,7 +939,37 @@ user = "alice"
 protocol = "https"
 ```
 
-On Unix-like systems, `config.toml` is written with `0600` permissions.
+Configuration mutations use a single `AuthConfig::update` transaction: acquire
+an OS lock on the stable sibling `config.toml.lock`, reload the latest TOML,
+validate and apply the change, serialize, then persist before returning success.
+Lock contention waits up to five seconds and fails without printing success or
+changing configuration. Locks release on process exit; the empty lock file stays
+and must not be deleted. Login verifies credentials before entering this
+transaction and applies the verified credentials to the latest configuration.
+Prompts and network requests must not run inside the transaction.
+
+Changed content is written to a same-directory temporary file, synced, and
+atomically replaced. Unix additionally syncs the parent directory; a failure at
+this last stage reports that replacement already occurred and asks the user to
+reload before retrying. Earlier write/replace failures retain the previous file;
+ordinary errors clean up the temporary file. Abrupt termination can leave a
+private temporary file. Unchanged settings preserve the original bytes (including
+comments) and do not create an otherwise absent configuration. Actual mutations
+serialize TOML, as before. Invalid existing TOML is never overwritten by a
+mutation. Reads observe complete old or new files without taking the writer lock.
+
+On Unix, configuration and lock files use `0600`; newly created configuration
+directories use `0700`, without changing existing directories. Windows files
+inherit directory access permissions. Transient Windows access/sharing conflicts
+are retried for up to one second per filesystem operation. Replacement retries
+retain the same synced temporary file; they never delete the old configuration
+first, and persistent failures clean up the temporary file. Configuration and
+lock paths reject
+symlinks, reparse points, and non-regular files; `GB_CONFIG_DIR` can instead name
+the directory holding the real configuration. The parent directory must be
+trusted. Locking coordinates participating writers only, and atomicity/durability
+depend on filesystem support; manual editors, older clients, network filesystems,
+and power loss are not covered by a universal durability guarantee.
 
 ### 4.3 Credential precedence
 

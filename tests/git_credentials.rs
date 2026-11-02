@@ -159,12 +159,16 @@ fn credential_helper_rejects_other_host_and_has_no_store_operation() {
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
-        child
-            .stdin
-            .take()
-            .unwrap()
-            .write_all(input.as_bytes())
-            .unwrap();
+        let input_result = child.stdin.take().unwrap().write_all(input.as_bytes());
+        if let Err(error) = input_result {
+            // store/erase may exit successfully without consuming stdin.
+            // Still verify exit status, empty output, and non-persistence below.
+            assert!(
+                matches!(operation, "store" | "erase")
+                    && error.kind() == std::io::ErrorKind::BrokenPipe,
+                "{operation}: failed to send helper input: {error}"
+            );
+        }
         let output = child.wait_with_output().unwrap();
         assert!(
             output.status.success(),

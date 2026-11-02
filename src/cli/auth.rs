@@ -95,7 +95,7 @@ async fn login(
             .interact()?,
     };
 
-    let mut config = AuthConfig::load()?;
+    let config = AuthConfig::load()?;
     let profile = selected_profile_for_write(&config, cli_profile)?;
 
     // Verify the token by making a test API call
@@ -105,52 +105,55 @@ async fn login(
         .await
         .map_err(|err| map_login_error(&hostname, err))?;
 
-    config.set_host_for_profile(
-        profile.as_deref(),
-        hostname.clone(),
-        HostConfig {
-            token,
-            user: user.login.clone(),
-            protocol,
-        },
-    );
-    config.save()?;
+    AuthConfig::update(|config| {
+        config.set_host_for_profile(
+            profile.as_deref(),
+            hostname.clone(),
+            HostConfig {
+                token,
+                user: user.login.clone(),
+                protocol,
+            },
+        );
+        Ok(())
+    })?;
 
     println!("✓ Logged in to {} as {}", hostname, user.login);
     Ok(())
 }
 
 async fn logout(hostname: Option<&String>, cli_profile: &Option<String>) -> Result<()> {
-    let mut config = AuthConfig::load()?;
-    if let Some(profile) = selected_profile_for_read(&config, cli_profile)? {
-        let hostname = config
-            .resolve_hostname(hostname.map(String::as_str), Some(&profile))?
-            .ok_or_else(|| crate::error::GbError::Auth("No hosts configured.".into()))?;
-        if config.remove_host_for_profile(Some(&profile), &hostname) {
-            config.save()?;
-            println!("✓ Logged out from {} for profile {}", hostname, profile);
-        } else if config.remove_host(&hostname) {
-            config.save()?;
-            println!(
-                "✓ Logged out from {} (global credentials used by profile {})",
+    let message = AuthConfig::update(|config| {
+        if let Some(profile) = selected_profile_for_read(config, cli_profile)? {
+            let hostname = config
+                .resolve_hostname(hostname.map(String::as_str), Some(&profile))?
+                .ok_or_else(|| GbError::Auth("No hosts configured.".into()))?;
+            if config.remove_host_for_profile(Some(&profile), &hostname) {
+                return Ok(format!(
+                    "✓ Logged out from {} for profile {}",
+                    hostname, profile
+                ));
+            } else if config.remove_host(&hostname) {
+                return Ok(format!(
+                    "✓ Logged out from {} (global credentials used by profile {})",
+                    hostname, profile
+                ));
+            }
+            return Ok(format!(
+                "Not logged in to {} for profile {}",
                 hostname, profile
-            );
-        } else {
-            println!("Not logged in to {} for profile {}", hostname, profile);
+            ));
         }
-        return Ok(());
-    }
-
-    let hostname = config
-        .resolve_hostname(hostname.map(String::as_str), None)?
-        .ok_or_else(|| crate::error::GbError::Auth("No hosts configured.".into()))?;
-
-    if config.remove_host(&hostname) {
-        config.save()?;
-        println!("✓ Logged out from {}", hostname);
-    } else {
-        println!("Not logged in to {}", hostname);
-    }
+        let hostname = config
+            .resolve_hostname(hostname.map(String::as_str), None)?
+            .ok_or_else(|| GbError::Auth("No hosts configured.".into()))?;
+        Ok(if config.remove_host(&hostname) {
+            format!("✓ Logged out from {}", hostname)
+        } else {
+            format!("Not logged in to {}", hostname)
+        })
+    })?;
+    println!("{}", message);
     Ok(())
 }
 

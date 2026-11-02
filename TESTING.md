@@ -285,3 +285,23 @@ The Docker suite also runs origin-derived Issue listing without `GB_REPO`, so
 both root and `/gitbucket` deployments exercise repository inference against the
 live server. The pure target/URL tests cover IPv6, encoded path traversal, and
 base-URL validation separately.
+
+## Configuration Storage Regressions
+
+`tests/config_storage.rs` starts independent CLI processes to exercise concurrent
+profile updates, login suspended during HTTP authentication, readers during
+repeated atomic replacements, lock timeouts, and lock release after process
+termination. Malformed TOML must remain unchanged on failure. Unit cases inject
+partial writes and rename failures and cover no-op byte preservation, Unix
+permissions, and symlink rejection. Windows unit cases hold readers that deny
+delete sharing to verify retry/release and bounded failure with old-byte retention
+and temporary-file cleanup. All credentials in these tests are dummy values.
+
+```bash
+cargo test --locked --test config_storage
+cargo test --locked --bin gb config::
+```
+
+The platform workflow runs both commands on macOS and Windows; the full Linux
+suite includes them. Platform-specific Unix checks are conditional. Local tests
+exercise the local filesystem, not power-loss durability or all network filesystems.

@@ -6,6 +6,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const SERVER_TIMEOUT: Duration = Duration::from_secs(5);
+// Git-backed tests launch several processes before connecting. Concurrent tests
+// on Windows runners can take longer than the request I/O timeout to do so.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
 pub struct CapturedRequest {
@@ -50,7 +53,7 @@ impl ScriptedResponse {
 
 fn accept_with_timeout(listener: &TcpListener) -> TcpStream {
     listener.set_nonblocking(true).unwrap();
-    let deadline = Instant::now() + SERVER_TIMEOUT;
+    let deadline = Instant::now() + CONNECT_TIMEOUT;
 
     loop {
         match listener.accept() {
