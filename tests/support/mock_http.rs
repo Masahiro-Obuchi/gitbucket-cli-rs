@@ -55,6 +55,9 @@ fn accept_with_timeout(listener: &TcpListener) -> TcpStream {
     loop {
         match listener.accept() {
             Ok((stream, _)) => {
+                // Accepted sockets can inherit nonblocking mode on Windows.
+                // Request reads below rely on blocking I/O with timeouts.
+                stream.set_nonblocking(false).unwrap();
                 stream.set_read_timeout(Some(SERVER_TIMEOUT)).unwrap();
                 stream.set_write_timeout(Some(SERVER_TIMEOUT)).unwrap();
                 return stream;

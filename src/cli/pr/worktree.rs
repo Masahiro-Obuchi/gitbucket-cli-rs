@@ -2,6 +2,7 @@ use std::process::{Command, Output};
 
 use crate::cli::common::RepoContext;
 use crate::error::{GbError, Result};
+use crate::git::GitAuth;
 use crate::output;
 
 use super::git::{pr_base_fetch_source, pr_head_fetch_source, resolve_git_fetch_source};
@@ -25,11 +26,15 @@ pub(super) async fn checkout(
         .ok_or_else(|| GbError::Other("PR has no head branch".into()))?;
     let local_branch = format!("pr-{}", number);
 
-    let fetch_source =
-        resolve_git_fetch_source(&ctx.hostname, cli_profile, &pr_head_fetch_source(&pr));
+    let fetch_source = resolve_git_fetch_source(&pr_head_fetch_source(&pr, &ctx.git_auth))?;
     let head_ref = format!("refs/gb/pr/{}/head", number);
 
-    let fetch_output = git_fetch_ref(&fetch_source.command_source, branch, &head_ref)?;
+    let fetch_output = git_fetch_ref(
+        &ctx.git_auth,
+        &fetch_source.command_source,
+        branch,
+        &head_ref,
+    )?;
 
     if !fetch_output.status.success() {
         return Err(GbError::Other(format!(
@@ -69,7 +74,7 @@ pub(super) async fn diff(
         .client
         .get_pull_request(&ctx.owner, &ctx.repo, number)
         .await?;
-    match live_branch_diff(&ctx.hostname, cli_profile, number, no_pager, &pr) {
+    match live_branch_diff(&ctx.git_auth, number, no_pager, &pr) {
         Ok(diff) => {
             print!("{diff}");
             Ok(())
@@ -96,8 +101,7 @@ struct DiffFailure {
 }
 
 fn live_branch_diff(
-    hostname: &str,
-    cli_profile: &Option<String>,
+    auth: &GitAuth,
     number: u64,
     no_pager: bool,
     pr: &crate::models::pull_request::PullRequest,
@@ -119,18 +123,23 @@ fn live_branch_diff(
             message: "API response does not include a base ref.".into(),
         })?;
 
-    let fetch_source = resolve_git_fetch_source(hostname, cli_profile, &pr_head_fetch_source(pr));
+    let fetch_source =
+        resolve_git_fetch_source(&pr_head_fetch_source(pr, auth)).map_err(|err| DiffFailure {
+            cause: "head_fetch_failed",
+            message: err.to_string(),
+        })?;
     let base_fetch_source =
-        resolve_git_fetch_source(hostname, cli_profile, &pr_base_fetch_source(pr));
+        resolve_git_fetch_source(&pr_base_fetch_source(pr, auth)).map_err(|err| DiffFailure {
+            cause: "base_fetch_failed",
+            message: err.to_string(),
+        })?;
     let base_ref = format!("refs/gb/pr/{}/base", number);
     let head_ref = format!("refs/gb/pr/{}/head", number);
 
-    let base_fetch =
-        git_fetch_ref(&base_fetch_source.command_source, base, &base_ref).map_err(|err| {
-            DiffFailure {
-                cause: "base_fetch_failed",
-                message: format!("failed to run git fetch for base branch '{base}': {err}"),
-            }
+    let base_fetch = git_fetch_ref(auth, &base_fetch_source.command_source, base, &base_ref)
+        .map_err(|err| DiffFailure {
+            cause: "base_fetch_failed",
+            message: format!("failed to run git fetch for base branch '{base}': {err}"),
         })?;
     if !base_fetch.status.success() {
         return Err(DiffFailure {
@@ -145,7 +154,7 @@ fn live_branch_diff(
     }
 
     let head_fetch =
-        git_fetch_ref(&fetch_source.command_source, head, &head_ref).map_err(|err| {
+        git_fetch_ref(auth, &fetch_source.command_source, head, &head_ref).map_err(|err| {
             DiffFailure {
                 cause: "head_fetch_failed",
                 message: format!("failed to run git fetch for head branch '{head}': {err}"),
@@ -250,13 +259,16 @@ fn push_url(urls: &mut Vec<String>, url: Option<&str>) {
     }
 }
 
-fn git_fetch_ref(source: &str, branch: &str, target_ref: &str) -> std::io::Result<Output> {
-    Command::new("git")
-        .env("GIT_TERMINAL_PROMPT", "0")
+fn git_fetch_ref(auth: &GitAuth, source: &str, branch: &str, target_ref: &str) -> Result<Output> {
+    let mut output = auth
+        .command(source)?
         .arg("fetch")
+        .arg("--")
         .arg(source)
         .arg(format!("{branch}:{target_ref}"))
-        .output()
+        .output()?;
+    auth.redact_output(&mut output);
+    Ok(output)
 }
 
 fn git_checkout_branch(branch: &str, start_point: &str) -> std::io::Result<Output> {

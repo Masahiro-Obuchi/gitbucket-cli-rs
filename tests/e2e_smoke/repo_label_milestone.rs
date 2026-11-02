@@ -293,3 +293,36 @@ fn e2e_repo_delete_against_live_instance() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
+fn e2e_private_repo_clone_uses_configured_token_without_url_credentials() {
+    let temp = tempdir().unwrap();
+    login(temp.path());
+    let name = format!("e2e-private-clone-{}", unique_suffix());
+    let repo = format!("{}/{}", required_env("GB_E2E_USER"), name);
+    gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["repo", "create", &name, "--private", "--add-readme"],
+    );
+    let destination = temp.path().join("private-clone");
+    gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["repo", "clone", &repo, destination.to_str().unwrap()],
+    );
+    assert!(destination.join("README.md").exists());
+    let remote = git_output(&destination, &["remote", "get-url", "origin"]);
+    let parsed = url::Url::parse(&remote).unwrap();
+    assert!(parsed.username().is_empty());
+    assert!(parsed.password().is_none());
+    let config = std::fs::read_to_string(destination.join(".git/config")).unwrap();
+    assert!(!config.contains("credential.helper"));
+    assert!(!config.contains(&required_env("GB_E2E_TOKEN")));
+    gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["repo", "delete", &repo, "--yes"],
+    );
+}

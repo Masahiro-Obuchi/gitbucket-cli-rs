@@ -11,5 +11,3 @@ pub use edit_values::{
 };
 pub use repo_resolution::{parse_owner_repo, resolve_repo};
 pub use web::{create_web_session, update_issue_assignees_via_web};
-
-pub(crate) use repo_resolution::parse_git_url;

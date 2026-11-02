@@ -1,5 +1,4 @@
-use crate::cli::common::{parse_git_url, parse_owner_repo};
-use crate::config::auth::AuthConfig;
+use crate::error::Result;
 use crate::models::pull_request::PullRequest;
 use crate::models::repository::Repository;
 
@@ -40,94 +39,47 @@ pub(super) struct GitFetchSource {
     pub display_source: String,
 }
 
-fn credentialed_git_http_url(
-    hostname: &str,
-    cli_profile: &Option<String>,
-    url: &str,
-) -> Option<String> {
-    if !url.starts_with("http://") && !url.starts_with("https://") {
-        return None;
-    }
-
-    let config = AuthConfig::load().ok()?;
-    let host = config
-        .get_host_for_profile(hostname, cli_profile.as_deref())
-        .ok()?;
-    if host.user.is_empty() {
-        return None;
-    }
-
-    let mut parsed = url::Url::parse(url).ok()?;
-    parsed.set_username(&host.user).ok()?;
-    parsed.set_password(Some(&host.token)).ok()?;
-    Some(parsed.to_string())
-}
-
-pub(super) fn resolve_git_fetch_source(
-    hostname: &str,
-    cli_profile: &Option<String>,
-    source: &str,
-) -> GitFetchSource {
-    if source.starts_with("http://") || source.starts_with("https://") {
-        return GitFetchSource {
-            command_source: credentialed_git_http_url(hostname, cli_profile, source)
-                .unwrap_or_else(|| source.to_string()),
-            display_source: source.to_string(),
-        };
-    }
-
-    if let Some(remote_url) = git_remote_url(source) {
-        if let Some(command_source) = credentialed_git_http_url(hostname, cli_profile, &remote_url)
-        {
-            return GitFetchSource {
-                command_source,
-                display_source: source.to_string(),
-            };
-        }
-    }
-
-    GitFetchSource {
-        command_source: source.to_string(),
-        display_source: source.to_string(),
-    }
+pub(super) fn resolve_git_fetch_source(source: &str) -> Result<GitFetchSource> {
+    let resolved = git_remote_url(source).unwrap_or_else(|| source.to_string());
+    let clean = crate::git::clean_source(&resolved)?;
+    Ok(GitFetchSource {
+        command_source: clean.clone(),
+        display_source: clean,
+    })
 }
 
 pub(super) fn matching_remote_name(repo: &Repository) -> Option<String> {
-    let expected_full_name = parse_owner_repo(&repo.full_name).ok();
+    let expected_url = repo.clone_url.as_deref()?;
 
     for remote in git_remote_names() {
         let Some(url) = git_remote_url(&remote) else {
             continue;
         };
 
-        if repo.clone_url.as_deref() == Some(url.as_str()) {
+        if crate::git::repository_urls_match(expected_url, &url) {
             return Some(remote);
-        }
-
-        if let (Some((expected_owner, expected_repo)), Ok((owner, repo_name))) =
-            (expected_full_name.as_ref(), parse_git_url(&url))
-        {
-            if owner == *expected_owner && repo_name == *expected_repo {
-                return Some(remote);
-            }
         }
     }
 
     None
 }
 
-fn pr_repo_fetch_source(repo: Option<&Repository>) -> String {
-    repo.and_then(matching_remote_name)
-        .or_else(|| repo.and_then(|repository| repository.clone_url.clone()))
-        .unwrap_or_else(|| "origin".to_string())
+fn pr_repo_fetch_source(repo: Option<&Repository>, auth: &crate::git::GitAuth) -> String {
+    let Some(repo) = repo else {
+        return "origin".to_string();
+    };
+    let clone_url = auth.clone_url(repo);
+    let mut resolved = repo.clone();
+    resolved.clone_url = Some(clone_url.clone());
+    matching_remote_name(&resolved).unwrap_or(clone_url)
 }
 
-pub(super) fn pr_head_fetch_source(pr: &PullRequest) -> String {
-    pr_repo_fetch_source(pr.head.as_ref().and_then(|head| head.repo.as_ref()))
+pub(super) fn pr_head_fetch_source(pr: &PullRequest, auth: &crate::git::GitAuth) -> String {
+    pr_repo_fetch_source(pr.head.as_ref().and_then(|head| head.repo.as_ref()), auth)
 }
 
-pub(super) fn pr_base_fetch_source(pr: &PullRequest) -> String {
-    pr_repo_fetch_source(pr.base.as_ref().and_then(|base| base.repo.as_ref()))
+pub(super) fn pr_base_fetch_source(pr: &PullRequest, auth: &crate::git::GitAuth) -> String {
+    pr_repo_fetch_source(pr.base.as_ref().and_then(|base| base.repo.as_ref()), auth)
 }
 
 pub(super) fn current_branch_name() -> Option<String> {

@@ -255,9 +255,30 @@ gb pr edit 5 --add-assignee alice,bob --remove-assignee carol
 
 `gb pr checkout` and `gb pr diff` work with same-repository PRs and fork-based PRs.
 When a closed PR's diff cannot be reconstructed from fetched refs, `gb pr diff` tries the saved PR diff URL before failing. If no saved diff can be fetched, it exits non-zero and reports whether the live diff was unavailable because a ref was missing, a base/head fetch failed, or the fetched refs had no diff.
-When the PR head repository is available from the API response, `gb` fetches from that repository's clone URL and operates on `FETCH_HEAD`.
+When the PR head repository is available from the API response, `gb` resolves that repository's clone URL or a matching remote and fetches into `refs/gb/pr/<NUMBER>/head` (and `/base` for diff). Remotes are matched by server and repository path, not just `OWNER/REPO`.
 
 For automation, pass global `--json-errors` or set `GB_JSON_ERRORS=true` to get a single JSON error object on stderr, including fields such as `error.code`, `error.cause`, `error.status`, and `error.exit_code`.
+
+### Git authentication
+
+`gb repo clone OWNER/REPO`, `gb pr checkout`, and `gb pr diff` reuse the selected
+GitBucket user/token for HTTP(S) Git URLs on the same scheme, host, port, and
+configured base path. With `GB_TOKEN` alone, also set `GB_USER` for private Git
+access. SSH and other clone origins use Git's own authentication.
+
+Credentials are supplied by a process-local Git credential helper, not placed in
+Git command arguments, clone URLs, or Git configuration files. The helper checks
+the exact URL Git requests, including after `url.*.insteadOf` rewriting, and does
+not save credentials through existing helpers. Token-bearing commands allow only
+HTTP(S) transports, even if a local URL rewrite enables another transport.
+Token-bearing HTTP transfers do not follow redirects, including after URL rewriting;
+configure the direct clone URL if a proxy redirects it.
+The token is passed to the helper in the Git subprocess environment, so this does
+not protect against a local process with permission to inspect that environment.
+
+Full-URL `gb repo clone` uses Git's own credentials. HTTP URLs containing passwords
+are rejected; use a credential helper or `OWNER/REPO` with `gb auth login` instead.
+Existing HTTP remote userinfo is removed from the command URL used by PR fetches.
 
 ## Environment variables
 
@@ -269,7 +290,7 @@ For automation, pass global `--json-errors` or set `GB_JSON_ERRORS=true` to get 
 | `GB_PROFILE`    | Default configuration profile                             |
 | `GB_CONFIG_DIR` | Config directory path (default: `~/.config/gb/`)          |
 | `GB_PROTOCOL`   | Protocol override when using `GB_TOKEN` with a plain host |
-| `GB_USER`       | Username for GitBucket web-session fallbacks              |
+| `GB_USER`       | Username for GitBucket web sessions and token-authenticated Git transfers |
 | `GB_PASSWORD`   | Password for GitBucket web-session fallbacks              |
 | `GB_JSON_ERRORS` | Print failures as structured JSON on stderr              |
 | `NO_COLOR`      | Disable colored output                                    |

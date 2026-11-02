@@ -460,6 +460,7 @@ dependencies = [
  "dialoguer",
  "dirs",
  "open",
+ "percent-encoding",
  "reqwest",
  "serde",
  "serde_json",

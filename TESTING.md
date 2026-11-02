@@ -237,3 +237,29 @@ Integration tests should continue to set environment variables on child commands
 The guard's restoration regression test runs in an isolated child test process
 and covers absent, empty and populated values, panic unwinding, and poisoned-lock
 recovery (including non-Unicode values on Unix).
+
+## Git Credential Security Regression Tests
+
+`tests/git_credentials.rs` drives the real Git executable against local HTTP
+challenge servers. It checks scoped authentication, URL rewrites to another
+origin/deployment, rejection of authenticated redirects and non-HTTP transports,
+private clone authentication, password-URL rejection, and non-persistence through
+an existing credential-store helper. Redirect coverage includes URL-specific
+settings after a rewrite adds a username and settings with a trailing slash.
+Encoded deployment paths and clone URLs ending in a slash exercise Git's
+normalized credential context.
+The redirect target replies on unexpected connections so a regression fails
+without hanging Git. Accepted mock sockets explicitly use blocking I/O with
+timeouts on every platform, including Windows.
+The helper executable path deliberately
+contains a space and a single quote. Run it with:
+
+```bash
+cargo test --locked --test git_credentials
+```
+
+The Rust workflow runs this integration target on macOS and Windows in addition
+to the full Linux suite. The Docker suite includes a private repository clone
+that checks the saved remote URL and Git configuration for credentials. Internal
+helper environment variables are subprocess-only implementation details, not
+public configuration options.
