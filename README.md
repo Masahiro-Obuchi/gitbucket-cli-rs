@@ -321,7 +321,26 @@ Existing HTTP remote userinfo is removed from the command URL used by PR fetches
 ## Configuration file
 
 Credentials are stored in `~/.config/gb/config.toml` (or under `GB_CONFIG_DIR`).
-On Unix-like systems, the file is written with `0600` permissions.
+Updates use a temporary file in the same directory, sync it, then atomically
+replace `config.toml`. Concurrent `login`, `logout`, and `config` changes reload
+the latest settings under an OS file lock, waiting up to five seconds. Login
+performs authentication before acquiring this lock. Readers see a complete old
+or new file; unchanged settings retain their original formatting and comments.
+
+The empty `config.toml.lock` file remains after commands finish. Do not delete it:
+the OS releases its lock when the process exits, including after a crash.
+Configuration and lock files must be regular files; symlinks and Windows reparse
+points are rejected. Set `GB_CONFIG_DIR` to the directory containing the real
+configuration instead.
+
+On Unix-like systems, configuration and lock files use `0600` permissions, and
+new configuration directories use `0700`. Existing directory permissions are
+preserved. On Windows, files inherit the directory's access permissions; use a
+private configuration directory. Atomic replacement requires filesystem support;
+locks coordinate participating `gb` commands, not manual editors or older
+versions. Unix also syncs the parent directory. If this final sync fails, the
+command reports that replacement already occurred: reload before retrying.
+These steps do not guarantee durability on every filesystem or during power loss.
 
 ```toml
 default_host = "https://gitbucket.example.com/gitbucket"

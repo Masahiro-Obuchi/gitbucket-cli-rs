@@ -4,6 +4,9 @@ use crate::config::{auth::AuthConfig, config_dir};
 use crate::error::{GbError, Result};
 
 #[derive(Args)]
+#[command(
+    after_help = "Updates atomically replace config.toml and wait up to 5 seconds for an OS lock.\nThe empty config.toml.lock file remains after exit; do not delete it.\nConfiguration and lock files must be regular files (no symlinks/reparse points)."
+)]
 pub struct ConfigArgs {
     #[command(subcommand)]
     pub command: ConfigCommand,
@@ -173,106 +176,92 @@ fn get(key: ConfigGetKey) -> Result<()> {
 }
 
 fn set(key: ConfigSetKey) -> Result<()> {
-    let mut config = AuthConfig::load()?;
-
-    match key {
-        ConfigSetKey::DefaultHost { hostname } => {
-            let stored_hostname = resolve_saved_hostname(&config, &hostname)?;
-            config.default_host = Some(stored_hostname.clone());
-            config.save()?;
-            println!("✓ Set default host to {}", stored_hostname);
-        }
-        ConfigSetKey::DefaultProfile { name } => {
-            if !config.profiles.contains_key(&name) {
-                return Err(GbError::Config(format!(
-                    "No saved profile named {}. Run `gb config set profile {}` first.",
-                    name, name
-                )));
+    let message = AuthConfig::update(|config| {
+        let message = match key {
+            ConfigSetKey::DefaultHost { hostname } => {
+                let stored = resolve_saved_hostname(config, &hostname)?;
+                config.default_host = Some(stored.clone());
+                format!("✓ Set default host to {}", stored)
             }
-            config.default_profile = Some(name.clone());
-            config.save()?;
-            println!("✓ Set default profile to {}", name);
-        }
-        ConfigSetKey::Host {
-            host,
-            user,
-            protocol,
-            default,
-        } => {
-            if user.is_none() && protocol.is_none() && !default {
-                return Err(GbError::Config(
-                    "Nothing to update. Specify --user, --protocol, or --default.".into(),
-                ));
+            ConfigSetKey::DefaultProfile { name } => {
+                if !config.profiles.contains_key(&name) {
+                    return Err(GbError::Config(format!(
+                        "No saved profile named {}. Run `gb config set profile {}` first.",
+                        name, name
+                    )));
+                }
+                config.default_profile = Some(name.clone());
+                format!("✓ Set default profile to {}", name)
             }
-
-            let stored_hostname = resolve_saved_hostname(&config, &host)?;
-            let entry = config.hosts.get_mut(&stored_hostname).unwrap();
-
-            if let Some(user) = user {
-                entry.user = user;
+            ConfigSetKey::Host {
+                host,
+                user,
+                protocol,
+                default,
+            } => {
+                if user.is_none() && protocol.is_none() && !default {
+                    return Err(GbError::Config(
+                        "Nothing to update. Specify --user, --protocol, or --default.".into(),
+                    ));
+                }
+                let stored = resolve_saved_hostname(config, &host)?;
+                let entry = config.hosts.get_mut(&stored).unwrap();
+                if let Some(user) = user {
+                    entry.user = user;
+                }
+                if let Some(protocol) = protocol {
+                    validate_protocol(&protocol)?;
+                    entry.protocol = protocol;
+                }
+                if default {
+                    config.default_host = Some(stored.clone());
+                }
+                format!("✓ Updated config for {}", stored)
             }
-
-            if let Some(protocol) = protocol {
-                validate_protocol(&protocol)?;
-                entry.protocol = protocol;
+            ConfigSetKey::Profile {
+                name,
+                default_host,
+                default_repo,
+            } => {
+                if let Some(repo) = default_repo.as_deref() {
+                    crate::cli::common::parse_owner_repo(repo)?;
+                }
+                let profile = config.profile_mut(&name);
+                if let Some(host) = default_host {
+                    profile.default_host = Some(host);
+                }
+                if let Some(repo) = default_repo {
+                    profile.default_repo = Some(repo);
+                }
+                format!("✓ Updated profile {}", name)
             }
-
-            if default {
-                config.default_host = Some(stored_hostname.clone());
-            }
-
-            config.save()?;
-            println!("✓ Updated config for {}", stored_hostname);
-        }
-        ConfigSetKey::Profile {
-            name,
-            default_host,
-            default_repo,
-        } => {
-            if let Some(repo) = default_repo.as_deref() {
-                crate::cli::common::parse_owner_repo(repo)?;
-            }
-
-            let profile = config.profile_mut(&name);
-            if let Some(default_host) = default_host {
-                profile.default_host = Some(default_host);
-            }
-            if let Some(default_repo) = default_repo {
-                profile.default_repo = Some(default_repo);
-            }
-
-            config.save()?;
-            println!("✓ Updated profile {}", name);
-        }
-    }
-
+        };
+        Ok(message)
+    })?;
+    println!("{}", message);
     Ok(())
 }
 
 fn unset(key: ConfigUnsetKey) -> Result<()> {
-    let mut config = AuthConfig::load()?;
-
-    match key {
-        ConfigUnsetKey::DefaultHost => {
-            if config.default_host.is_none() {
-                println!("No default host configured.");
-                return Ok(());
+    let message = AuthConfig::update(|config| {
+        Ok(match key {
+            ConfigUnsetKey::DefaultHost => {
+                if config.default_host.take().is_some() {
+                    "✓ Cleared default host"
+                } else {
+                    "No default host configured."
+                }
             }
-            config.default_host = None;
-            config.save()?;
-            println!("✓ Cleared default host");
-        }
-        ConfigUnsetKey::DefaultProfile => {
-            if config.default_profile.is_none() {
-                println!("No default profile configured.");
-                return Ok(());
+            ConfigUnsetKey::DefaultProfile => {
+                if config.default_profile.take().is_some() {
+                    "✓ Cleared default profile"
+                } else {
+                    "No default profile configured."
+                }
             }
-            config.default_profile = None;
-            config.save()?;
-            println!("✓ Cleared default profile");
-        }
-    }
-
+        })
+    })?;
+    println!("{}", message);
     Ok(())
 }
 

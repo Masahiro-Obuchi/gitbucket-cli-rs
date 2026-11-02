@@ -18,7 +18,14 @@ pub fn config_dir() -> Result<PathBuf> {
 pub fn ensure_config_dir() -> Result<PathBuf> {
     let dir = config_dir()?;
     if !dir.exists() {
-        std::fs::create_dir_all(&dir)?;
+        let mut builder = std::fs::DirBuilder::new();
+        builder.recursive(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            builder.mode(0o700);
+        }
+        builder.create(&dir)?;
     }
     Ok(dir)
 }
@@ -65,6 +72,14 @@ mod tests {
         let ensured = ensure_config_dir().unwrap();
         assert_eq!(ensured, dir);
         assert!(dir.is_dir());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(&dir).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+        }
 
         let _ = fs::remove_dir_all(&dir);
     }

@@ -38,3 +38,7 @@ jobs:
           toolchain: stable
       - name: Test Git credential helper integration
         run: cargo test --locked --test git_credentials
+      - name: Test atomic configuration and process locking
+        run: cargo test --locked --test config_storage
+      - name: Test configuration storage unit cases
+        run: cargo test --locked --bin gb config::
