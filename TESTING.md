@@ -320,6 +320,9 @@ error when a post-checkout hook fails after Git has switched branches.
 Submodule cases check that ignore settings cannot hide uncommitted work, and
 that recursive Git settings cannot overwrite ignored files, move submodule HEADs
 or update their tracking refs and `FETCH_HEAD` during PR checkout.
+Long deployment URLs are exercised through both checkout and diff with
+`core.longpaths=false`; internal ref paths stay bounded and branch provenance
+retains the complete target.
 
 ```bash
 cargo test --locked --test pr_checkout --test git_credentials --test git_regressions

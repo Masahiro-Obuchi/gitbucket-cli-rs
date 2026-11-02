@@ -280,8 +280,9 @@ gb pr edit 5 --add-assignee alice,bob --remove-assignee carol
 When a closed PR's diff cannot be reconstructed from fetched refs, `gb pr diff` tries the saved PR diff URL before failing. If no saved diff can be fetched, it exits non-zero and reports whether the live diff was unavailable because a ref was missing, a base/head fetch failed, or the fetched refs had no diff.
 When the PR head repository is available from the API response, `gb` resolves that
 repository's clone URL or a matching remote. Internal fetch refs under
-`refs/gb/pr-targets/` encode the configured GitBucket base URL, repository, and PR
-number, so different targets do not share refs. Remotes are matched by server and
+`refs/gb/pr-targets/` use a fixed-length SHA-256 identifier of the configured
+GitBucket base URL, repository, and PR number. This keeps internal ref paths short
+for long deployment URLs on Windows. Remotes are matched by server and
 repository path, not just `OWNER/REPO`. Fetches leave remote-tracking refs, tags,
 and `FETCH_HEAD` alone.
 Fetches do not recurse into submodules.

@@ -40,7 +40,7 @@ impl Fixture {
         ScriptedResponse::json(
             &format!("GET {prefix}/api/v3/repos/{repo}/pulls/7 HTTP/1.1"),
             "200 OK",
-            &json!({"number":7,"title":"checkout test","state":"open","head":{"ref":head}})
+            &json!({"number":7,"title":"checkout test","state":"open","head":{"ref":head},"base":{"ref":"main"}})
                 .to_string(),
         )
     }
@@ -474,6 +474,44 @@ fn namespaced_fetch_refs_distinguish_repositories_without_touching_legacy_refs()
         git_output(&f.local, &["rev-parse", "keep-first-pr"]),
         git_output(&f.local, &["rev-parse", "pr-7"])
     );
+    server.join().unwrap();
+}
+
+#[test]
+fn long_deployment_urls_keep_internal_ref_paths_bounded_for_checkout_and_diff() {
+    let f = Fixture::new();
+    run_git(&f.local, &["config", "core.longpaths", "false"]);
+    let prefix = format!(
+        "/deployments/{}",
+        "company-gitbucket/".repeat(10).trim_end_matches('/')
+    );
+    let (port, server) = spawn_scripted_server(vec![
+        f.response(&prefix, "alice/demo", "feature"),
+        f.response(&prefix, "alice/demo", "feature"),
+    ]);
+    assert_success(&f.checkout(port, &prefix, "alice/demo", &f.local));
+    let output = f
+        .env
+        .repo_api_command(format!("127.0.0.1:{port}{prefix}"), "alice/demo")
+        .current_dir(&f.local)
+        .args(["pr", "diff", "7", "--no-pager"])
+        .output()
+        .unwrap();
+    assert_success(&output);
+    assert!(String::from_utf8_lossy(&output.stdout).contains("+PR changes"));
+    let refs = git_output(
+        &f.local,
+        &["for-each-ref", "--format=%(refname)", "refs/gb/pr-targets"],
+    );
+    assert_eq!(refs.lines().count(), 2);
+    assert!(
+        refs.lines().all(|reference| reference.len() < 100),
+        "{refs}"
+    );
+    assert!(
+        git_output(&f.local, &["config", "--local", "branch.pr-7.gb-pr-target"]).contains(&prefix)
+    );
+    assert_eq!(git_output(&f.local, &["config", "core.longpaths"]), "false");
     server.join().unwrap();
 }
 

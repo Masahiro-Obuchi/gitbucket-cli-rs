@@ -827,9 +827,11 @@ Execution flow:
    progress, branches owned by other PR targets, and use in another worktree.
 4. Fetch only the head branch into a target-specific internal ref under
    `refs/gb/pr-targets/`, using the same scoped credential helper as
-   `repo clone OWNER/REPO`. The namespace reversibly encodes the canonical web
-   base URL (scheme/host/port/deployment path), owner, repository and PR number.
-   Encoded components are chunked to stay within filename component limits.
+   `repo clone OWNER/REPO`. The namespace is `refs/gb/pr-targets/v1/<SHA-256>`,
+   hashing the JSON tuple of canonical web base URL
+   (scheme/host/port/deployment path), owner, repository and PR number. The fixed
+   64-digit digest keeps ref paths short for long deployment URLs on Windows;
+   branch provenance retains the complete tuple for exact target comparison.
    Checkout and diff use this namespace; legacy `refs/gb/pr/<NUMBER>` refs are
    untouched. Fetch uses a fully qualified source ref, no tag following, no
    `FETCH_HEAD` write, no submodule recursion, and an empty refmap to avoid

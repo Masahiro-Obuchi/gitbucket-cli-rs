@@ -110,18 +110,15 @@ pub(super) fn target_identity(ctx: &RepoContext, number: u64) -> String {
 }
 
 pub(super) fn fetch_namespace(identity: &str) -> String {
-    // Reversible encoding (no hash collisions), chunked below filesystem component limits.
-    let encoded: String = identity
-        .as_bytes()
+    // Keep ref paths bounded even for long deployment URLs on Windows. The full
+    // identity remains in branch provenance; this digest names only fetched refs.
+    let digest = ring::digest::digest(&ring::digest::SHA256, identity.as_bytes());
+    let encoded: String = digest
+        .as_ref()
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect();
-    let chunks: Vec<_> = encoded
-        .as_bytes()
-        .chunks(120)
-        .map(|chunk| std::str::from_utf8(chunk).unwrap())
-        .collect();
-    format!("refs/gb/pr-targets/{}", chunks.join("/"))
+    format!("refs/gb/pr-targets/v1/{encoded}")
 }
 
 pub(super) fn git_fetch_ref(
