@@ -56,7 +56,8 @@ fn private_fetch_uses_ephemeral_credentials_without_writing_token_to_repo() {
     );
     let config_before = std::fs::read(env.path().join(".git/config")).unwrap();
     // The helper command must also survive shell quoting in an installed path.
-    let copied = env.path().join("gb helper's copy.exe");
+    let executable_dir = tempfile::tempdir().unwrap();
+    let copied = executable_dir.path().join("gb helper's copy.exe");
     std::fs::copy(env.command().get_program(), &copied).unwrap();
     let output = std::process::Command::new(&copied)
         .current_dir(env.path())
@@ -454,7 +455,8 @@ fn authenticated_url_cannot_be_rewritten_to_an_external_transport() {
     run_git(env.path(), &["remote", "add", "origin", &url]);
     // The rewritten transport is usable: without the protocol restriction,
     // checkout would succeed. Do not use a nonexistent target as the control.
-    let remote = env.path().join("local-transport");
+    let transport_dir = tempfile::tempdir().unwrap();
+    let remote = transport_dir.path().join("local-transport");
     init_work_repo(&remote);
     support::git_repo::commit_readme(&remote, "local transport\n", "Seed transport");
     run_git(&remote, &["branch", "-M", "main"]);

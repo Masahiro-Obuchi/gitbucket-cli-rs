@@ -2,64 +2,11 @@ use std::process::{Command, Output};
 
 use crate::cli::common::RepoContext;
 use crate::error::{GbError, Result};
-use crate::git::GitAuth;
-use crate::output;
 
-use super::git::{pr_base_fetch_source, pr_head_fetch_source, resolve_git_fetch_source};
-
-pub(super) async fn checkout(
-    hostname: &Option<String>,
-    cli_repo: &Option<String>,
-    cli_profile: &Option<String>,
-    number: u64,
-) -> Result<()> {
-    let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
-
-    let pr = ctx
-        .client
-        .get_pull_request(&ctx.owner, &ctx.repo, number)
-        .await?;
-    let branch = pr
-        .head
-        .as_ref()
-        .map(|h| h.ref_name.as_str())
-        .ok_or_else(|| GbError::Other("PR has no head branch".into()))?;
-    let local_branch = format!("pr-{}", number);
-
-    let fetch_source = resolve_git_fetch_source(&pr_head_fetch_source(&pr, &ctx.git_auth))?;
-    let head_ref = format!("refs/gb/pr/{}/head", number);
-
-    let fetch_output = git_fetch_ref(
-        &ctx.git_auth,
-        &fetch_source.command_source,
-        branch,
-        &head_ref,
-    )?;
-
-    if !fetch_output.status.success() {
-        return Err(GbError::Other(format!(
-            "git fetch failed for '{}' from {}",
-            branch, fetch_source.display_source
-        )));
-    }
-
-    let checkout_output = git_checkout_branch(&local_branch, &head_ref)?;
-
-    if checkout_output.status.success() {
-        print_command_output(&checkout_output);
-    } else {
-        return Err(GbError::Other(format!(
-            "git checkout failed. {}",
-            command_stderr(&checkout_output)
-        )));
-    }
-
-    println!(
-        "✓ Checked out branch '{}' for PR #{} (from '{}')",
-        local_branch, number, branch
-    );
-    Ok(())
-}
+use super::git::{
+    command_stderr, fetch_namespace, git_fetch_ref, pr_base_fetch_source, pr_head_fetch_source,
+    resolve_git_fetch_source, target_identity,
+};
 
 pub(super) async fn diff(
     hostname: &Option<String>,
@@ -74,7 +21,7 @@ pub(super) async fn diff(
         .client
         .get_pull_request(&ctx.owner, &ctx.repo, number)
         .await?;
-    match live_branch_diff(&ctx.git_auth, number, no_pager, &pr) {
+    match live_branch_diff(&ctx, number, no_pager, &pr) {
         Ok(diff) => {
             print!("{diff}");
             Ok(())
@@ -101,11 +48,12 @@ struct DiffFailure {
 }
 
 fn live_branch_diff(
-    auth: &GitAuth,
+    ctx: &RepoContext,
     number: u64,
     no_pager: bool,
     pr: &crate::models::pull_request::PullRequest,
 ) -> std::result::Result<String, DiffFailure> {
+    let auth = &ctx.git_auth;
     let head = pr
         .head
         .as_ref()
@@ -133,8 +81,9 @@ fn live_branch_diff(
             cause: "base_fetch_failed",
             message: err.to_string(),
         })?;
-    let base_ref = format!("refs/gb/pr/{}/base", number);
-    let head_ref = format!("refs/gb/pr/{}/head", number);
+    let namespace = fetch_namespace(&target_identity(ctx, number));
+    let base_ref = format!("{namespace}/base");
+    let head_ref = format!("{namespace}/head");
 
     let base_fetch = git_fetch_ref(auth, &base_fetch_source.command_source, base, &base_ref)
         .map_err(|err| DiffFailure {
@@ -259,27 +208,6 @@ fn push_url(urls: &mut Vec<String>, url: Option<&str>) {
     }
 }
 
-fn git_fetch_ref(auth: &GitAuth, source: &str, branch: &str, target_ref: &str) -> Result<Output> {
-    let mut output = auth
-        .command(source)?
-        .arg("fetch")
-        .arg("--")
-        .arg(source)
-        .arg(format!("{branch}:{target_ref}"))
-        .output()?;
-    auth.redact_output(&mut output);
-    Ok(output)
-}
-
-fn git_checkout_branch(branch: &str, start_point: &str) -> std::io::Result<Output> {
-    Command::new("git")
-        .arg("checkout")
-        .arg("-B")
-        .arg(branch)
-        .arg(start_point)
-        .output()
-}
-
 fn git_diff_refs(base_ref: &str, head_ref: &str, no_pager: bool) -> std::io::Result<Output> {
     let mut command = Command::new("git");
     if no_pager {
@@ -291,22 +219,4 @@ fn git_diff_refs(base_ref: &str, head_ref: &str, no_pager: bool) -> std::io::Res
         .arg("diff")
         .arg(format!("{base_ref}...{head_ref}"))
         .output()
-}
-
-fn print_command_output(output: &Output) {
-    if !output.stdout.is_empty() {
-        print!("{}", String::from_utf8_lossy(&output.stdout));
-    }
-    if !output.stderr.is_empty() && !output::suppress_stderr() {
-        eprint!("{}", String::from_utf8_lossy(&output.stderr));
-    }
-}
-
-fn command_stderr(output: &Output) -> String {
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let trimmed = stderr.trim();
-    if trimmed.is_empty() {
-        return "git did not provide stderr details.".into();
-    }
-    trimmed.lines().take(3).collect::<Vec<_>>().join(" ")
 }
