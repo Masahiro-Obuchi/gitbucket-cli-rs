@@ -1,13 +1,9 @@
 use std::collections::HashMap;
-use std::fs;
-use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::test_support::TestEnv;
 
 use super::model::{AuthConfig, HostConfig, ProfileConfig};
 use super::resolve::{canonical_hostname, protocol_from_hostname};
-use super::store::write_config_file;
 
 fn host(user: &str) -> HostConfig {
     HostConfig {
@@ -15,14 +11,6 @@ fn host(user: &str) -> HostConfig {
         user: user.into(),
         protocol: "https".into(),
     }
-}
-
-fn temp_path(name: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    std::env::temp_dir().join(format!("gb-tests-{name}-{}-{nanos}", std::process::id()))
 }
 
 #[test]
@@ -241,17 +229,16 @@ fn remove_host_promotes_next_sorted_host() {
 #[cfg(unix)]
 #[test]
 fn save_uses_private_file_permissions() {
+    use std::fs;
     use std::os::unix::fs::PermissionsExt;
 
-    let dir = temp_path("config-dir");
-    fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("config.toml");
+    use super::store::write_config_file;
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
 
     write_config_file(&path, "token = 'secret'\n").unwrap();
 
     let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o600);
-
-    let _ = fs::remove_file(&path);
-    let _ = fs::remove_dir(&dir);
 }
