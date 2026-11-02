@@ -529,12 +529,39 @@ gb milestone list --state all --json
 gb milestone view 7
 gb milestone create v1.0 --description "First release" --due-on 2026-04-01
 gb milestone edit 7 --title v1.0.1 --state closed
+gb milestone edit 7 --description '' --due-on ''
 gb milestone delete 7 --yes
 ```
 
 `gb milestone` manages repository milestones.
 It currently supports listing, viewing, creating, editing, and deleting milestones in the target repository.
-`--due-on` accepts `YYYY-MM-DD` or RFC3339. When GitBucket returns `404` for milestone create or edit over REST, `gb` falls back to the GitBucket web UI flow and may prompt for `GB_USER` / `GB_PASSWORD`.
+Edits preserve unspecified title, state, description, and the exact existing due
+timestamp. Use `--description ''` or `--due-on ''` to clear a field. Explicit
+`--due-on` values accept `YYYY-MM-DD` or RFC3339 and use the calendar-date portion
+at midnight UTC for REST; leaving the option out does not renormalize stored times.
+
+REST is tried first for create/edit/delete. GitBucket 4.44.0 requires a complete
+replacement for milestone PATCH and restricts REST titles to at most 100 ASCII
+letters/digits or `-+_.`. `gb` merges the current values before PATCH, and uses
+JSON `null` to clear description/due date. An ordinary `404`, missing milestone,
+or permission failure does not trigger Web sign-in. Delete uses REST only;
+the pinned server treats deleting an already absent milestone as success.
+
+Japanese and space-containing titles are retained exactly. If REST rejects such
+a title with its known validation response, `gb` confirms the target still exists
+(or checks the repository's milestone list for creation), then uses the Web route;
+this can require `GB_USER` / `GB_PASSWORD`. A server that accepts the title over
+REST needs no Web credentials. Web create/edit results are checked before success
+is printed; if verification fails, inspect the milestone before retrying.
+
+The Web form trims text and accepts only calendar dates. Content edits are
+refused before Web authentication if they would trim text or resend an existing
+due timestamp without an explicit `--due-on` setting/clear. Set that option
+explicitly or change to a REST-compatible title. State-only Web actions do not
+resubmit description or due date. A Web date is interpreted by the server's form;
+if its timezone produces a different instant, verification reports the mismatch
+instead of success. Concurrent edits can still race between the initial read and
+replacement; this is not a server-side conditional update.
 
 ## Testing
 

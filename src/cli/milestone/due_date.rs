@@ -9,11 +9,7 @@ pub(super) struct NormalizedDueOn {
     pub(super) form_value: String,
 }
 
-pub(super) enum DueOnInput {
-    Unchanged,
-    Clear,
-    Set(NormalizedDueOn),
-}
+pub(super) type DueOnInput = super::change::Change<NormalizedDueOn>;
 
 pub(super) fn normalize_due_on_for_create(raw: Option<String>) -> Result<Option<NormalizedDueOn>> {
     match raw {

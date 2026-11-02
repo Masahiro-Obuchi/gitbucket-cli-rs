@@ -34,7 +34,7 @@ It follows the command design style of GitHub CLI (`gh`) and uses the GitBucket 
 
 | Command | Description | Status |
 | --- | --- | --- |
-| `gb milestone` | Milestone management | ✅ Implemented | REST read + GitBucket-compatible write fallback |
+| `gb milestone` | Milestone management | ✅ Implemented | REST read/write + title-limited Web support |
 | `gb user` | User/admin workflows | 💤 Backlog |
 | `gb webhook` | Webhook management | 💤 Backlog |
 | `gb repo collaborator` | Collaborator management | 💤 Backlog |
@@ -559,7 +559,15 @@ Behavior:
 
 - Prompts for the title when omitted
 - Normalizes `--due-on` to GitBucket-compatible API/web values
-- Falls back to the GitBucket web milestone form when the REST create endpoint returns `404`
+- Tries REST first. Only a `404` combined with a title outside the confirmed 4.44.0
+  REST restriction (100 ASCII letters/digits or `-+_.`) permits Web supplementation.
+  Other REST errors remain errors; `404` alone never means an endpoint is missing.
+- Before Web authentication, validates text round-tripping and reads the repository
+  milestone list; missing/inaccessible repositories and existing duplicate titles
+  fail without Web creation. After submission, requires a newly observed milestone
+  with the requested stored fields; failed verification is an error with retry guidance.
+- Titles must be nonblank and at most 100 UTF-16 code units, matching the server.
+  Japanese/space-containing titles are never rewritten into ASCII.
 
 #### `gb milestone edit`
 
@@ -570,14 +578,36 @@ gb milestone edit <NUMBER> [OPTIONS]
 | Option | Short | Description |
 | --- | --- | --- |
 | `--title <TEXT>` | `-t` | Updated title |
-| `--description <TEXT>` | `-d` | Updated description |
+| `--description <TEXT>` | `-d` | Updated description, or an empty string to clear |
 | `--due-on <DATE>` | — | Updated due date as `YYYY-MM-DD`, RFC3339, or an empty string to clear |
 | `--state <STATE>` | `-s` | Updated state: `open` or `closed` |
 
 Behavior:
 
 - Requires at least one explicit change
-- Falls back to the GitBucket web milestone edit/state routes when the REST update endpoint returns `404`
+- Distinguishes unchanged, set and clear intent for nullable fields. Fetches the
+  current milestone and sends the complete title/state/description/due_on payload;
+  omitted options retain their stored values. Closed state and existing timestamps
+  are preserved, without normalizing an unchanged timestamp. Clear uses JSON null.
+- Explicit due-date input retains the existing CLI calendar-date semantics: the
+  date portion of `YYYY-MM-DD`/RFC3339 becomes midnight UTC for REST.
+- Only a `404` on a title outside the known REST title restriction permits Web use.
+  REST-compatible titles, missing targets and other HTTP failures do not trigger it.
+  Reloads the milestone before Web authentication and merges current values again.
+  If the refreshed title is REST-compatible, retries REST with that snapshot.
+  Repeating a state-only request for the current state needs no mutation or Web authentication.
+- Web content forms cannot round-trip surrounding whitespace. They also cannot
+  guarantee the instant of an existing due date (date-only input/server timezone).
+  Refuse lossy text or an unchanged nonempty due timestamp before authentication;
+  users must explicitly set/clear `--due-on` or use a REST-compatible title.
+  The legacy unset-date sentinel is treated as unset. State-only Web updates send
+  only the state action and retain description/due date, including timestamps.
+- Read back Web results and verify title/state/description/due instant before
+  success. A server form timezone mismatch, validation page, failed read-back or
+  later state failure is reported as unverified/possibly partially applied; inspect
+  the milestone before retrying. Never silently declare a failed Web form successful.
+- Read/merge/write is a snapshot-based compatibility adapter, not a conditional
+  server transaction; concurrent unrelated writers can still race.
 
 #### `gb milestone delete`
 
@@ -592,7 +622,8 @@ gb milestone delete <NUMBER> [OPTIONS]
 Behavior:
 
 - Tries `DELETE /repos/{owner}/{repo}/milestones/{number}` first
-- Falls back to the GitBucket web delete route when the REST delete endpoint returns `404`
+- Returns REST errors directly, including `404`; never prompts for Web credentials.
+- GitBucket 4.44.0 returns `204` even when already absent, which is treated as success.
 
 ---
 
@@ -1294,7 +1325,6 @@ Milestone:
 - `POST /{owner}/{repo}/issues/milestones/{number}/edit` (GitBucket web fallback)
 - `GET /{owner}/{repo}/issues/milestones/{number}/open` (GitBucket web fallback)
 - `GET /{owner}/{repo}/issues/milestones/{number}/close` (GitBucket web fallback)
-- `GET /{owner}/{repo}/issues/milestones/{number}/delete` (GitBucket web fallback)
 
 ---
 

@@ -1,7 +1,7 @@
 use dialoguer::Confirm;
 
-use crate::cli::common::{create_web_session, RepoContext};
-use crate::error::{GbError, Result};
+use crate::cli::common::RepoContext;
+use crate::error::Result;
 
 pub(in crate::cli::milestone) async fn delete(
     hostname: &Option<String>,
@@ -26,26 +26,9 @@ pub(in crate::cli::milestone) async fn delete(
         }
     }
 
-    match ctx
-        .client
+    ctx.client
         .delete_milestone(&ctx.owner, &ctx.repo, number)
-        .await
-    {
-        Ok(()) => {
-            println!("✓ Deleted milestone #{}", number);
-            Ok(())
-        }
-        Err(GbError::Api { status: 404, .. }) => {
-            eprintln!(
-                "Notice: REST milestone delete is unavailable on this GitBucket instance; using web fallback."
-            );
-            let session = create_web_session(&ctx.hostname, cli_profile).await?;
-            session
-                .delete_milestone(&ctx.owner, &ctx.repo, number)
-                .await?;
-            println!("✓ Deleted milestone #{}", number);
-            Ok(())
-        }
-        Err(err) => Err(err),
-    }
+        .await?;
+    println!("✓ Deleted milestone #{}", number);
+    Ok(())
 }

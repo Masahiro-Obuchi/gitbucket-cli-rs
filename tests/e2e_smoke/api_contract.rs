@@ -240,6 +240,25 @@ async fn contract_milestone_patch_requires_complete_preserved_values() {
     assert_eq!(persisted["description"], "preserve-description");
     assert_eq!(persisted["due_on"], "2027-04-01T00:00:00Z");
 
+    // Explicit JSON null is the clear representation, not an empty date string.
+    let cleared = success(
+        request(
+            &client,
+            Method::PATCH,
+            &item,
+            Some(json!({"title": title, "state": "closed", "description": null, "due_on": null})),
+        )
+        .await,
+    )
+    .await;
+    let stored_clear = stored(&client, &item).await;
+    for value in [&cleared, &stored_clear] {
+        assert_eq!(value["title"], title);
+        assert_eq!(value["state"], "closed");
+        assert_eq!(value["description"], "");
+        assert!(value.get("due_on").is_none_or(Value::is_null));
+    }
+
     // Document the server's replacement semantics; the CLI must compensate.
     let replaced =
         success(request(&client, Method::PATCH, &item, Some(json!({"title": title}))).await).await;

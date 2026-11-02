@@ -241,18 +241,6 @@ impl GitBucketWebSession {
             .await
     }
 
-    pub async fn delete_milestone(&self, owner: &str, repo: &str, number: u64) -> Result<()> {
-        let response = self
-            .client
-            .get(format!(
-                "{}/{owner}/{repo}/issues/milestones/{number}/delete",
-                self.base_url
-            ))
-            .send()
-            .await?;
-        self.ensure_success(response, "delete the milestone").await
-    }
-
     async fn post_form(&self, path: &str, fields: Vec<(&str, String)>, action: &str) -> Result<()> {
         let response = self
             .client

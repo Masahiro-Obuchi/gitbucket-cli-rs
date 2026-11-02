@@ -31,7 +31,7 @@ impl ApiClient {
             .await
     }
 
-    /// Update a milestone.
+    /// Replace all editable milestone fields (GitBucket 4.44 is not a sparse PATCH).
     pub async fn update_milestone(
         &self,
         owner: &str,
