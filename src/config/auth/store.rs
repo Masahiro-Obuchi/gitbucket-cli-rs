@@ -10,6 +10,35 @@ use crate::error::{GbError, Result};
 use super::model::AuthConfig;
 
 const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
+const FILE_ACCESS_TIMEOUT: Duration = Duration::from_secs(1);
+
+fn transient_file_access(error: &io::Error) -> bool {
+    #[cfg(windows)]
+    {
+        // ACCESS_DENIED can describe a delete-pending file during replacement;
+        // SHARING_VIOLATION and LOCK_VIOLATION can describe an active reader.
+        matches!(error.raw_os_error(), Some(5 | 32 | 33))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = error;
+        false
+    }
+}
+
+fn retry_file_access<T>(mut operation: impl FnMut() -> Result<T>) -> Result<T> {
+    let deadline = Instant::now() + FILE_ACCESS_TIMEOUT;
+    loop {
+        let result = operation();
+        if let Err(GbError::Io(error)) = &result {
+            if transient_file_access(error) && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(10));
+                continue;
+            }
+        }
+        return result;
+    }
+}
 
 impl AuthConfig {
     pub fn load() -> Result<Self> {
@@ -85,14 +114,14 @@ fn update_config<T>(path: &Path, change: impl FnOnce(&mut AuthConfig) -> Result<
 }
 
 fn check_regular(path: &Path) -> Result<()> {
-    match fs::symlink_metadata(path) {
+    match retry_file_access(|| fs::symlink_metadata(path).map_err(GbError::Io)) {
         Ok(metadata) if is_regular(&metadata) => Ok(()),
         Ok(_) => Err(GbError::Config(format!(
             "Refusing non-regular configuration path {} (symlinks and reparse points are not supported). Point GB_CONFIG_DIR at the directory containing the real config.toml.",
             path.display()
         ))),
-        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(err) => Err(err.into()),
+        Err(GbError::Io(err)) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err),
     }
 }
 
@@ -127,7 +156,7 @@ fn open_regular(path: &Path, create: bool) -> Result<File> {
         use std::os::windows::fs::OpenOptionsExt;
         options.custom_flags(0x00200000); // FILE_FLAG_OPEN_REPARSE_POINT
     }
-    let file = options.open(path)?;
+    let file = retry_file_access(|| options.open(path).map_err(GbError::Io))?;
     if !is_regular(&file.metadata()?) {
         return Err(GbError::Config(
             "Configuration and lock paths must be regular files.".into(),
@@ -159,10 +188,23 @@ fn replace_config_file(path: &Path, write: impl FnOnce(&mut File) -> io::Result<
     }
     write(temporary.as_file_mut())?;
     temporary.as_file().sync_all()?;
-    check_regular(path)?;
-    let _persisted = temporary
-        .persist(path)
-        .map_err(|err| GbError::Io(err.error))?;
+    // A failed persist returns ownership of the same synced temporary file.
+    // Keep it across retries; never remove the old config to make room.
+    let mut pending = Some(temporary);
+    let _persisted = retry_file_access(|| {
+        check_regular(path)?;
+        match pending
+            .take()
+            .expect("temporary file is retained until commit")
+            .persist(path)
+        {
+            Ok(file) => Ok(file),
+            Err(err) => {
+                pending = Some(err.file);
+                Err(GbError::Io(err.error))
+            }
+        }
+    })?;
     #[cfg(unix)]
     directory.sync_all().map_err(|err| GbError::Config(format!(
         "Configuration was replaced, but syncing its directory failed: {err}. Reload configuration before retrying."
@@ -173,6 +215,47 @@ fn replace_config_file(path: &Path, write: impl FnOnce(&mut File) -> io::Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn replacement_retries_until_a_reader_releases_delete_sharing() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, "old").unwrap();
+        let reader = OpenOptions::new()
+            .read(true)
+            .share_mode(0x1 | 0x2) // FILE_SHARE_READ | FILE_SHARE_WRITE, without DELETE.
+            .open(&path)
+            .unwrap();
+        let release = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(200));
+            drop(reader);
+        });
+        let result = write_config_file(&path, "new");
+        release.join().unwrap();
+        result.unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "new");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn replacement_preserves_old_config_when_delete_sharing_stays_blocked() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, "old").unwrap();
+        let reader = OpenOptions::new()
+            .read(true)
+            .share_mode(0x1 | 0x2)
+            .open(&path)
+            .unwrap();
+        assert!(write_config_file(&path, "new").is_err());
+        drop(reader);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "old");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
 
     #[test]
     fn partial_write_failure_preserves_previous_config_and_cleans_temporary_file() {

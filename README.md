@@ -336,7 +336,9 @@ configuration instead.
 On Unix-like systems, configuration and lock files use `0600` permissions, and
 new configuration directories use `0700`. Existing directory permissions are
 preserved. On Windows, files inherit the directory's access permissions; use a
-private configuration directory. Atomic replacement requires filesystem support;
+private configuration directory. File-access conflicts are retried for up to
+one second per operation while retaining the old configuration and synced
+temporary file until replacement succeeds. Atomic replacement requires filesystem support;
 locks coordinate participating `gb` commands, not manual editors or older
 versions. Unix also syncs the parent directory. If this final sync fails, the
 command reports that replacement already occurred: reload before retrying.

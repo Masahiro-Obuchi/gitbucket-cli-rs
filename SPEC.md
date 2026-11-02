@@ -960,7 +960,11 @@ mutation. Reads observe complete old or new files without taking the writer lock
 
 On Unix, configuration and lock files use `0600`; newly created configuration
 directories use `0700`, without changing existing directories. Windows files
-inherit directory access permissions. Configuration and lock paths reject
+inherit directory access permissions. Transient Windows access/sharing conflicts
+are retried for up to one second per filesystem operation. Replacement retries
+retain the same synced temporary file; they never delete the old configuration
+first, and persistent failures clean up the temporary file. Configuration and
+lock paths reject
 symlinks, reparse points, and non-regular files; `GB_CONFIG_DIR` can instead name
 the directory holding the real configuration. The parent directory must be
 trusted. Locking coordinates participating writers only, and atomicity/durability

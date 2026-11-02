@@ -293,7 +293,9 @@ profile updates, login suspended during HTTP authentication, readers during
 repeated atomic replacements, lock timeouts, and lock release after process
 termination. Malformed TOML must remain unchanged on failure. Unit cases inject
 partial writes and rename failures and cover no-op byte preservation, Unix
-permissions, and symlink rejection. All credentials in these tests are dummy values.
+permissions, and symlink rejection. Windows unit cases hold readers that deny
+delete sharing to verify retry/release and bounded failure with old-byte retention
+and temporary-file cleanup. All credentials in these tests are dummy values.
 
 ```bash
 cargo test --locked --test config_storage
