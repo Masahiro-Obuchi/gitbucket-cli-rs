@@ -474,6 +474,7 @@ dependencies = [
  "open",
  "percent-encoding",
  "reqwest",
+ "ring",
  "serde",
  "serde_json",
  "tempfile",

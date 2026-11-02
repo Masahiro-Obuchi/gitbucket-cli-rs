@@ -1,6 +1,11 @@
-use crate::error::Result;
+use std::process::{Command, Output};
+
+use crate::cli::common::RepoContext;
+use crate::error::{GbError, Result};
+use crate::git::GitAuth;
 use crate::models::pull_request::PullRequest;
 use crate::models::repository::Repository;
+use crate::output;
 
 pub(super) fn git_remote_names() -> Vec<String> {
     let output = match std::process::Command::new("git").args(["remote"]).output() {
@@ -97,4 +102,70 @@ pub(super) fn current_branch_name() -> Option<String> {
     } else {
         Some(branch)
     }
+}
+
+pub(super) fn target_identity(ctx: &RepoContext, number: u64) -> String {
+    // Length-delimited JSON avoids collisions between deployment/repo boundaries.
+    serde_json::to_string(&(ctx.client.web_url(""), &ctx.owner, &ctx.repo, number)).unwrap()
+}
+
+pub(super) fn fetch_namespace(identity: &str) -> String {
+    // Keep ref paths bounded even for long deployment URLs on Windows. The full
+    // identity remains in branch provenance; this digest names only fetched refs.
+    let digest = ring::digest::digest(&ring::digest::SHA256, identity.as_bytes());
+    let encoded: String = digest
+        .as_ref()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    format!("refs/gb/pr-targets/v1/{encoded}")
+}
+
+pub(super) fn git_fetch_ref(
+    auth: &GitAuth,
+    source: &str,
+    branch: &str,
+    target_ref: &str,
+) -> Result<Output> {
+    let valid = Command::new("git")
+        .args(["check-ref-format", &format!("refs/heads/{branch}")])
+        .output()?;
+    if !valid.status.success() {
+        return Err(GbError::Other(
+            "API returned an invalid PR branch ref.".into(),
+        ));
+    }
+    let mut output = auth
+        .command(source)?
+        .arg("fetch")
+        .args([
+            "--no-tags",
+            "--no-write-fetch-head",
+            "--no-recurse-submodules",
+            "--refmap=",
+            "--",
+        ])
+        .arg(source)
+        .arg(format!("+refs/heads/{branch}:{target_ref}"))
+        .output()?;
+    auth.redact_output(&mut output);
+    Ok(output)
+}
+
+pub(super) fn print_command_output(output: &Output) {
+    if !output.stdout.is_empty() {
+        print!("{}", String::from_utf8_lossy(&output.stdout));
+    }
+    if !output.stderr.is_empty() && !output::suppress_stderr() {
+        eprint!("{}", String::from_utf8_lossy(&output.stderr));
+    }
+}
+
+pub(super) fn command_stderr(output: &Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let trimmed = stderr.trim();
+    if trimmed.is_empty() {
+        return "git did not provide stderr details.".into();
+    }
+    trimmed.lines().take(3).collect::<Vec<_>>().join(" ")
 }

@@ -2,6 +2,7 @@ use clap::{Args, Subcommand};
 
 use crate::cli::common::normalize_str_vec;
 
+mod checkout;
 mod git;
 mod read;
 mod worktree;
@@ -112,7 +113,7 @@ pub enum PrCommand {
     },
     /// Checkout a pull request branch locally
     #[command(
-        after_help = "HTTP(S) fetches reuse the configured user/token only within the selected GitBucket origin and base path. Authenticated transfers do not follow redirects; configure the direct clone URL."
+        after_help = "Requires a clean working tree/index, including untracked files. Creates pr-N or reuses it only for the recorded target at the same commit. Existing branches are never reset; rename legacy/conflicting branches yourself before retrying. Submodule changes must be committed or moved; submodules are not automatically fetched or checked out.\n\nHTTP(S) fetches reuse the configured user/token only within the selected GitBucket origin and base path. Authenticated transfers do not follow redirects; configure the direct clone URL."
     )]
     Checkout {
         /// PR number
@@ -256,7 +257,7 @@ pub async fn run(
             write::merge(cli_hostname, cli_repo, cli_profile, number, message).await
         }
         PrCommand::Checkout { number } => {
-            worktree::checkout(cli_hostname, cli_repo, cli_profile, number).await
+            checkout::checkout(cli_hostname, cli_repo, cli_profile, number).await
         }
         PrCommand::Diff { number, no_pager } => {
             worktree::diff(cli_hostname, cli_repo, cli_profile, number, no_pager).await

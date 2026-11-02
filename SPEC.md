@@ -820,8 +820,46 @@ Execution flow:
 
 1. Fetch PR metadata from API.
 2. Resolve the head repository clone URL or a remote matching its server and repository path, otherwise use `origin` when repository metadata is absent.
-3. Remove HTTP URL userinfo, then fetch `<head-branch>` into `refs/gb/pr/<NUMBER>/head` using the same scoped credential helper as `repo clone OWNER/REPO`.
-4. Run `git checkout -B pr-<NUMBER> refs/gb/pr/<NUMBER>/head`.
+3. Validate the head branch as a full `refs/heads/` ref. Acquire an OS lock in the
+   Git common directory (`gb-pr-checkout.lock`), shared with linked worktrees.
+   Reject dirty index/worktree state (including untracked files and submodule
+   changes hidden by Git ignore settings), operations in
+   progress, branches owned by other PR targets, and use in another worktree.
+4. Fetch only the head branch into a target-specific internal ref under
+   `refs/gb/pr-targets/`, using the same scoped credential helper as
+   `repo clone OWNER/REPO`. The namespace is `refs/gb/pr-targets/v1/<SHA-256>`,
+   hashing the JSON tuple of canonical web base URL
+   (scheme/host/port/deployment path), owner, repository and PR number. The fixed
+   64-digit digest keeps ref paths short for long deployment URLs on Windows;
+   branch provenance retains the complete tuple for exact target comparison.
+   Checkout and diff use this namespace; legacy `refs/gb/pr/<NUMBER>` refs are
+   untouched. Fetch uses a fully qualified source ref, no tag following, no
+   `FETCH_HEAD` write, no submodule recursion, and an empty refmap to avoid
+   configured tracking updates.
+   Force is allowed only on the internal destination ref, including force-pushed PRs.
+5. Recheck cleanliness, branch tip and worktree ownership after fetching. A
+   preexisting `pr-<NUMBER>` must have the exact target recorded in the local
+   `branch.pr-<NUMBER>.gb-pr-target` Git config value, and its tip must equal the
+   fetched head commit. Otherwise fail without resetting it. No fast-forward,
+   force/update option or automatic branch renaming is provided.
+6. For a new branch, record the target before switching (so a config write error
+   leaves HEAD untouched), then run non-forcing `git checkout --no-track -b` from
+   the fetched commit. For a reusable branch, switch without resetting its tip.
+   Both use `--no-guess`, `--no-overwrite-ignore` and `--no-recurse-submodules`.
+   Submodule working trees and HEADs remain untouched regardless of
+   `submodule.recurse`; users inspect and update changed submodule commits
+   separately. On a pre-switch failure,
+   restore the previous metadata; do not reset, clean or stash user work.
+
+Unrecorded legacy branches are refused even at the same commit. Users can rename
+these branches themselves to retain them before retrying. A lock conflict fails
+with a retry message; the empty lock file is never unlinked, and OS process exit
+releases the lock. This coordinates `gb` checkouts, not unrelated Git commands.
+Repository hooks retain Git's normal behavior. If checkout switches but a
+post-checkout hook subsequently fails, report the completed switch explicitly,
+retain the provenance record, and do not attempt a destructive rollback. A
+failed operation may leave fetched objects/internal refs; it never resets existing
+user branch tips. Repositories and their hooks/configuration remain trusted.
 
 The token is not embedded in Git argv or persisted in Git configuration. HTTP
 redirects are disabled for transfers using the GitBucket token. A URL rewritten

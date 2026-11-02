@@ -278,7 +278,36 @@ gb pr edit 5 --add-assignee alice,bob --remove-assignee carol
 
 `gb pr checkout` and `gb pr diff` work with same-repository PRs and fork-based PRs.
 When a closed PR's diff cannot be reconstructed from fetched refs, `gb pr diff` tries the saved PR diff URL before failing. If no saved diff can be fetched, it exits non-zero and reports whether the live diff was unavailable because a ref was missing, a base/head fetch failed, or the fetched refs had no diff.
-When the PR head repository is available from the API response, `gb` resolves that repository's clone URL or a matching remote and fetches into `refs/gb/pr/<NUMBER>/head` (and `/base` for diff). Remotes are matched by server and repository path, not just `OWNER/REPO`.
+When the PR head repository is available from the API response, `gb` resolves that
+repository's clone URL or a matching remote. Internal fetch refs under
+`refs/gb/pr-targets/` use a fixed-length SHA-256 identifier of the configured
+GitBucket base URL, repository, and PR number. This keeps internal ref paths short
+for long deployment URLs on Windows. Remotes are matched by server and
+repository path, not just `OWNER/REPO`. Fetches leave remote-tracking refs, tags,
+and `FETCH_HEAD` alone.
+Fetches do not recurse into submodules.
+
+`gb pr checkout` requires a clean index and working tree, including untracked
+files, with no merge/rebase/cherry-pick/revert/bisect in progress. Ignored files
+that would be overwritten also cause checkout to stop. The first checkout creates
+`pr-<NUMBER>` and records its target in local Git configuration. An existing
+branch is reused only when that record matches this target and its commit equals
+the fetched PR head. Local commits, an advanced or force-pushed PR head, another
+PR's branch, and a branch checked out in another worktree cause an error.
+There is no automatic reset, fast-forward, stash, rename, or deletion.
+Submodule changes are checked even when Git configuration normally hides them.
+Checkout leaves submodule working trees and HEADs untouched, including when
+`submodule.recurse` is enabled. If the PR changes a submodule commit, inspect and
+update that submodule separately after checkout.
+
+Branches created by older versions lack this target record and are conservatively
+refused, even if their commits match. To keep one, rename it yourself (for example,
+`git branch -m pr-5 saved-pr-5`) before retrying. A shared OS lock serializes `gb`
+checkouts across linked worktrees; the empty `gb-pr-checkout.lock` file in the Git
+common directory remains and must not be deleted. Ordinary Git commands do not
+participate in this lock. Repository hooks still run: a failed post-checkout hook
+can occur after the switch; the error explicitly reports this partial completion
+and asks you to inspect the working tree.
 
 For automation, pass global `--json-errors` or set `GB_JSON_ERRORS=true` to get a single JSON error object on stderr, including fields such as `error.code`, `error.cause`, `error.status`, and `error.exit_code`.
 

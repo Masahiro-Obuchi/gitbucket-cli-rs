@@ -305,3 +305,29 @@ cargo test --locked --bin gb config::
 The platform workflow runs both commands on macOS and Windows; the full Linux
 suite includes them. Platform-specific Unix checks are conditional. Local tests
 exercise the local filesystem, not power-loss durability or all network filesystems.
+
+## Safe PR Checkout Regressions
+
+`tests/pr_checkout.rs` uses real repositories and a scripted API to check initial
+creation, repeat checkout, local commits, advanced/force-pushed PRs, unrecorded
+branches, target collisions (repository/deployment/host), dirty staged/unstaged/
+untracked files, ignored file conflicts, linked worktrees, concurrent lock
+ownership, detached HEAD, operations in progress and fetch/checkout/config-write
+failures. Refusal cases compare HEAD, branch tips, index diff, working diff and
+files before and after. Fetch isolation checks tracking refs, tags, FETCH_HEAD
+and legacy internal refs. A Unix hook case checks the explicit partial-completion
+error when a post-checkout hook fails after Git has switched branches.
+Submodule cases check that ignore settings cannot hide uncommitted work, and
+that recursive Git settings cannot overwrite ignored files, move submodule HEADs
+or update their tracking refs and `FETCH_HEAD` during PR checkout.
+Long deployment URLs are exercised through both checkout and diff with
+`core.longpaths=false`; internal ref paths stay bounded and branch provenance
+retains the complete target.
+
+```bash
+cargo test --locked --test pr_checkout --test git_credentials --test git_regressions
+```
+
+The platform workflow also runs `pr_checkout` on macOS and Windows. Local Git
+2.34.1 is covered; the worktree check uses NUL-delimited `for-each-ref` atoms,
+without requiring the newer `worktree list -z` option.
