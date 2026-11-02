@@ -317,6 +317,9 @@ failures. Refusal cases compare HEAD, branch tips, index diff, working diff and
 files before and after. Fetch isolation checks tracking refs, tags, FETCH_HEAD
 and legacy internal refs. A Unix hook case checks the explicit partial-completion
 error when a post-checkout hook fails after Git has switched branches.
+Submodule cases check that ignore settings cannot hide uncommitted work, and
+that recursive Git settings cannot overwrite ignored files, move submodule HEADs
+or update their tracking refs and `FETCH_HEAD` during PR checkout.
 
 ```bash
 cargo test --locked --test pr_checkout --test git_credentials --test git_regressions

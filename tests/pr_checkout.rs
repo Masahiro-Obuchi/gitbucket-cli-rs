@@ -54,6 +54,42 @@ impl Fixture {
             .unwrap()
     }
 
+    fn add_submodule(&self) -> PathBuf {
+        let source = self.env.path().join("submodule-source");
+        init_work_repo(&source);
+        commit_readme(&source, "submodule base\n", "submodule base");
+        run_git(&source, &["branch", "-M", "main"]);
+        fs::write(source.join(".gitignore"), "private.txt\n").unwrap();
+        run_git(&source, &["add", ".gitignore"]);
+        run_git(&source, &["commit", "-m", "ignore private file"]);
+        run_git(
+            &self.source,
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                source.to_str().unwrap(),
+                "module",
+            ],
+        );
+        run_git(&self.source, &["commit", "-am", "add submodule"]);
+        run_git(&self.source, &["push", "origin", "feature"]);
+        run_git(&self.local, &["fetch", "origin", "feature"]);
+        run_git(&self.local, &["merge", "--ff-only", "origin/feature"]);
+        run_git(
+            &self.local,
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "update",
+                "--init",
+            ],
+        );
+        source
+    }
+
     fn snapshot(&self) -> Vec<String> {
         vec![
             git_output(&self.local, &["rev-parse", "HEAD"]),
@@ -255,6 +291,75 @@ fn ignored_files_are_not_overwritten_by_checkout() {
     assert_eq!(
         fs::read_to_string(f.local.join("private.txt")).unwrap(),
         "my ignored data\n"
+    );
+    server.join().unwrap();
+}
+
+#[test]
+fn recursive_settings_do_not_update_submodules_or_overwrite_ignored_files() {
+    let f = Fixture::new();
+    let source = f.add_submodule();
+    let module = f.local.join("module");
+    let before_refs = git_output(
+        &module,
+        &["for-each-ref", "--format=%(refname) %(objectname)"],
+    );
+    let before_head = git_output(&module, &["rev-parse", "HEAD"]);
+    let fetch_head = f.local.join(".git/modules/module/FETCH_HEAD");
+    fs::write(&fetch_head, "keep submodule fetch head\n").unwrap();
+    fs::write(module.join("private.txt"), "my ignored submodule data\n").unwrap();
+    fs::write(source.join("private.txt"), "PR file\n").unwrap();
+    run_git(&source, &["add", "-f", "private.txt"]);
+    run_git(&source, &["commit", "-m", "track private file"]);
+    run_git(&f.source.join("module"), &["fetch", "origin", "main"]);
+    run_git(
+        &f.source.join("module"),
+        &["checkout", "--detach", "origin/main"],
+    );
+    run_git(&f.source, &["commit", "-am", "advance submodule"]);
+    run_git(&f.source, &["push", "origin", "feature"]);
+    run_git(&f.local, &["config", "submodule.recurse", "true"]);
+    run_git(&module, &["config", "protocol.file.allow", "always"]);
+    let (port, server) = spawn_scripted_server(vec![f.response("", "alice/demo", "feature")]);
+    assert_success(&f.checkout(port, "", "alice/demo", &f.local));
+    assert_eq!(
+        fs::read_to_string(module.join("private.txt")).unwrap(),
+        "my ignored submodule data\n"
+    );
+    assert_eq!(git_output(&module, &["rev-parse", "HEAD"]), before_head);
+    assert_eq!(
+        git_output(
+            &module,
+            &["for-each-ref", "--format=%(refname) %(objectname)"]
+        ),
+        before_refs
+    );
+    assert_eq!(
+        fs::read_to_string(fetch_head).unwrap(),
+        "keep submodule fetch head\n"
+    );
+    assert_eq!(git_output(&f.local, &["branch", "--show-current"]), "pr-7");
+    server.join().unwrap();
+}
+
+#[test]
+fn refuses_submodule_changes_even_when_git_config_hides_them() {
+    let f = Fixture::new();
+    f.add_submodule();
+    let module = f.local.join("module");
+    fs::write(module.join("README.md"), "uncommitted submodule work\n").unwrap();
+    fs::write(module.join("untracked.txt"), "untracked submodule work\n").unwrap();
+    run_git(&f.local, &["config", "submodule.module.ignore", "all"]);
+    assert_eq!(git_output(&f.local, &["status", "--porcelain=v1"]), "");
+    let (port, server) = spawn_scripted_server(vec![f.response("", "alice/demo", "feature")]);
+    f.refuse_unchanged(port, "", "alice/demo", "clean working tree");
+    assert_eq!(
+        fs::read_to_string(module.join("README.md")).unwrap(),
+        "uncommitted submodule work\n"
+    );
+    assert_eq!(
+        fs::read_to_string(module.join("untracked.txt")).unwrap(),
+        "untracked submodule work\n"
     );
     server.join().unwrap();
 }

@@ -141,7 +141,13 @@ pub(super) fn git_fetch_ref(
     let mut output = auth
         .command(source)?
         .arg("fetch")
-        .args(["--no-tags", "--no-write-fetch-head", "--refmap=", "--"])
+        .args([
+            "--no-tags",
+            "--no-write-fetch-head",
+            "--no-recurse-submodules",
+            "--refmap=",
+            "--",
+        ])
         .arg(source)
         .arg(format!("+refs/heads/{branch}:{target_ref}"))
         .output()?;

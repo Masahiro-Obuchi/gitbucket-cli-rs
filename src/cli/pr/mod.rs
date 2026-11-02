@@ -113,7 +113,7 @@ pub enum PrCommand {
     },
     /// Checkout a pull request branch locally
     #[command(
-        after_help = "Requires a clean working tree/index, including untracked files. Creates pr-N or reuses it only for the recorded target at the same commit. Existing branches are never reset; rename legacy/conflicting branches yourself before retrying.\n\nHTTP(S) fetches reuse the configured user/token only within the selected GitBucket origin and base path. Authenticated transfers do not follow redirects; configure the direct clone URL."
+        after_help = "Requires a clean working tree/index, including untracked files. Creates pr-N or reuses it only for the recorded target at the same commit. Existing branches are never reset; rename legacy/conflicting branches yourself before retrying. Submodule changes must be committed or moved; submodules are not automatically fetched or checked out.\n\nHTTP(S) fetches reuse the configured user/token only within the selected GitBucket origin and base path. Authenticated transfers do not follow redirects; configure the direct clone URL."
     )]
     Checkout {
         /// PR number

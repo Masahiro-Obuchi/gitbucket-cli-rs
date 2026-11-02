@@ -82,7 +82,12 @@ pub(super) async fn checkout(
         checked_git(&["config", "--local", &key, &identity])?;
     }
     let mut command = Command::new("git");
-    command.args(["checkout", "--no-guess", "--no-overwrite-ignore"]);
+    command.args([
+        "checkout",
+        "--no-guess",
+        "--no-overwrite-ignore",
+        "--no-recurse-submodules",
+    ]);
     if existing.is_none() {
         command.args(["--no-track", "-b", &branch, &commit]);
     } else {
@@ -181,7 +186,13 @@ fn ensure_clean_worktree() -> Result<()> {
             "PR checkout requires a Git working tree.".into(),
         ));
     }
-    let status = checked_git(&["status", "--porcelain=v1", "-z", "--untracked-files=all"])?;
+    let status = checked_git(&[
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        "--ignore-submodules=none",
+    ])?;
     if !status.stdout.is_empty() {
         return Err(GbError::Other("PR checkout requires a clean working tree and index, including untracked files. Commit or move your changes before retrying; gb does not stash or discard them.".into()));
     }

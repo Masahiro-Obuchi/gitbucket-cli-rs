@@ -822,7 +822,8 @@ Execution flow:
 2. Resolve the head repository clone URL or a remote matching its server and repository path, otherwise use `origin` when repository metadata is absent.
 3. Validate the head branch as a full `refs/heads/` ref. Acquire an OS lock in the
    Git common directory (`gb-pr-checkout.lock`), shared with linked worktrees.
-   Reject dirty index/worktree state (including untracked files), operations in
+   Reject dirty index/worktree state (including untracked files and submodule
+   changes hidden by Git ignore settings), operations in
    progress, branches owned by other PR targets, and use in another worktree.
 4. Fetch only the head branch into a target-specific internal ref under
    `refs/gb/pr-targets/`, using the same scoped credential helper as
@@ -831,7 +832,8 @@ Execution flow:
    Encoded components are chunked to stay within filename component limits.
    Checkout and diff use this namespace; legacy `refs/gb/pr/<NUMBER>` refs are
    untouched. Fetch uses a fully qualified source ref, no tag following, no
-   `FETCH_HEAD` write, and an empty refmap to avoid configured tracking updates.
+   `FETCH_HEAD` write, no submodule recursion, and an empty refmap to avoid
+   configured tracking updates.
    Force is allowed only on the internal destination ref, including force-pushed PRs.
 5. Recheck cleanliness, branch tip and worktree ownership after fetching. A
    preexisting `pr-<NUMBER>` must have the exact target recorded in the local
@@ -841,7 +843,10 @@ Execution flow:
 6. For a new branch, record the target before switching (so a config write error
    leaves HEAD untouched), then run non-forcing `git checkout --no-track -b` from
    the fetched commit. For a reusable branch, switch without resetting its tip.
-   Both use `--no-guess` and `--no-overwrite-ignore`. On a pre-switch failure,
+   Both use `--no-guess`, `--no-overwrite-ignore` and `--no-recurse-submodules`.
+   Submodule working trees and HEADs remain untouched regardless of
+   `submodule.recurse`; users inspect and update changed submodule commits
+   separately. On a pre-switch failure,
    restore the previous metadata; do not reset, clean or stash user work.
 
 Unrecorded legacy branches are refused even at the same commit. Users can rename

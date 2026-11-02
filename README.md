@@ -284,6 +284,7 @@ repository's clone URL or a matching remote. Internal fetch refs under
 number, so different targets do not share refs. Remotes are matched by server and
 repository path, not just `OWNER/REPO`. Fetches leave remote-tracking refs, tags,
 and `FETCH_HEAD` alone.
+Fetches do not recurse into submodules.
 
 `gb pr checkout` requires a clean index and working tree, including untracked
 files, with no merge/rebase/cherry-pick/revert/bisect in progress. Ignored files
@@ -293,6 +294,10 @@ branch is reused only when that record matches this target and its commit equals
 the fetched PR head. Local commits, an advanced or force-pushed PR head, another
 PR's branch, and a branch checked out in another worktree cause an error.
 There is no automatic reset, fast-forward, stash, rename, or deletion.
+Submodule changes are checked even when Git configuration normally hides them.
+Checkout leaves submodule working trees and HEADs untouched, including when
+`submodule.recurse` is enabled. If the PR changes a submodule commit, inspect and
+update that submodule separately after checkout.
 
 Branches created by older versions lack this target record and are conservatively
 refused, even if their commits match. To keep one, rename it yourself (for example,
