@@ -1,4 +1,3 @@
-use crate::api::client::ApiClient;
 use crate::config::auth::{AuthConfig, HostConfig};
 use crate::error::{GbError, Result};
 
@@ -8,6 +7,14 @@ pub fn resolve_hostname(
     cli_profile: &Option<String>,
 ) -> Result<String> {
     let config = AuthConfig::load()?;
+    hostname_from_config(&config, cli_hostname, cli_profile)
+}
+
+pub(super) fn hostname_from_config(
+    config: &AuthConfig,
+    cli_hostname: &Option<String>,
+    cli_profile: &Option<String>,
+) -> Result<String> {
     let hostname = config.resolve_hostname(cli_hostname.as_deref(), cli_profile.as_deref())?;
     let has_active_profile = config
         .active_profile_name(cli_profile.as_deref())?
@@ -33,10 +40,4 @@ pub fn validate_selected_profile(cli_profile: &Option<String>) -> Result<()> {
 pub fn resolve_host_config(hostname: &str, cli_profile: &Option<String>) -> Result<HostConfig> {
     let config = AuthConfig::load()?;
     config.get_host_for_profile(hostname, cli_profile.as_deref())
-}
-
-/// Create an API client from config.
-pub fn create_client(hostname: &str, cli_profile: &Option<String>) -> Result<ApiClient> {
-    let host = resolve_host_config(hostname, cli_profile)?;
-    ApiClient::new(hostname, &host.token, &host.protocol)
 }

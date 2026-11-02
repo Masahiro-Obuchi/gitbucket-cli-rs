@@ -36,7 +36,13 @@ pub struct Cli {
     pub hostname: Option<String>,
 
     /// Target repository in OWNER/REPO format
-    #[arg(long, short = 'R', global = true, env = "GB_REPO")]
+    #[arg(
+        long,
+        short = 'R',
+        global = true,
+        env = "GB_REPO",
+        long_help = "Target repository in OWNER/REPO format. If no explicit/environment/profile repository is selected, origin must match the configured GitBucket host and deployment path; specify --repo to select a different target intentionally."
+    )]
     pub repo: Option<String>,
 
     /// Configuration profile name

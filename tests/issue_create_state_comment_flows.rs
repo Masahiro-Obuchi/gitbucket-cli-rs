@@ -343,7 +343,7 @@ fn issue_comment_edit_last_rejects_external_pagination_link() {
     );
     assert!(
         String::from_utf8_lossy(&output.stderr)
-            .contains("Refusing to follow pagination URL outside configured GitBucket API base"),
+            .contains("Refusing request outside configured GitBucket API base"),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );

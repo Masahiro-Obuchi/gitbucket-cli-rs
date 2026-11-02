@@ -7,6 +7,7 @@ use url::Url;
 use crate::api::client::normalize_web_base_url;
 use crate::config::auth::HostConfig;
 use crate::error::{GbError, Result};
+use crate::target::same_origin;
 
 const HELPER_ARG: &str = "--internal-git-credential";
 const TARGET_ENV: &str = "GB_INTERNAL_GIT_TARGET";
@@ -214,12 +215,6 @@ fn public_repo_prefix(path: &str) -> String {
 
 fn is_internal_gitbucket_clone_host(url: &Url) -> bool {
     matches!(url.host_str(), Some("gitbucket"))
-}
-
-pub(crate) fn same_origin(left: &Url, right: &Url) -> bool {
-    left.scheme() == right.scheme()
-        && left.host_str() == right.host_str()
-        && left.port_or_known_default() == right.port_or_known_default()
 }
 
 /// Compare transport URLs without falling back to owner/repo alone.

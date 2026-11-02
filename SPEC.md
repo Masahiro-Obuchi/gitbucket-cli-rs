@@ -973,11 +973,24 @@ If a selected profile does not exist, commands fail with a clear configuration e
 
 Stored hosts are matched canonically, so equivalent forms such as `https://host/path`, `host/path`, and `https://host/path/api/v3` resolve to the same saved entry.
 
+### 4.6 Authenticated request URL boundaries
+
+API requests, including `gb api` and pagination, are validated in the HTTP client
+against the normalized API base. Web-origin text fetches are restricted to the
+configured deployment base. Validation includes percent-decoded traversal paths;
+encoded path separators are allowed only when the interpreted path remains
+inside the boundary. URL credentials and fragments are rejected. Authenticated
+API client requests do not follow redirects, so proxies must expose a direct
+base URL. The separate password-based Web session flow retains its own redirect
+handling; this change does not replace that flow.
+
+Base URLs must use HTTP(S) and have no credentials, query, or fragment.
+
 ---
 
 ## 5. Repository auto-detection
 
-When `--repo/-R` is omitted, `gb` tries to parse `git remote get-url origin`.
+When CLI/environment/profile repository selection is absent, `gb` parses and validates `git remote get-url origin` against the selected GitBucket instance before issuing requests.
 
 ### 5.1 Supported git remote formats
 
@@ -985,7 +998,9 @@ When `--repo/-R` is omitted, `gb` tries to parse `git remote get-url origin`.
 - GitBucket HTTPS with `/git/`: `https://host/git/owner/repo.git`
 - Path-prefixed HTTPS: `https://gitbucket.example.com/gitbucket/owner/repo.git`
 - Path-prefixed GitBucket HTTPS with `/git/`: `https://gitbucket.example.com/gitbucket/git/owner/repo.git`
-- SSH: `git@host:owner/repo.git`
+- SCP-like SSH: `git@host:owner/repo.git`
+- SSH URI with an independent SSH port: `ssh://git@host:29418/owner/repo.git`
+- Bracketed IPv6 SSH authorities are supported.
 
 ### 5.2 Resolution order
 
@@ -994,7 +1009,22 @@ When `--repo/-R` is omitted, `gb` tries to parse `git remote get-url origin`.
 3. Active profile's `default_repo`
 4. `git remote get-url origin`
 
-If parsing fails, `RepoNotFound` is returned.
+For origin-derived targets, HTTP(S) scheme/hostname/port and deployment path must
+match the configured instance. The relative path must be `OWNER/REPO[.git]` or,
+for HTTP(S), `git/OWNER/REPO[.git]`. SSH matches hostname and deployment path, not
+the HTTP port; SSH aliases are not resolved. If a subpath cannot be established
+from SSH, the command fails before any API request and suggests an explicit
+`--hostname`/`--repo`. Explicit/environment/profile repository choices bypass
+origin inference, preserving intentional cross-repository operations.
+
+Repository names contain exactly two nonempty safe path components. Slash,
+backslash, URL delimiters/escapes, whitespace/control characters, and complete
+`.`/`..` components are rejected. Non-whitespace Unicode names are supported.
+The selected configuration is loaded once for a repository context; API and Git
+clients use the same resolved host credentials.
+
+If origin is unavailable, `RepoNotFound` is returned. Malformed or mismatched
+origin targets fail with an explicit target-selection error.
 
 ---
 
