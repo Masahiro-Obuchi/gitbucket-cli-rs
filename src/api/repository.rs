@@ -5,11 +5,13 @@ use crate::models::repository::{CreateRepository, Repository};
 impl ApiClient {
     /// List repositories for a user
     pub async fn list_user_repos(&self, owner: &str) -> Result<Vec<Repository>> {
+        crate::target::validate_component(owner)?;
         self.get(&format!("/users/{}/repos", owner)).await
     }
 
     /// List repositories for an organization
     pub async fn list_org_repos(&self, org: &str) -> Result<Vec<Repository>> {
+        crate::target::validate_component(org)?;
         self.get(&format!("/orgs/{}/repos", org)).await
     }
 
@@ -29,6 +31,7 @@ impl ApiClient {
 
     /// Get a single repository
     pub async fn get_repo(&self, owner: &str, repo: &str) -> Result<Repository> {
+        crate::target::RepositoryName::parse(&format!("{owner}/{repo}"))?;
         self.get(&format!("/repos/{}/{}", owner, repo)).await
     }
 
@@ -39,6 +42,7 @@ impl ApiClient {
 
     /// Create a repository under an organization
     pub async fn create_org_repo(&self, org: &str, body: &CreateRepository) -> Result<Repository> {
+        crate::target::validate_component(org)?;
         self.post(&format!("/orgs/{}/repos", org), body).await
     }
 

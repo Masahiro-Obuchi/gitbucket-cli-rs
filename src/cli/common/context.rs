@@ -1,8 +1,10 @@
 use crate::api::client::ApiClient;
+use crate::config::auth::AuthConfig;
 use crate::error::Result;
 use crate::git::GitAuth;
 
-use super::{create_client, resolve_host_config, resolve_hostname, resolve_repo};
+use super::auth::hostname_from_config;
+use super::repo_resolution::resolve_target;
 
 pub struct HostContext {
     pub hostname: String,
@@ -11,8 +13,10 @@ pub struct HostContext {
 
 impl HostContext {
     pub fn resolve(cli_hostname: &Option<String>, cli_profile: &Option<String>) -> Result<Self> {
-        let hostname = resolve_hostname(cli_hostname, cli_profile)?;
-        let client = create_client(&hostname, cli_profile)?;
+        let config = AuthConfig::load()?;
+        let hostname = hostname_from_config(&config, cli_hostname, cli_profile)?;
+        let host = config.get_host_for_profile(&hostname, cli_profile.as_deref())?;
+        let client = ApiClient::new(&hostname, &host.token, &host.protocol)?;
         Ok(Self { hostname, client })
     }
 }
@@ -31,11 +35,13 @@ impl RepoContext {
         cli_repo: &Option<String>,
         cli_profile: &Option<String>,
     ) -> Result<Self> {
-        let hostname = resolve_hostname(cli_hostname, cli_profile)?;
-        let (owner, repo) = resolve_repo(cli_repo, cli_profile)?;
-        let host = resolve_host_config(&hostname, cli_profile)?;
+        let config = AuthConfig::load()?;
+        let hostname = hostname_from_config(&config, cli_hostname, cli_profile)?;
+        let host = config.get_host_for_profile(&hostname, cli_profile.as_deref())?;
+        let target = resolve_target(&config, &hostname, &host.protocol, cli_repo, cli_profile)?;
+        let (owner, repo) = (target.name.owner, target.name.repo);
         let client = ApiClient::new(&hostname, &host.token, &host.protocol)?;
-        let git_auth = GitAuth::new(&hostname, &host)?;
+        let git_auth = GitAuth::new(target.instance.as_str(), &host)?;
         Ok(Self {
             hostname,
             git_auth,

@@ -326,3 +326,27 @@ fn e2e_private_repo_clone_uses_configured_token_without_url_credentials() {
         &["repo", "delete", &repo, "--yes"],
     );
 }
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
+fn e2e_origin_repository_resolution_matches_configured_instance() {
+    let temp = tempdir().unwrap();
+    login(temp.path());
+    let repo = required_env("GB_E2E_REPO");
+    let destination = temp.path().join("origin-resolution");
+    clone_repo_to(temp.path(), &repo, &destination);
+    let mut command = gb_command();
+    command
+        .current_dir(&destination)
+        .args(["issue", "list", "--json"]);
+    for (key, value) in e2e_env(temp.path()) {
+        command.env(key, value);
+    }
+    command
+        .env_remove("GB_REPO")
+        .env_remove("GB_PROFILE")
+        .env("GB_HOST", required_env("GB_E2E_HOST"));
+    let stdout = run_and_assert_success(&mut command);
+    let payload: Value = serde_json::from_str(&stdout).unwrap();
+    assert!(payload.is_array());
+}

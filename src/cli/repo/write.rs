@@ -2,7 +2,7 @@ use dialoguer::{Confirm, Input};
 
 use crate::api::client::ApiClient;
 use crate::cli::common::{
-    create_web_session, parse_owner_repo, resolve_host_config, resolve_repo, HostContext,
+    create_web_session, parse_owner_repo, resolve_host_config, HostContext, RepoContext,
 };
 use crate::error::{GbError, Result};
 use crate::models::repository::{CreateRepository, Repository};
@@ -97,12 +97,12 @@ pub(super) async fn fork(
     cli_profile: &Option<String>,
     group: Option<String>,
 ) -> Result<()> {
-    let (owner, repo) = match repo_arg {
-        Some(r) => parse_owner_repo(&r)?,
-        None => resolve_repo(&None, cli_profile)?,
+    let resolved = RepoContext::resolve(hostname, &repo_arg, cli_profile)?;
+    let (owner, repo) = (resolved.owner, resolved.repo);
+    let ctx = HostContext {
+        hostname: resolved.hostname,
+        client: resolved.client,
     };
-
-    let ctx = HostContext::resolve(hostname, cli_profile)?;
     match ctx.client.fork_repo(&owner, &repo).await {
         Ok(forked) => {
             print_fork_result(&owner, &repo, &forked);

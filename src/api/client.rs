@@ -18,14 +18,16 @@ impl ApiClient {
     /// Create a new API client
     pub fn new(hostname: &str, token: &str, protocol: &str) -> Result<Self> {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_str(&format!("token {}", token))
-                .map_err(|e| GbError::Other(format!("Invalid token: {}", e)))?,
-        );
+        let mut authorization = HeaderValue::from_str(&format!("token {}", token))
+            .map_err(|e| GbError::Other(format!("Invalid token: {}", e)))?;
+        authorization.set_sensitive(true);
+        headers.insert(AUTHORIZATION, authorization);
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
 
-        let client = Client::builder().default_headers(headers).build()?;
+        let client = Client::builder()
+            .default_headers(headers)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()?;
         let base_url = normalize_base_url(hostname, protocol)?;
 
         Ok(Self { client, base_url })
@@ -92,7 +94,7 @@ impl ApiClient {
 
     /// Make a DELETE request
     pub async fn delete(&self, path: &str) -> Result<()> {
-        let url = self.api_url(path);
+        let url = normalize_path_or_url(path, &self.base_url)?;
         let resp = self.client.delete(&url).send().await?;
         self.handle_empty_response(resp).await
     }
@@ -113,11 +115,7 @@ impl ApiClient {
         path: &str,
         body: Option<&serde_json::Value>,
     ) -> Result<serde_json::Value> {
-        let url = if path.starts_with("http://") || path.starts_with("https://") {
-            path.to_string()
-        } else {
-            format!("{}{}", self.base_url, path)
-        };
+        let url = normalize_path_or_url(path, &self.base_url)?;
 
         let mut req = self.client.request(method, &url);
         if let Some(body) = body {
@@ -165,7 +163,7 @@ impl ApiClient {
         path: &str,
         body: Option<&B>,
     ) -> Result<T> {
-        let url = self.api_url(path);
+        let url = normalize_path_or_url(path, &self.base_url)?;
         let mut request = self.client.request(method, &url);
         if let Some(body) = body {
             request = request.json(body);
@@ -187,8 +185,8 @@ impl ApiClient {
         }
     }
 
-    fn api_url(&self, path: &str) -> String {
-        format!("{}{}", self.base_url, path)
+    pub(crate) fn base_url(&self) -> &str {
+        &self.base_url
     }
 }
 

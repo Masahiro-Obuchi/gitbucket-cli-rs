@@ -263,3 +263,25 @@ to the full Linux suite. The Docker suite includes a private repository clone
 that checks the saved remote URL and Git configuration for credentials. Internal
 helper environment variables are subprocess-only implementation details, not
 public configuration options.
+
+## Repository Target and API Boundary Regressions
+
+`tests/target_validation.rs` uses real temporary Git remotes and local HTTP
+listeners to verify that origin mismatches, malformed repository names, API path
+escapes, and redirects are rejected before sending requests to an unintended
+endpoint. Positive cases cover root/subpath HTTP URLs, SSH URLs with independent
+ports, and explicit/profile repository precedence.
+Regression cases also cover trailing slashes in clone URLs, ASCII hostname case
+in SSH origins, and raw/repository API requests under encoded deployment paths.
+Equivalent encodings in root-relative pagination and origin-text paths must not
+duplicate the deployment prefix. Encoded separators across boundary components
+and decoded traversal remain rejected.
+
+```bash
+cargo test --locked --test target_validation --test api_command
+```
+
+The Docker suite also runs origin-derived Issue listing without `GB_REPO`, so
+both root and `/gitbucket` deployments exercise repository inference against the
+live server. The pure target/URL tests cover IPv6, encoded path traversal, and
+base-URL validation separately.
