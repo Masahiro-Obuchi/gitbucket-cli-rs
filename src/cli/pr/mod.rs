@@ -111,11 +111,17 @@ pub enum PrCommand {
         message: Option<String>,
     },
     /// Checkout a pull request branch locally
+    #[command(
+        after_help = "HTTP(S) fetches reuse the configured user/token only within the selected GitBucket origin and base path. Authenticated transfers do not follow redirects; configure the direct clone URL."
+    )]
     Checkout {
         /// PR number
         number: u64,
     },
     /// View the diff of a pull request
+    #[command(
+        after_help = "HTTP(S) fetches reuse the configured user/token only within the selected GitBucket origin and base path. Authenticated transfers do not follow redirects; configure the direct clone URL."
+    )]
     Diff {
         /// PR number
         number: u64,

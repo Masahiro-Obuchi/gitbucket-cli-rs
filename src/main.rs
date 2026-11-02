@@ -19,6 +19,7 @@ mod api;
 mod cli;
 mod config;
 mod error;
+mod git;
 mod models;
 mod output;
 
@@ -29,8 +30,15 @@ use clap::Parser;
 use cli::{Cli, Commands};
 use serde::Serialize;
 
+fn main() {
+    if git::run_credential_helper() {
+        return;
+    }
+    run_cli();
+}
+
 #[tokio::main]
-async fn main() {
+async fn run_cli() {
     let cli = Cli::parse();
     output::set_suppress_stderr(cli.json_errors);
 

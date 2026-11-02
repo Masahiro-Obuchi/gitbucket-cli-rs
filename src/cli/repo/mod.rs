@@ -53,6 +53,9 @@ pub enum RepoCommand {
         group: Option<String>,
     },
     /// Clone a repository
+    #[command(
+        after_help = "OWNER/REPO clones reuse the configured user/token for the same HTTP(S) GitBucket origin and base path. Full URLs use Git's own authentication; passwords in HTTP URLs are rejected. Authenticated GitBucket transfers require a direct URL without redirects."
+    )]
     Clone {
         /// Repository to clone (OWNER/REPO or full URL)
         #[arg(value_name = "OWNER/REPO|URL")]

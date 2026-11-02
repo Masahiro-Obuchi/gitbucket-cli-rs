@@ -390,6 +390,20 @@ gb repo clone <REPO> [DIRECTORY]
 - `OWNER/REPO`
 - Full clone URL
 
+For `OWNER/REPO`, HTTP(S) clones reuse the selected host/profile user and token
+through an ephemeral Git credential helper. `GB_USER` supplies the username when
+using `GB_TOKEN` without a saved user. Full URLs use Git's own authentication;
+HTTP URLs containing a password are rejected before invoking Git.
+
+The helper only supplies credentials within the configured scheme/host/port/base
+path, and validates the exact Git credential context again after URL rewriting.
+It does not persist credentials, invoke configured credential-store helpers, or
+put the token in argv/remote URLs. Token-bearing transfers reject redirects and
+restrict rewritten transports to HTTP(S).
+Secrets are passed through the subprocess environment and remain accessible to
+local processes with sufficient inspection privileges. SSH/external origins do
+not receive the selected GitBucket token.
+
 #### `gb repo delete`
 
 Delete a repository.
@@ -802,9 +816,14 @@ gb pr checkout <NUMBER>
 Execution flow:
 
 1. Fetch PR metadata from API.
-2. Resolve the fetch source from the PR head repository clone URL when available, otherwise use `origin`.
-3. Run `git fetch <fetch-source> <head-branch>`.
-4. Run `git checkout -B <head-branch> FETCH_HEAD`.
+2. Resolve the head repository clone URL or a remote matching its server and repository path, otherwise use `origin` when repository metadata is absent.
+3. Remove HTTP URL userinfo, then fetch `<head-branch>` into `refs/gb/pr/<NUMBER>/head` using the same scoped credential helper as `repo clone OWNER/REPO`.
+4. Run `git checkout -B pr-<NUMBER> refs/gb/pr/<NUMBER>/head`.
+
+The token is not embedded in Git argv or persisted in Git configuration. HTTP
+redirects are disabled for transfers using the GitBucket token. A URL rewritten
+outside the exact approved Git credential context receives no token. Same-named
+repositories on other servers or deployments are not interchangeable remotes.
 
 #### `gb pr diff`
 

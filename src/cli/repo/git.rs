@@ -1,7 +1,5 @@
-use url::Url;
-
 use crate::cli::common::{
-    create_client, parse_owner_repo, resolve_hostname, validate_selected_profile,
+    parse_owner_repo, resolve_host_config, resolve_hostname, validate_selected_profile,
 };
 use crate::error::Result;
 use crate::output;
@@ -12,25 +10,50 @@ pub(super) async fn clone(
     repo: &str,
     directory: Option<&str>,
 ) -> Result<()> {
+    let mut git_auth = None;
     let clone_url = if repo.contains("://") || repo.contains('@') {
         validate_selected_profile(cli_profile)?;
+        if url::Url::parse(repo)
+            .is_ok_and(|url| matches!(url.scheme(), "http" | "https") && url.password().is_some())
+        {
+            return Err(crate::error::GbError::Other(
+                "Passwords in HTTP clone URLs are not supported. Use a Git credential helper, or clone OWNER/REPO after `gb auth login`.".into(),
+            ));
+        }
         repo.to_string()
     } else {
         let hostname = resolve_hostname(hostname, cli_profile)?;
-        let client = create_client(&hostname, cli_profile)?;
+        let host = resolve_host_config(&hostname, cli_profile)?;
+        git_auth = Some(crate::git::GitAuth::new(&hostname, &host)?);
+        let client = crate::api::client::ApiClient::new(&hostname, &host.token, &host.protocol)?;
         let (owner, name) = parse_owner_repo(repo)?;
         let r = client.get_repo(&owner, &name).await?;
         let fallback_clone_url = client.web_url(&format!("/{}/{}.git", owner, name));
         accessible_clone_url(r.clone_url.as_deref(), &fallback_clone_url)
     };
 
-    let mut cmd = std::process::Command::new("git");
-    cmd.arg("clone").arg(&clone_url);
+    let clone_url = if git_auth.is_some() {
+        crate::git::clean_source(&clone_url)?
+    } else {
+        clone_url
+    };
+    let mut cmd = match &git_auth {
+        Some(auth) => auth.command(&clone_url)?,
+        None => {
+            let mut command = std::process::Command::new("git");
+            command.env_remove("GB_TOKEN").env_remove("GB_PASSWORD");
+            command
+        }
+    };
+    cmd.arg("clone").arg("--").arg(&clone_url);
     if let Some(dir) = directory {
         cmd.arg(dir);
     }
 
-    let output = cmd.output()?;
+    let mut output = cmd.output()?;
+    if let Some(auth) = &git_auth {
+        auth.redact_output(&mut output);
+    }
     if output.status.success() {
         if !output.stdout.is_empty() {
             print!("{}", String::from_utf8_lossy(&output.stdout));
@@ -48,69 +71,7 @@ pub(super) async fn clone(
     Ok(())
 }
 
-pub(super) fn accessible_clone_url(api_clone_url: Option<&str>, fallback_url: &str) -> String {
-    let Some(api_clone_url) = api_clone_url else {
-        return fallback_url.to_string();
-    };
-
-    let Ok(public_url) = Url::parse(fallback_url) else {
-        return api_clone_url.to_string();
-    };
-    let Ok(api_url) = Url::parse(api_clone_url) else {
-        return api_clone_url.to_string();
-    };
-
-    if !is_internal_gitbucket_clone_host(&api_url) && !same_origin(&api_url, &public_url) {
-        return api_clone_url.to_string();
-    }
-
-    let public_prefix = public_repo_prefix(public_url.path());
-    let mut clone_url = if is_internal_gitbucket_clone_host(&api_url) {
-        public_url
-    } else {
-        api_url.clone()
-    };
-    let api_path = api_url.path();
-    let normalized_api_path = if api_path.starts_with('/') {
-        api_path.to_string()
-    } else {
-        format!("/{api_path}")
-    };
-    let combined_path = if public_prefix.is_empty()
-        || normalized_api_path.starts_with(&format!("{public_prefix}/"))
-    {
-        normalized_api_path
-    } else {
-        format!("{public_prefix}{normalized_api_path}")
-    };
-
-    clone_url.set_path(&combined_path);
-    clone_url.set_query(api_url.query());
-    clone_url.set_fragment(api_url.fragment());
-    clone_url.to_string()
-}
-
-fn public_repo_prefix(path: &str) -> String {
-    let segments: Vec<&str> = path
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .collect();
-    if segments.len() <= 2 {
-        return String::new();
-    }
-
-    format!("/{}", segments[..segments.len() - 2].join("/"))
-}
-
-fn is_internal_gitbucket_clone_host(url: &Url) -> bool {
-    matches!(url.host_str(), Some("gitbucket"))
-}
-
-fn same_origin(left: &Url, right: &Url) -> bool {
-    left.scheme() == right.scheme()
-        && left.host_str() == right.host_str()
-        && left.port_or_known_default() == right.port_or_known_default()
-}
+pub(super) use crate::git::accessible_clone_url;
 
 fn command_output_summary(output: &std::process::Output) -> String {
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -130,16 +91,7 @@ fn command_output_summary(output: &std::process::Output) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{accessible_clone_url, public_repo_prefix};
-
-    #[test]
-    fn public_repo_prefix_extracts_optional_base_path() {
-        assert_eq!(public_repo_prefix("/alice/demo.git"), "");
-        assert_eq!(
-            public_repo_prefix("/gitbucket/alice/demo.git"),
-            "/gitbucket"
-        );
-    }
+    use super::accessible_clone_url;
 
     #[test]
     fn accessible_clone_url_rewrites_internal_host_to_public_base() {
