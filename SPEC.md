@@ -596,8 +596,10 @@ Behavior:
   Reloads the milestone before Web authentication and merges current values again.
   If the refreshed title is REST-compatible, retries REST with that snapshot.
   Repeating a state-only request for the current state needs no mutation or Web authentication.
-- Web content forms cannot round-trip surrounding whitespace. They also cannot
-  guarantee the instant of an existing due date (date-only input/server timezone).
+- Web content forms trim leading/trailing U+0000..U+0020 characters, matching
+  Java `String.trim`. Preflight validation rejects those values and retains other
+  Unicode spacing in nonblank titles/descriptions. Web forms also cannot guarantee
+  the instant of an existing due date (date-only input/server timezone).
   Refuse lossy text or an unchanged nonempty due timestamp before authentication;
   users must explicitly set/clear `--due-on` or use a REST-compatible title.
   The legacy unset-date sentinel is treated as unset. State-only Web updates send

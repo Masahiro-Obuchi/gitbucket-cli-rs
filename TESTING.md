@@ -341,6 +341,8 @@ without password prompts, and known title-validation-only Web supplementation.
 Web cases cover Unicode/space titles, preserved state, refreshed values, lossy
 form rejection before authentication, sentinel dates, duplicates, missing
 resources, validation pages and failed post-submit verification.
+Trim regressions exercise Java-trimmed control characters before authentication
+and exact preservation of fullwidth/nonbreaking spaces in Web submissions.
 
 ```bash
 cargo test --locked --test milestone_command
@@ -351,4 +353,6 @@ required title and null clears directly. Live CLI regressions compare every
 editable field after each single-field edit, including closed_at retention and
 non-midnight timestamps, with GB_PASSWORD removed. Unicode-title cases exercise
 the Web-only actions and switching back to a REST-compatible title without a
-password. All run under both root and /gitbucket deployments in the E2E workflow.
+password. Fullwidth spaces in titles and nonbreaking spaces in descriptions are
+compared exactly after Web edits. All run under both root and /gitbucket
+deployments in the E2E workflow.

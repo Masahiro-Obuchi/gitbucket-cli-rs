@@ -22,7 +22,10 @@ pub(super) fn rest_title(title: &str) -> bool {
 
 pub(super) fn validate_web_text(title: &str, description: Option<&str>) -> Result<()> {
     validate_title(title)?;
-    if title.trim() != title || description.is_some_and(|value| value.trim() != value) {
+    // Scalatra's trim wrapper calls Java String.trim: only code units through
+    // U+0020 are removed. Rust's Unicode whitespace rule has different boundaries.
+    let trims = |value: &str| value.trim_matches(|ch| ch <= '\u{20}') != value;
+    if trims(title) || description.is_some_and(trims) {
         return Err(GbError::Other("GitBucket's milestone Web form trims title/description whitespace and cannot preserve these values. Use a REST-compatible title or explicitly provide values without surrounding whitespace.".into()));
     }
     Ok(())

@@ -482,14 +482,14 @@ fn e2e_milestone_unicode_and_space_titles_use_web_only_where_needed() {
             serde_json::json!("closed"),
         ),
         (
-            vec!["--description", "更新した説明"],
+            vec!["--description", "\u{a0}更新した説明\u{a0}"],
             "description",
-            serde_json::json!("更新した説明"),
+            serde_json::json!("\u{a0}更新した説明\u{a0}"),
         ),
         (
-            vec!["--title", "新しい release"],
+            vec!["--title", "\u{3000}新しい release\u{3000}"],
             "title",
-            serde_json::json!("新しい release"),
+            serde_json::json!("\u{3000}新しい release\u{3000}"),
         ),
         (
             vec!["--due-on", "2027-04-02"],

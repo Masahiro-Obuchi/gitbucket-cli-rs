@@ -554,9 +554,11 @@ this can require `GB_USER` / `GB_PASSWORD`. A server that accepts the title over
 REST needs no Web credentials. Web create/edit results are checked before success
 is printed; if verification fails, inspect the milestone before retrying.
 
-The Web form trims text and accepts only calendar dates. Content edits are
-refused before Web authentication if they would trim text or resend an existing
-due timestamp without an explicit `--due-on` setting/clear. Set that option
+The Web form trims leading/trailing characters through U+0020 (ASCII controls and
+space), and accepts only calendar dates. Other Unicode spacing in nonblank titles
+and descriptions is retained. Content edits are refused before Web authentication
+if they would trim text or resend an existing due timestamp without an explicit
+`--due-on` setting/clear. Set that option
 explicitly or change to a REST-compatible title. State-only Web actions do not
 resubmit description or due date. A Web date is interpreted by the server's form;
 if its timezone produces a different instant, verification reports the mismatch
