@@ -472,13 +472,17 @@ gb label create [NAME] [OPTIONS]
 | Option | Short | Description |
 | --- | --- | --- |
 | `--color <HEX>` | `-c` | 6-digit hex color (prompted when omitted) |
-| `--description <TEXT>` | `-d` | Optional label description |
+| `--description <TEXT>` | `-d` | Recognized but unsupported; rejected before mutation |
 
 Behavior:
 
 - Prompts for the label name when omitted
 - Accepts colors with or without a leading `#`
 - Normalizes colors to lowercase 6-digit hex before sending the API request
+- Description write options fail before changes because the verified API/Web
+  contracts do not persist them; unknown instances are not assumed to support them.
+- Reads back stored values before success; failed verification reports possibly
+  applied changes and asks the user to inspect before retrying.
 
 #### `gb label edit`
 
@@ -490,15 +494,33 @@ gb label edit <NAME> [OPTIONS]
 | --- | --- | --- |
 | `--name <NAME>` | — | Rename the label |
 | `--color <HEX>` | `-c` | New 6-digit hex color |
-| `--description <TEXT>` | `-d` | New label description |
-| `--remove-description` | — | Clear the label description |
+| `--description <TEXT>` | `-d` | Recognized but unsupported; rejected before mutation |
+| `--remove-description` | — | Recognized but unsupported; rejected before mutation |
+| `--web` | — | Permit verified in-place color updates after same-name REST rejection |
 
 Behavior:
 
 - Requires at least one change option
 - Accepts colors with or without a leading `#`
 - Normalizes colors to lowercase 6-digit hex before sending the API request
-- Percent-encodes the current label name in the API path
+- Percent-encodes the current label name in the API path. Empty names, dot segments,
+  backslashes and controls (including ambiguous decoded forms) fail before requests.
+- Fetches current fields and always supplies name/color for PATCH. Rename keeps the
+  stored color when omitted. No-op requests need no PATCH or Web session.
+- Only a same-name, non-no-op REST update rejected with 422 permits Web color
+  supplementation, and only with `--web`. A new-name conflict or other HTTP failure
+  is returned directly. Servers accepting REST need no Web credentials.
+- The Web adapter identifies one numeric ID from the row's repository/name link,
+  confirms the edit form's name/color and ID, updates that ID in place, and verifies
+  identity plus persisted values. No delete/create or temporary rename is used.
+- Rejects unrecognized/ambiguous layout and snapshot mismatches before form mutation.
+  Web name trimming, commas unsupported by the form, or a description that cannot be
+  preserved cause an explicit error before Web authentication. The Web adapter uses
+  the real HTML parser and sanitized pinned-server fixtures, including proxy links.
+- Description changes/clears are unsupported before any mutation; existing read
+  descriptions are echoed for REST preservation and checked afterward.
+- Read/merge/write and Web steps are not a conditional transaction. See
+  `docs/UPSTREAM_LABEL_API.md` for remaining server-side work.
 
 #### `gb label delete`
 
@@ -709,9 +731,17 @@ gb issue edit <NUMBER> [OPTIONS]
 Behavior:
 
 - Requires at least one explicit change
-- Fetches the current issue first so label/assignee changes can be merged safely
+- Fetches and validates the current Issue number before edits. Label additions
+  preflight the existing repository labels, avoiding implicit server-side creation.
+- Applies labels through POST additions and per-label DELETE operations, never
+  Issue PATCH or a full-set PUT. Removals run before additions; addition wins if
+  both are requested. Fresh label reads avoid replacing unrelated concurrent labels.
+- Metadata and labels are separate phases. Metadata is applied and verified before
+  label writes. Label-only requests send no Issue PATCH and open no Web session.
+- Reads stored labels/metadata before success. Partial failures identify confirmed
+  steps and require inspection before retrying; these phases are not atomic.
 - Rejects `--milestone` and `--remove-milestone` together before any API call
-- If GitBucket does not support REST issue editing and `gb` falls back to the web UI flow, title/body/assignee/milestone/state updates are supported; label edits still require REST issue edit support
+- Title/body/assignee/milestone/state may still use Web when Issue PATCH is unavailable; label changes use their own REST routes regardless of Issue PATCH support.
 
 #### `gb issue close`
 
@@ -1347,6 +1377,13 @@ Pull request:
 - `POST /{owner}/{repo}/issues/{number}/assignee/{new|delete}` (PR assignee Web operation)
 
 Label:
+
+- `GET /repos/{owner}/{repo}/issues/{number}/labels`
+- `POST /repos/{owner}/{repo}/issues/{number}/labels` (additions only)
+- `DELETE /repos/{owner}/{repo}/issues/{number}/labels/{name}` (one association)
+- `GET /{owner}/{repo}/issues/labels` (verified Web identity lookup)
+- `GET /{owner}/{repo}/issues/labels/{id}/edit` (verified Web form)
+- `POST /{owner}/{repo}/issues/labels/{id}/edit` (in-place color update)
 
 - `GET /repos/{owner}/{repo}/labels`
 - `GET /repos/{owner}/{repo}/labels/{name}`

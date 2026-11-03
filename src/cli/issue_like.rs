@@ -8,10 +8,7 @@ use crate::models::issue::{Issue, UpdateIssue};
 pub(crate) struct IssueLikeEdit<'a> {
     pub current: &'a IssueLikeCurrent,
     pub update: &'a UpdateIssue,
-    pub allow_web_fallback: bool,
-    pub unsupported_web_fallback_message: Option<&'a str>,
     pub rest_unavailable_notice: &'a str,
-    pub success_noun: &'a str,
 }
 
 pub(crate) struct IssueLikeTarget<'a> {
@@ -39,31 +36,10 @@ impl IssueLikeCurrent {
     }
 }
 
-pub(crate) async fn run_issue_like_edit<F, Fut>(
+pub(crate) async fn apply_issue_like_edit(
     target: IssueLikeTarget<'_>,
     edit: IssueLikeEdit<'_>,
-    fetch_after: F,
-) -> Result<()>
-where
-    F: FnOnce() -> Fut,
-    Fut: std::future::Future<Output = Result<(u64, String)>>,
-{
-    if !edit.allow_web_fallback {
-        return Err(GbError::Other(
-            edit.unsupported_web_fallback_message
-                .unwrap_or("REST edit is unavailable on this GitBucket instance.")
-                .into(),
-        ));
-    }
-
-    if edit.update.labels.is_some() {
-        return Err(GbError::Other(
-            edit.unsupported_web_fallback_message
-                .unwrap_or("This GitBucket instance does not support editing labels through the web fallback.")
-                .into(),
-        ));
-    }
-
+) -> Result<()> {
     eprintln!("{}", edit.rest_unavailable_notice);
 
     let next_title = edit
@@ -129,22 +105,6 @@ where
                 .session
                 .update_issue_state(target.owner, target.repo, target.number, action)
                 .await?;
-        }
-    }
-
-    match fetch_after().await {
-        Ok((number, title)) => {
-            println!("✓ Updated {} #{}: {}", edit.success_noun, number, title);
-        }
-        Err(err) => {
-            eprintln!(
-                "Warning: failed to fetch updated {} #{} from API after web fallback: {}",
-                edit.success_noun, target.number, err
-            );
-            println!(
-                "✓ Updated {} #{}: {}",
-                edit.success_noun, target.number, next_title
-            );
         }
     }
 

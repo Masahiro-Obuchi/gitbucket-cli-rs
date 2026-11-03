@@ -67,8 +67,6 @@ pub struct UpdateIssue {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub labels: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub assignees: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub milestone: Option<Option<u64>>,

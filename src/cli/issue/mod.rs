@@ -64,6 +64,9 @@ pub enum IssueCommand {
         assignee: Vec<String>,
     },
     /// Edit an issue
+    #[command(
+        after_help = "Labels use dedicated REST add/remove endpoints and need no Web password when edited alone. Additions must already exist as repository labels. Other metadata may require Web authentication; mixed edits are verified in phases and are not atomic."
+    )]
     Edit {
         /// Issue number
         number: u64,

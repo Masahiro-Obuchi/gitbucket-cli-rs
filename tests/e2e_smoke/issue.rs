@@ -239,7 +239,7 @@ fn e2e_issue_edit_updates_metadata_against_live_instance() {
 
 #[test]
 #[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
-fn e2e_issue_edit_label_constraint_and_assignee_fallback_against_live_instance() {
+fn e2e_issue_label_preflight_and_assignee_fallback_keep_label_links() {
     let temp = tempdir().unwrap();
     let user = required_env("GB_E2E_USER");
 
@@ -251,22 +251,72 @@ fn e2e_issue_edit_label_constraint_and_assignee_fallback_against_live_instance()
         "body for unsupported field checks",
     );
 
+    let label_name = format!("label-preflight-{}", unique_suffix());
+    let path = format!(
+        "repos/{}/issues/{issue_number}",
+        required_env("GB_E2E_REPO")
+    );
+    let original: Value = serde_json::from_str(&gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["api", &path],
+    ))
+    .unwrap();
+    let mut label_command = gb_command();
+    label_command.current_dir(temp.path()).args([
+        "issue",
+        "edit",
+        &issue_number.to_string(),
+        "--title",
+        "must-not-apply",
+        "--add-label",
+        &label_name,
+    ]);
+    for (key, value) in e2e_env(temp.path()) {
+        label_command.env(key, value);
+    }
+    label_command.env_remove("GB_PASSWORD");
+    let label_stderr = run_and_assert_failure(&mut label_command);
+    assert!(
+        label_stderr.contains("additions require an existing repository label"),
+        "{label_stderr}"
+    );
+    let unchanged: Value = serde_json::from_str(&gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["api", &path],
+    ))
+    .unwrap();
+    assert_eq!(unchanged, original);
+    let labels: Value = serde_json::from_str(&gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["label", "list", "--json"],
+    ))
+    .unwrap();
+    assert!(!labels
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|label| label["name"] == label_name));
+    gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["label", "create", &label_name, "--color", "123abc"],
+    );
     let mut label_command = gb_command();
     label_command.current_dir(temp.path()).args([
         "issue",
         "edit",
         &issue_number.to_string(),
         "--add-label",
-        "urgent",
+        &label_name,
     ]);
     for (key, value) in e2e_env(temp.path()) {
         label_command.env(key, value);
     }
-    let label_stderr = run_and_assert_failure(&mut label_command);
-    assert!(
-        label_stderr.contains("does not support editing issue labels through the web fallback"),
-        "stderr: {label_stderr}"
-    );
+    label_command.env_remove("GB_PASSWORD");
+    run_and_assert_success(&mut label_command);
 
     let assignee_stdout = gb_output_with_env(
         temp.path(),
@@ -282,5 +332,26 @@ fn e2e_issue_edit_label_constraint_and_assignee_fallback_against_live_instance()
     assert!(
         assignee_stdout.contains(&format!("Updated issue #{issue_number}:")),
         "stdout: {assignee_stdout}"
+    );
+    let stored: Value = serde_json::from_str(&gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["api", &path],
+    ))
+    .unwrap();
+    assert!(stored["labels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|label| label["name"] == label_name));
+    assert!(stored["assignees"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|assignee| assignee["login"] == user));
+    gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["label", "delete", &label_name, "--yes"],
     );
 }
