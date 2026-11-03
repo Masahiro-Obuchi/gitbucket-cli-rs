@@ -5,6 +5,7 @@ use crate::cli::common::normalize_str_vec;
 mod checkout;
 mod git;
 mod read;
+mod target;
 mod worktree;
 mod write;
 
@@ -76,6 +77,9 @@ pub enum PrCommand {
         detect_existing: bool,
     },
     /// Edit a pull request
+    #[command(
+        after_help = "Title, body and state always use the PR REST API. --web permits only assignee changes; it does not force REST-supported fields through the Web UI."
+    )]
     Edit {
         /// PR number
         number: u64,
@@ -94,12 +98,17 @@ pub enum PrCommand {
         /// Update PR state (open or closed)
         #[arg(long, value_parser = ["open", "closed"], ignore_case = true)]
         state: Option<String>,
-        /// Allow GitBucket web UI fallback when REST PR edit is unavailable
+        /// Permit GitBucket Web UI assignee changes (title/body/state use REST)
         #[arg(long)]
         web: bool,
     },
     /// Close a pull request
     Close {
+        /// PR number
+        number: u64,
+    },
+    /// Reopen a closed, unmerged pull request
+    Reopen {
         /// PR number
         number: u64,
     },
@@ -252,6 +261,9 @@ pub async fn run(
         }
         PrCommand::Close { number } => {
             write::close(cli_hostname, cli_repo, cli_profile, number).await
+        }
+        PrCommand::Reopen { number } => {
+            write::reopen(cli_hostname, cli_repo, cli_profile, number).await
         }
         PrCommand::Merge { number, message } => {
             write::merge(cli_hostname, cli_repo, cli_profile, number, message).await

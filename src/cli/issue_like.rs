@@ -37,20 +37,6 @@ impl IssueLikeCurrent {
             issue: Some(issue),
         }
     }
-
-    pub(crate) fn pull_request(
-        title: String,
-        body: Option<String>,
-        state: String,
-        issue: Option<Issue>,
-    ) -> Self {
-        Self {
-            title,
-            body,
-            state,
-            issue,
-        }
-    }
 }
 
 pub(crate) async fn run_issue_like_edit<F, Fut>(

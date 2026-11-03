@@ -804,9 +804,15 @@ gb pr create [OPTIONS]
 On normal text output, `gb pr create` prints the created PR number/title, resolved `Head:` and `Base:` repository refs when the API returns them, and a canonical browser URL using `/pull/{number}`.
 With `--detect-existing`, `gb` checks open pull requests for a matching head/base before prompting for title/body or creating a new PR. If the pull request listing is incomplete or lacks comparable refs, `gb` also checks PRs exposed through the issue listing and fetches PR details before deciding no match exists. If create fails after that check, `gb` checks again and returns the matching open PR when one exists.
 
+Numbered PR operations validate the target through `GET /repos/{owner}/{repo}/pulls/{number}`
+first and reject returned-number mismatches. The compatibility lookup for null
+single-PR responses searches only the PR collection, not ordinary issues. This
+check also precedes comment list/post/edit, merge, checkout/diff and browser view;
+comment subresources still use the Issue comments API after validation.
+
 #### `gb pr edit`
 
-Edit a pull request through the issue endpoint.
+Edit supported PR fields through the pull-request endpoint; update assignees separately.
 
 ```text
 gb pr edit <NUMBER> [OPTIONS]
@@ -819,9 +825,34 @@ gb pr edit <NUMBER> [OPTIONS]
 | `--add-assignee <USER>` | — | Add an assignee; repeatable or comma-separated |
 | `--remove-assignee <USER>` | — | Remove an assignee; repeatable or comma-separated |
 | `--state <STATE>` | — | Update PR state: `open` or `closed` |
-| `--web` | — | Allow GitBucket web UI fallback when REST PR edit is unavailable |
+| `--web` | — | Permit Web UI assignee changes; title/body/state remain REST operations |
 
-Implementation detail: PR title/body/state/assignee metadata is edited by calling the **issues** endpoint (`PATCH /repos/{owner}/{repo}/issues/{number}`). If GitBucket returns `404` for that REST update, `gb pr edit` fails without performing a web session. Passing `--web` explicitly allows the GitBucket web UI fallback routes for PR title/body/state/assignee updates.
+- Requires at least one edit and rejects blank new titles; an empty body is an
+  explicit clear.
+- Validates the number through the canonical PR endpoint before any mutation.
+  Uses `UpdatePullRequest` and `PATCH /repos/{owner}/{repo}/pulls/{number}` for
+  title/body/state only. Never sends a PR edit to Issue PATCH.
+- GitBucket 4.44 updates body only inside its title update. Content edits supply
+  both the requested/existing title and requested/existing body; absent stored
+  bodies stay absent. State-only edits omit both content fields to preserve them.
+- Normalizes requested state and skips an already-satisfied state change. Reopening
+  a merged PR is refused before any content/assignee edit; title/body edits on
+  closed/merged PRs do not implicitly reopen them.
+- Checks returned PR number/title/body/state against the intended result before
+  continuing. REST errors, including 404, propagate without Web retries, even
+  with `--web`. This flag grants permission; it does not force Web use.
+- Reads assignees separately through the Issue detail endpoint after PR validation,
+  and sends no assignee field in PR PATCH. An actual delta requires `--web`;
+  an already-satisfied assignee request needs no Web session.
+- Before a mixed REST/Web edit, require Web permission and attempt sign-in before
+  REST mutation. Then update REST fields and apply only assignee additions/removals
+  through the existing Web adapter. Read back and verify the desired assignee set.
+- On a later Web/read-back failure, do not print success; identify completed REST
+  fields and possibly partial assignee changes, with inspection-before-retry
+  guidance. There is no destructive rollback or automatic retry.
+- Content pairing uses a read snapshot, and combined REST/Web edits are not atomic.
+  The existing shared sign-in helper's principal verification and a generic
+  mutation-result schema are follow-up work, not guarantees of this adapter.
 
 #### `gb pr close`
 
@@ -829,7 +860,17 @@ Implementation detail: PR title/body/state/assignee metadata is edited by callin
 gb pr close <NUMBER>
 ```
 
-Implementation detail: this operation updates PR state by calling the **issues** endpoint (`PATCH /repos/{owner}/{repo}/issues/{number}` with `state=closed`).
+Uses the same validated PR edit path with a state-only PR PATCH. An already
+closed PR needs no mutation. No Web session or Issue PATCH is used.
+
+#### `gb pr reopen`
+
+```text
+gb pr reopen <NUMBER>
+```
+
+Uses the same validated PR edit path with `state=open`. Already-open PRs need no
+mutation. Merged PRs are refused. Equivalent to `gb pr edit <NUMBER> --state open`.
 
 #### `gb pr merge`
 
@@ -1298,15 +1339,12 @@ Pull request:
 - `GET /repos/{owner}/{repo}/pulls?state={state}`
 - `GET /repos/{owner}/{repo}/pulls/{number}`
 - `POST /repos/{owner}/{repo}/pulls`
+- `PATCH /repos/{owner}/{repo}/pulls/{number}` (title/body/state)
 - `PUT /repos/{owner}/{repo}/pulls/{number}/merge`
 - `GET /repos/{owner}/{repo}/issues/{number}/comments` (PR comments)
 - `POST /repos/{owner}/{repo}/issues/{number}/comments` (PR comments)
 - `PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}` (PR comment edit)
-- `PATCH /repos/{owner}/{repo}/issues/{number}` (PR title/body/state/assignees)
-- `POST /{owner}/{repo}/issues/edit_title/{number}` (PR edit web fallback)
-- `POST /{owner}/{repo}/issues/edit/{number}` (PR edit web fallback)
-- `POST /{owner}/{repo}/issues/{number}/assignee/{new|delete}` (PR edit web fallback)
-- `POST /{owner}/{repo}/issue_comments/state` (PR state web fallback)
+- `POST /{owner}/{repo}/issues/{number}/assignee/{new|delete}` (PR assignee Web operation)
 
 Label:
 

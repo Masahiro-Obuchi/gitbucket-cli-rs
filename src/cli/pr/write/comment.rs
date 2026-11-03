@@ -17,6 +17,8 @@ pub(in crate::cli::pr) async fn comment(
 ) -> Result<()> {
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
+    super::super::target::require_pull_request(&ctx, number).await?;
+
     let body_text = match body {
         Some(b) => b,
         None => Input::new().with_prompt("Comment body").interact_text()?,

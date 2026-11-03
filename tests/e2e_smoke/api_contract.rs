@@ -386,3 +386,55 @@ async fn contract_label_updates_require_name_and_color_and_reject_same_name() {
         StatusCode::NOT_FOUND
     );
 }
+
+#[tokio::test]
+#[ignore = "requires the pinned Docker GitBucket fixture"]
+async fn contract_pr_content_patch_requires_a_title_body_pair() {
+    let temp = tempdir().unwrap();
+    login(temp.path());
+    let (number, _, _) = create_live_pr_fixture(temp.path(), "contract-pr-content");
+    let client = client();
+    let path = format!("repos/{}/pulls/{number}", required_env("GB_E2E_REPO"));
+    let original = stored(&client, &path).await;
+    assert!(!original["body"].as_str().unwrap_or_default().is_empty());
+    let ignored = success(
+        request(
+            &client,
+            Method::PATCH,
+            &path,
+            Some(json!({"body":"body-only-is-ignored"})),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(ignored["title"], original["title"]);
+    assert_eq!(ignored["body"], original["body"]);
+    assert_eq!(stored(&client, &path).await["body"], original["body"]);
+    let cleared = success(
+        request(
+            &client,
+            Method::PATCH,
+            &path,
+            Some(json!({"title":"contract-title-only"})),
+        )
+        .await,
+    )
+    .await;
+    assert!(cleared["body"].is_null() || cleared["body"] == "");
+    assert!(
+        stored(&client, &path).await["body"].is_null()
+            || stored(&client, &path).await["body"] == ""
+    );
+    let fixed = success(
+        request(
+            &client,
+            Method::PATCH,
+            &path,
+            Some(json!({"title":original["title"],"body":"paired-body"})),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(fixed["body"], "paired-body");
+    assert_eq!(stored(&client, &path).await["body"], "paired-body");
+}

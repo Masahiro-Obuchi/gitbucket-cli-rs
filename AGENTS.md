@@ -6,7 +6,7 @@
 - Implemented auth flows: `login`, `logout`, `status`, and `token`.
 - Repository flows support list/view/create/clone/delete/fork.
 - Issue flows support list/view/create/edit/close/reopen/comment.
-- Pull request flows support list/view/create/close/merge/checkout/diff/comment.
+- Pull request flows support list/view/create/edit/close/reopen/merge/checkout/diff/comment.
 - Planned but not yet implemented: none.
 
 ## Project Structure & Module Organization

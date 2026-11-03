@@ -74,6 +74,7 @@ pub(super) async fn list_comments(
 ) -> Result<()> {
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
+    super::target::require_pull_request(&ctx, number).await?;
     let comments = ctx
         .client
         .list_all_pr_comments(&ctx.owner, &ctx.repo, number)
@@ -120,6 +121,8 @@ pub(super) async fn view(
 ) -> Result<()> {
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
+    let pr = super::target::require_pull_request(&ctx, options.number).await?;
+
     if options.web {
         let url = ctx.client.web_url(&format!(
             "/{}/{}/pull/{}",
@@ -127,11 +130,6 @@ pub(super) async fn view(
         ));
         return output::open_web_url(&url);
     }
-
-    let pr = ctx
-        .client
-        .get_pull_request(&ctx.owner, &ctx.repo, options.number)
-        .await?;
 
     if options.json {
         if options.show_comments {

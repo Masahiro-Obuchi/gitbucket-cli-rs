@@ -3,7 +3,9 @@ use std::collections::HashSet;
 
 use crate::error::{GbError, Result};
 use crate::models::comment::{Comment, CreateComment};
-use crate::models::pull_request::{CreatePullRequest, MergePullRequest, MergeResult, PullRequest};
+use crate::models::pull_request::{
+    CreatePullRequest, MergePullRequest, MergeResult, PullRequest, UpdatePullRequest,
+};
 
 impl ApiClient {
     /// List pull requests for a repository
@@ -96,6 +98,18 @@ impl ApiClient {
         body: &CreatePullRequest,
     ) -> Result<PullRequest> {
         self.post(&format!("/repos/{}/{}/pulls", owner, repo), body)
+            .await
+    }
+
+    /// Edit implemented PR fields; assignees are a separate operation.
+    pub async fn update_pull_request(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+        body: &UpdatePullRequest,
+    ) -> Result<PullRequest> {
+        self.patch(&format!("/repos/{owner}/{repo}/pulls/{number}"), body)
             .await
     }
 

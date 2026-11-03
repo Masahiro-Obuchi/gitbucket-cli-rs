@@ -126,7 +126,10 @@ gb pr create -t "From fork" --head feature/x --head-owner alice -B main
 gb pr create --head feature/x -B main --detect-existing
 gb pr view 5
 gb pr view 5 --json --no-pager
-gb pr edit 5 --add-assignee bob
+gb pr edit 5 --title "Updated title"
+gb pr edit 5 --add-assignee bob --web
+gb pr close 5
+gb pr reopen 5
 gb pr merge 5
 gb pr checkout 5
 gb pr diff 5 --no-pager
@@ -173,6 +176,7 @@ gb pr comment list 5 --json --no-pager
 | `gb pr create`                 | Create a pull request                |
 | `gb pr edit <NUMBER>`          | Edit a pull request                  |
 | `gb pr close <NUMBER>`         | Close a pull request                 |
+| `gb pr reopen <NUMBER>`        | Reopen a closed, unmerged PR          |
 | `gb pr merge <NUMBER>`         | Merge a pull request                 |
 | `gb pr checkout <NUMBER>`      | Checkout a PR branch                 |
 | `gb pr diff <NUMBER>`          | Show PR diff                         |
@@ -258,7 +262,11 @@ Invalid values are rejected before the API call is made.
 
 Some GitBucket actions are only exposed through the web UI, not the REST API.
 When `gb repo delete`, `gb repo fork`, `gb issue close`, `gb issue reopen`, or issue metadata updates hit that case, `gb` falls back to a short web sign-in flow and may prompt for your password.
-`gb pr edit` is automation-safe by default: if REST PR edit is unavailable it fails non-interactively, and uses the web fallback only when `--web` is passed.
+`gb pr edit`, `gb pr close`, and `gb pr reopen` use the PR REST endpoint for
+title/body/state, without Web credentials. Assignee changes use the Web UI only
+when `--web` permits them; the flag does not force REST fields through Web.
+REST failures, including `404`, are returned directly instead of triggering a
+Web retry.
 When a web fallback is used, `gb` writes a `Notice:` line to stderr so scripts can distinguish REST-only success from fallback success.
 For `gb issue edit`, the web fallback currently covers title/body/assignee/milestone/state updates. Label edits still require REST issue edit support from the target GitBucket.
 Use `GB_USER` and `GB_PASSWORD` to preseed those prompts when needed.
@@ -268,11 +276,36 @@ Issue label and assignee options can be repeated or comma-separated:
 ```bash
 gb issue create -t "Bug report" --label bug,urgent --assignee alice
 gb issue edit 1 --add-label needs-review --remove-assignee bob
-gb pr edit 5 --add-assignee alice,bob --remove-assignee carol
+gb pr edit 5 --add-assignee alice,bob --remove-assignee carol --web
 ```
 
 `gb pr create --head` accepts a branch name for same-repository PRs. For cross-repository PRs, pass `OWNER:BRANCH` or use `--head-owner OWNER --head BRANCH`; after creation, the CLI prints the resolved `Head:` and `Base:` repositories and refs. Use `gb pr create --detect-existing` to return an existing open PR for the same head/base instead of creating a duplicate, including PRs that need to be recovered from GitBucket's issue listing. `gb pr create --json` and `gb pr view --json` print the API payload for automation; `gb pr view --comments --json` also includes a top-level `comments` array. `gb pr list --state open --json` fetches each open PR detail before printing JSON so fork head/base repository information matches `gb pr view --json` more closely.
 `gb pr comment --json` prints the created or edited comment object; normal text output includes the comment ID and URL when GitBucket returns one. Use `gb pr comment list <NUMBER> --json` to inspect existing PR comments before retrying a comment mutation. `gb issue list`, `gb issue view`, `gb pr list`, `gb pr view`, and `gb pr comment list` accept `--no-pager` to force direct stdout output.
+
+## Pull Request Edits and Target Validation
+
+PR title/body/state edits use `PATCH /repos/OWNER/REPO/pulls/NUMBER`. GitBucket
+4.44 updates the body only when a title is supplied and can clear it on a
+title-only PATCH, so `gb` supplies the existing counterpart for content edits.
+State-only edits send just state. Use `--body ''` to clear a body; a blank new
+title is rejected. Repeated close/reopen requests already satisfied by the
+current state do not send another update. Merged PRs cannot be reopened.
+
+Numbered PR commands resolve the target through the PR API first, including
+comment listing/posting/editing. Ordinary Issue numbers and mismatched API
+numbers are refused before prompting or using Issue-backed subresources.
+General PR conversation comments still use the Issue comments API after this
+check; this does not add inline review-comment support.
+
+Assignees are a separate operation. Actual changes require `--web`; no-op
+assignee requests need no Web authentication. For mixed edits, Web permission
+and sign-in are attempted before the REST mutation; REST fields are then
+updated, and only assignee deltas use Web. Stored assignees are checked before
+success. If a later step fails, the error identifies completed REST fields and
+asks you to inspect the PR before retrying. A combined edit is not atomic;
+concurrent writers can also race with the content snapshot. Shared Web sign-in
+identity verification and general operation-result handling remain separate
+follow-up work.
 
 ## Pull Request Checkout And Diff
 
