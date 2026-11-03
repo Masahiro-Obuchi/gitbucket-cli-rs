@@ -17,10 +17,7 @@ pub(super) async fn diff(
 ) -> Result<()> {
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
-    let pr = ctx
-        .client
-        .get_pull_request(&ctx.owner, &ctx.repo, number)
-        .await?;
+    let pr = super::target::require_pull_request(&ctx, number).await?;
     match live_branch_diff(&ctx, number, no_pager, &pr) {
         Ok(diff) => {
             print!("{diff}");

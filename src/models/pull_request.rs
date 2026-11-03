@@ -57,6 +57,23 @@ pub struct CreatePullRequest {
     pub body: Option<String>,
 }
 
+/// Only fields implemented by the GitBucket pull-request PATCH endpoint.
+#[derive(Debug, Serialize)]
+pub struct UpdatePullRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+}
+
+impl UpdatePullRequest {
+    pub fn is_empty(&self) -> bool {
+        self.title.is_none() && self.body.is_none() && self.state.is_none()
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MergePullRequest {
     #[serde(skip_serializing_if = "Option::is_none")]

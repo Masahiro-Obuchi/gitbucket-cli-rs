@@ -356,3 +356,25 @@ the Web-only actions and switching back to a REST-compatible title without a
 password. Fullwidth spaces in titles and nonbreaking spaces in descriptions are
 compared exactly after Web edits. All run under both root and /gitbucket
 deployments in the E2E workflow.
+
+## PR REST Editing and Target Validation
+
+`tests/pr_edit_flows.rs` verifies that content/state use only PR PATCH, including
+title/body pairing for the pinned server, empty-body clears, absent-body retention,
+no-op state/assignee requests, closed/merged handling, HTTP failures, Web permission
+and sign-in failures before REST mutation, and mixed edit results/partial failures.
+`tests/pr_target_validation.rs` checks all numbered PR command paths against 404,
+200/null, mismatched-number and forbidden responses. The null compatibility lookup
+may read only the PR collection; it must not reach Issue writes, comments or prompts.
+
+```bash
+cargo test --locked --test pr_edit_flows --test pr_target_validation --test pr_list_state_comment_flows
+```
+
+Pinned Docker contract coverage directly proves that body-only PR PATCH is ignored
+and title-only PATCH clears the body, so the CLI compensates with a content pair.
+Live CLI tests run edits/close/reopen without GB_PASSWORD (also with --web on a REST
+edit), compare stored fields after every step, reject merged reopening, and verify
+that ordinary Issues/comments stay unchanged after attempted PR commands. The
+existing mixed Web assignee E2E test verifies the resulting assignee set. Both root
+and /gitbucket deployments run these tests.

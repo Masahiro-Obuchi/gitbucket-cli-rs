@@ -2,7 +2,15 @@ mod support;
 
 use serde_json::Value;
 use support::gb_cmd::GbTestEnv;
-use support::mock_http::{spawn_scripted_server, spawn_server, ScriptedResponse};
+use support::mock_http::{spawn_scripted_server, ScriptedResponse};
+
+fn pr(number: u64) -> ScriptedResponse {
+    ScriptedResponse::json(
+        &format!("GET /api/v3/repos/alice/project/pulls/{number} HTTP/1.1"),
+        "200 OK",
+        &serde_json::json!({"number":number,"title":"Feature","state":"open"}).to_string(),
+    )
+}
 
 #[test]
 fn pr_list_includes_open_prs_visible_through_repo_issues() {
@@ -59,10 +67,14 @@ fn pr_list_includes_open_prs_visible_through_repo_issues() {
 #[test]
 fn pr_close_sends_closed_state_patch() {
     let env = GbTestEnv::new();
-    let (port, server) = spawn_server(
-        "200 OK",
-        r#"{"number":9,"title":"Feature","state":"closed","labels":[]}"#,
-    );
+    let (port, server) = spawn_scripted_server(vec![
+        pr(9),
+        ScriptedResponse::json(
+            "PATCH /api/v3/repos/alice/project/pulls/9 HTTP/1.1",
+            "200 OK",
+            r#"{"number":9,"title":"Feature","state":"closed","labels":[]}"#,
+        ),
+    ]);
 
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
@@ -70,7 +82,8 @@ fn pr_close_sends_closed_state_patch() {
         .output()
         .unwrap();
 
-    let request = server.join().unwrap();
+    let requests = server.join().unwrap();
+    let request = requests.last().unwrap();
 
     assert!(
         output.status.success(),
@@ -78,7 +91,7 @@ fn pr_close_sends_closed_state_patch() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert_eq!(request.method, "PATCH");
-    assert_eq!(request.target, "/api/v3/repos/alice/project/issues/9");
+    assert_eq!(request.target, "/api/v3/repos/alice/project/pulls/9");
     let body: Value = serde_json::from_str(&request.body).unwrap();
     assert_eq!(body["state"], "closed");
     assert!(body["title"].is_null());
@@ -88,7 +101,14 @@ fn pr_close_sends_closed_state_patch() {
 #[test]
 fn pr_merge_sends_expected_payload() {
     let env = GbTestEnv::new();
-    let (port, server) = spawn_server("200 OK", r#"{"merged":true,"message":"merged"}"#);
+    let (port, server) = spawn_scripted_server(vec![
+        pr(5),
+        ScriptedResponse::json(
+            "PUT /api/v3/repos/alice/project/pulls/5/merge HTTP/1.1",
+            "200 OK",
+            r#"{"merged":true,"message":"merged"}"#,
+        ),
+    ]);
 
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
@@ -96,7 +116,8 @@ fn pr_merge_sends_expected_payload() {
         .output()
         .unwrap();
 
-    let request = server.join().unwrap();
+    let requests = server.join().unwrap();
+    let request = requests.last().unwrap();
 
     assert!(
         output.status.success(),
@@ -114,10 +135,14 @@ fn pr_merge_sends_expected_payload() {
 #[test]
 fn pr_comment_sends_expected_payload() {
     let env = GbTestEnv::new();
-    let (port, server) = spawn_server(
-        "200 OK",
-        r#"{"id":12,"body":"Please rebase","html_url":"http://127.0.0.1/alice/project/pull/5#comment-12"}"#,
-    );
+    let (port, server) = spawn_scripted_server(vec![
+        pr(5),
+        ScriptedResponse::json(
+            "POST /api/v3/repos/alice/project/issues/5/comments HTTP/1.1",
+            "200 OK",
+            r#"{"id":12,"body":"Please rebase","html_url":"http://127.0.0.1/alice/project/pull/5#comment-12"}"#,
+        ),
+    ]);
 
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
@@ -125,7 +150,8 @@ fn pr_comment_sends_expected_payload() {
         .output()
         .unwrap();
 
-    let request = server.join().unwrap();
+    let requests = server.join().unwrap();
+    let request = requests.last().unwrap();
 
     assert!(
         output.status.success(),
@@ -153,10 +179,14 @@ fn pr_comment_sends_expected_payload() {
 #[test]
 fn pr_comment_json_prints_comment_object() {
     let env = GbTestEnv::new();
-    let (port, server) = spawn_server(
-        "200 OK",
-        r#"{"id":12,"body":"Please rebase","html_url":"http://127.0.0.1/alice/project/pull/5#comment-12"}"#,
-    );
+    let (port, server) = spawn_scripted_server(vec![
+        pr(5),
+        ScriptedResponse::json(
+            "POST /api/v3/repos/alice/project/issues/5/comments HTTP/1.1",
+            "200 OK",
+            r#"{"id":12,"body":"Please rebase","html_url":"http://127.0.0.1/alice/project/pull/5#comment-12"}"#,
+        ),
+    ]);
 
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
@@ -164,7 +194,7 @@ fn pr_comment_json_prints_comment_object() {
         .output()
         .unwrap();
 
-    let _request = server.join().unwrap();
+    let _requests = server.join().unwrap();
 
     assert!(
         output.status.success(),
@@ -183,14 +213,17 @@ fn pr_comment_json_prints_comment_object() {
 #[test]
 fn pr_comment_list_json_prints_comments() {
     let env = GbTestEnv::new();
-    let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
-        "GET /api/v3/repos/alice/project/issues/5/comments?per_page=100 HTTP/1.1",
-        "200 OK",
-        r#"[
+    let (port, server) = spawn_scripted_server(vec![
+        pr(5),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/issues/5/comments?per_page=100 HTTP/1.1",
+            "200 OK",
+            r#"[
             {"id":10,"body":"First","user":{"login":"alice"}},
             {"id":12,"body":"Second","user":{"login":"bob"}}
         ]"#,
-    )]);
+        ),
+    ]);
 
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
@@ -205,7 +238,7 @@ fn pr_comment_list_json_prints_comments() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(requests.len(), 1);
+    assert_eq!(requests.len(), 2);
     let stdout: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(stdout[0]["id"], 10);
     assert_eq!(stdout[0]["body"], "First");
@@ -216,6 +249,7 @@ fn pr_comment_list_json_prints_comments() {
 fn pr_comment_edit_last_updates_authenticated_users_latest_comment() {
     let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
+        pr(5),
         ScriptedResponse::json(
             "GET /api/v3/user HTTP/1.1",
             "200 OK",
@@ -249,13 +283,13 @@ fn pr_comment_edit_last_updates_authenticated_users_latest_comment() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(requests.len(), 3);
-    assert_eq!(requests[2].method, "PATCH");
+    assert_eq!(requests.len(), 4);
+    assert_eq!(requests[3].method, "PATCH");
     assert_eq!(
-        requests[2].target,
+        requests[3].target,
         "/api/v3/repos/alice/project/issues/comments/12"
     );
-    let body: Value = serde_json::from_str(&requests[2].body).unwrap();
+    let body: Value = serde_json::from_str(&requests[3].body).unwrap();
     assert_eq!(body["body"], "Edited");
     assert!(
         String::from_utf8_lossy(&output.stdout).contains("Edited comment 12 on PR #5"),
@@ -267,10 +301,14 @@ fn pr_comment_edit_last_updates_authenticated_users_latest_comment() {
 #[test]
 fn pr_merge_accepts_gitbucket_enveloped_response() {
     let env = GbTestEnv::new();
-    let (port, server) = spawn_server(
-        "200 OK",
-        r#"{"status":200,"body":"{\"sha\":\"abc123\",\"merged\":true,\"message\":\"Pull Request successfully merged\"}","headers":{}}"#,
-    );
+    let (port, server) = spawn_scripted_server(vec![
+        pr(9),
+        ScriptedResponse::json(
+            "PUT /api/v3/repos/alice/project/pulls/9/merge HTTP/1.1",
+            "200 OK",
+            r#"{"status":200,"body":"{\"sha\":\"abc123\",\"merged\":true,\"message\":\"Pull Request successfully merged\"}","headers":{}}"#,
+        ),
+    ]);
 
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
@@ -278,7 +316,8 @@ fn pr_merge_accepts_gitbucket_enveloped_response() {
         .output()
         .unwrap();
 
-    let request = server.join().unwrap();
+    let requests = server.join().unwrap();
+    let request = requests.last().unwrap();
 
     assert!(
         output.status.success(),

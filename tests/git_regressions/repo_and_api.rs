@@ -87,11 +87,19 @@ fn json_errors_captures_git_clone_stderr() {
 #[test]
 fn pr_merge_returns_non_zero_when_server_reports_not_merged() {
     let env = GbTestEnv::new();
-    let (port, server) = serve_json_once(
-        "PUT /api/v3/repos/alice/project/pulls/5/merge HTTP/1.1",
-        "authorization: token test-token",
-        r#"{"merged":false,"message":"merge conflict"}"#,
-    );
+    use crate::support::mock_http::{spawn_scripted_server, ScriptedResponse};
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
+            "200 OK",
+            r#"{"number":5,"title":"Feature","state":"open"}"#,
+        ),
+        ScriptedResponse::json(
+            "PUT /api/v3/repos/alice/project/pulls/5/merge HTTP/1.1",
+            "200 OK",
+            r#"{"merged":false,"message":"merge conflict"}"#,
+        ),
+    ]);
 
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
@@ -99,7 +107,12 @@ fn pr_merge_returns_non_zero_when_server_reports_not_merged() {
         .output()
         .unwrap();
 
-    server.join().unwrap();
+    let requests = server.join().unwrap();
+    assert!(requests.iter().all(|request| request
+        .headers
+        .get("authorization")
+        .map(String::as_str)
+        == Some("token test-token")));
 
     assert!(
         !output.status.success(),

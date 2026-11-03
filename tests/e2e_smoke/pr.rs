@@ -43,6 +43,19 @@ fn e2e_pr_create_and_merge_against_live_instance() {
         repo_dir.join(&file_name).exists(),
         "file missing after merge"
     );
+    let mut reopen = gb_command();
+    reopen
+        .current_dir(temp.path())
+        .args(["pr", "reopen", &number.to_string()]);
+    for (key, value) in e2e_env(temp.path()) {
+        reopen.env(key, value);
+    }
+    reopen.env_remove("GB_PASSWORD");
+    let error = run_and_assert_failure(&mut reopen);
+    assert!(
+        error.contains("Cannot reopen a merged pull request"),
+        "{error}"
+    );
 }
 
 #[test]
@@ -204,4 +217,166 @@ fn e2e_pr_diff_against_live_instance() {
     let diff_stdout =
         gb_output_with_env(temp.path(), &repo_dir, &["pr", "diff", &number.to_string()]);
     assert!(diff_stdout.contains(&file_name), "stdout: {diff_stdout}");
+}
+
+fn pr_run(temp: &std::path::Path, args: &[&str]) -> String {
+    let mut command = gb_command();
+    command
+        .current_dir(temp)
+        .args(args)
+        .stdin(std::process::Stdio::null());
+    for (key, value) in e2e_env(temp) {
+        command.env(key, value);
+    }
+    command.env_remove("GB_PASSWORD");
+    let output = command.output().unwrap();
+    assert!(
+        output.status.success(),
+        "args: {args:?}\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("Web UI"));
+    String::from_utf8(output.stdout).unwrap()
+}
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance"]
+fn e2e_pr_rest_single_field_edits_and_lifecycle_need_no_password() {
+    let temp = tempdir().unwrap();
+    login(temp.path());
+    let (number, _, _) = create_live_pr_fixture(temp.path(), "rest-pr-edit");
+    let number_arg = number.to_string();
+    let path = format!("repos/{}/pulls/{number}", required_env("GB_E2E_REPO"));
+    let mut expected: Value = serde_json::from_str(&pr_run(temp.path(), &["api", &path])).unwrap();
+    for (args, key, value) in [
+        (
+            vec![
+                "pr",
+                "edit",
+                &number_arg,
+                "--title",
+                "日本語 PR title",
+                "--web",
+            ],
+            "title",
+            "日本語 PR title",
+        ),
+        (
+            vec!["pr", "edit", &number_arg, "--body", "new body"],
+            "body",
+            "new body",
+        ),
+        (vec!["pr", "edit", &number_arg, "--body", ""], "body", ""),
+        (vec!["pr", "close", &number_arg], "state", "closed"),
+        (
+            vec!["pr", "edit", &number_arg, "--title", "Edit closed PR"],
+            "title",
+            "Edit closed PR",
+        ),
+        (vec!["pr", "reopen", &number_arg], "state", "open"),
+        (vec!["pr", "reopen", &number_arg], "state", "open"),
+        (
+            vec!["pr", "edit", &number_arg, "--state", "closed"],
+            "state",
+            "closed",
+        ),
+        (
+            vec!["pr", "edit", &number_arg, "--state", "open"],
+            "state",
+            "open",
+        ),
+    ] {
+        pr_run(temp.path(), &args);
+        expected[key] = serde_json::json!(value);
+        let actual: Value = serde_json::from_str(&pr_run(temp.path(), &["api", &path])).unwrap();
+        for field in ["title", "body", "state"] {
+            // None and an empty body have the same CLI clearing semantics.
+            assert_eq!(
+                actual[field].as_str().unwrap_or_default(),
+                expected[field].as_str().unwrap_or_default(),
+                "{args:?} changed {field}"
+            );
+        }
+        expected = actual;
+    }
+    pr_run(temp.path(), &["pr", "close", &number_arg]);
+}
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance"]
+fn e2e_pr_commands_cannot_modify_an_ordinary_issue_or_its_comments() {
+    let temp = tempdir().unwrap();
+    login(temp.path());
+    let number = create_live_issue(
+        temp.path(),
+        &format!("ordinary-target-{}", unique_suffix()),
+        "must keep this body",
+    );
+    let number_arg = number.to_string();
+    gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &[
+            "issue",
+            "comment",
+            &number_arg,
+            "--body",
+            "keep original comment",
+        ],
+    );
+    let issue_path = format!("repos/{}/issues/{number}", required_env("GB_E2E_REPO"));
+    let comment_path = format!("{issue_path}/comments");
+    let original: Value =
+        serde_json::from_str(&pr_run(temp.path(), &["api", &issue_path])).unwrap();
+    let comments: Value =
+        serde_json::from_str(&pr_run(temp.path(), &["api", &comment_path])).unwrap();
+    assert!(!comments.as_array().unwrap().is_empty());
+    for args in [
+        vec![
+            "pr",
+            "edit",
+            &number_arg,
+            "--title",
+            "must not apply",
+            "--web",
+        ],
+        vec!["pr", "close", &number_arg],
+        vec!["pr", "reopen", &number_arg],
+        vec!["pr", "merge", &number_arg],
+        vec!["pr", "comment", "list", &number_arg, "--json"],
+        vec!["pr", "comment", &number_arg],
+        vec!["pr", "comment", &number_arg, "--body", "must not post"],
+        vec![
+            "pr",
+            "comment",
+            &number_arg,
+            "--edit-last",
+            "--body",
+            "must not edit",
+        ],
+    ] {
+        let mut command = gb_command();
+        command
+            .current_dir(temp.path())
+            .args(&args)
+            .stdin(std::process::Stdio::null());
+        for (key, value) in e2e_env(temp.path()) {
+            command.env(key, value);
+        }
+        command.env_remove("GB_PASSWORD");
+        let output = command.output().unwrap();
+        assert!(!output.status.success(), "{args:?} unexpectedly succeeded");
+        assert!(output.stdout.is_empty());
+        assert_eq!(
+            serde_json::from_str::<Value>(&pr_run(temp.path(), &["api", &issue_path])).unwrap(),
+            original,
+            "{args:?} changed the Issue"
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(&pr_run(temp.path(), &["api", &comment_path])).unwrap(),
+            comments,
+            "{args:?} changed comments"
+        );
+    }
 }
