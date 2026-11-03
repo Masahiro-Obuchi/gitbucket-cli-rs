@@ -350,3 +350,186 @@ fn e2e_origin_repository_resolution_matches_configured_instance() {
     let payload: Value = serde_json::from_str(&stdout).unwrap();
     assert!(payload.is_array());
 }
+
+fn milestone_run(temp: &std::path::Path, args: &[&str], web: bool) -> String {
+    let mut command = gb_command();
+    command
+        .current_dir(temp)
+        .args(args)
+        .stdin(std::process::Stdio::null());
+    for (key, value) in e2e_env(temp) {
+        command.env(key, value);
+    }
+    if !web {
+        command.env_remove("GB_PASSWORD");
+    }
+    let output = command.output().unwrap();
+    assert!(
+        output.status.success(),
+        "args: {args:?}\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    if !web {
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("using the Web route"));
+    }
+    String::from_utf8(output.stdout).unwrap()
+}
+
+fn milestone_stored(temp: &std::path::Path, number: u64) -> Value {
+    let path = format!("repos/{}/milestones/{number}", required_env("GB_E2E_REPO"));
+    serde_json::from_str(&milestone_run(temp, &["api", &path], false)).unwrap()
+}
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance"]
+fn e2e_milestone_partial_edits_preserve_every_other_field_without_web_password() {
+    let temp = tempdir().unwrap();
+    login(temp.path());
+    let title = format!("preserve-{}", unique_suffix());
+    let created = milestone_run(temp.path(), &["milestone", "create", &title], false);
+    let number = parse_issue_number(&created);
+    let number_arg = number.to_string();
+    let path = format!("repos/{}/milestones/{number}", required_env("GB_E2E_REPO"));
+    let seed = temp.path().join("seed.json");
+    std::fs::write(&seed, serde_json::json!({"title": title,"state":"closed","description":" keep\nthese details ","due_on":"2027-04-01T09:30:00Z"}).to_string()).unwrap();
+    milestone_run(
+        temp.path(),
+        &[
+            "api",
+            &path,
+            "-X",
+            "PATCH",
+            "--input",
+            seed.to_str().unwrap(),
+        ],
+        false,
+    );
+    let mut expected = milestone_stored(temp.path(), number);
+    assert_eq!(expected["due_on"], "2027-04-01T09:30:00Z");
+    for (flag, value, key, expected_value) in [
+        (
+            "--title",
+            "preserved-title",
+            "title",
+            serde_json::json!("preserved-title"),
+        ),
+        (
+            "--description",
+            "new description",
+            "description",
+            serde_json::json!("new description"),
+        ),
+        ("--state", "open", "state", serde_json::json!("open")),
+        ("--state", "closed", "state", serde_json::json!("closed")),
+        (
+            "--due-on",
+            "2027-05-02",
+            "due_on",
+            serde_json::json!("2027-05-02T00:00:00Z"),
+        ),
+        ("--due-on", "", "due_on", Value::Null),
+        ("--description", "", "description", serde_json::json!("")),
+        (
+            "--title",
+            "null-fields-retained",
+            "title",
+            serde_json::json!("null-fields-retained"),
+        ),
+    ] {
+        milestone_run(
+            temp.path(),
+            &["milestone", "edit", &number_arg, flag, value],
+            false,
+        );
+        expected[key] = expected_value;
+        let stored = milestone_stored(temp.path(), number);
+        for field in ["title", "state", "description", "due_on"] {
+            assert_eq!(
+                stored[field], expected[field],
+                "{flag} {value:?} changed {field}"
+            );
+        }
+        if key != "state" {
+            assert_eq!(stored["closed_at"], expected["closed_at"]);
+        }
+        expected = stored;
+    }
+    milestone_run(
+        temp.path(),
+        &["milestone", "delete", &number_arg, "--yes"],
+        false,
+    );
+}
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance"]
+fn e2e_milestone_unicode_and_space_titles_use_web_only_where_needed() {
+    let temp = tempdir().unwrap();
+    login(temp.path());
+    let title = format!("日本語 release {}", unique_suffix());
+    let output = milestone_run(
+        temp.path(),
+        &["milestone", "create", &title, "--description", "説明"],
+        true,
+    );
+    let number = parse_issue_number(&output);
+    let number_arg = number.to_string();
+    for (args, key, expected) in [
+        (
+            vec!["--state", "closed"],
+            "state",
+            serde_json::json!("closed"),
+        ),
+        (
+            vec!["--description", "\u{a0}更新した説明\u{a0}"],
+            "description",
+            serde_json::json!("\u{a0}更新した説明\u{a0}"),
+        ),
+        (
+            vec!["--title", "\u{3000}新しい release\u{3000}"],
+            "title",
+            serde_json::json!("\u{3000}新しい release\u{3000}"),
+        ),
+        (
+            vec!["--due-on", "2027-04-02"],
+            "due_on",
+            serde_json::json!("2027-04-02T00:00:00Z"),
+        ),
+        (vec!["--state", "open"], "state", serde_json::json!("open")),
+        (
+            vec!["--description", "", "--due-on", ""],
+            "description",
+            serde_json::json!(""),
+        ),
+    ] {
+        let before = milestone_stored(temp.path(), number);
+        let mut command = vec!["milestone", "edit", &number_arg];
+        command.extend(&args);
+        milestone_run(temp.path(), &command, true);
+        let stored = milestone_stored(temp.path(), number);
+        assert_eq!(stored[key], expected);
+        for field in ["title", "state", "description", "due_on"] {
+            if field != key && !(args.contains(&"--due-on") && field == "due_on") {
+                assert_eq!(stored[field], before[field], "Web edit changed {field}");
+            }
+        }
+    }
+    // Switching to a REST-compatible title needs no password, even from Unicode.
+    milestone_run(
+        temp.path(),
+        &[
+            "milestone",
+            "edit",
+            &number_arg,
+            "--title",
+            &format!("rest-again-{}", unique_suffix()),
+        ],
+        false,
+    );
+    milestone_run(
+        temp.path(),
+        &["milestone", "delete", &number_arg, "--yes"],
+        false,
+    );
+}

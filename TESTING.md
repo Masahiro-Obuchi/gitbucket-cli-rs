@@ -331,3 +331,28 @@ cargo test --locked --test pr_checkout --test git_credentials --test git_regress
 The platform workflow also runs `pr_checkout` on macOS and Windows. Local Git
 2.34.1 is covered; the worktree check uses NUL-delimited `for-each-ref` atoms,
 without requiring the newer `worktree list -z` option.
+
+## Milestone Replacement and Web Boundaries
+
+`tests/milestone_command.rs` checks complete replacement payloads for single-field
+edits, retention of closed state and exact existing timestamps, explicit JSON-null
+clears, null retention, no-change/invalid-input rejection, REST error propagation
+without password prompts, and known title-validation-only Web supplementation.
+Web cases cover Unicode/space titles, preserved state, refreshed values, lossy
+form rejection before authentication, sentinel dates, duplicates, missing
+resources, validation pages and failed post-submit verification.
+Trim regressions exercise Java-trimmed control characters before authentication
+and exact preservation of fullwidth/nonbreaking spaces in Web submissions.
+
+```bash
+cargo test --locked --test milestone_command
+```
+
+The pinned Docker contract test exercises the server's full replacement behavior,
+required title and null clears directly. Live CLI regressions compare every
+editable field after each single-field edit, including closed_at retention and
+non-midnight timestamps, with GB_PASSWORD removed. Unicode-title cases exercise
+the Web-only actions and switching back to a REST-compatible title without a
+password. Fullwidth spaces in titles and nonbreaking spaces in descriptions are
+compared exactly after Web edits. All run under both root and /gitbucket
+deployments in the E2E workflow.

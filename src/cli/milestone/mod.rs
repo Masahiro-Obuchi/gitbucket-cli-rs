@@ -1,10 +1,14 @@
 use clap::{Args, Subcommand};
 
+mod change;
 mod due_date;
 mod read;
 mod write;
 
 #[derive(Args)]
+#[command(
+    after_help = "Edits preserve unspecified fields. Use --description '' or --due-on '' to clear.\nREST is tried first; Web authentication is used only for known title validation limits, never for an arbitrary 404."
+)]
 pub struct MilestoneArgs {
     #[command(subcommand)]
     pub command: MilestoneCommand,
@@ -44,13 +48,16 @@ pub enum MilestoneCommand {
         due_on: Option<String>,
     },
     /// Edit a milestone
+    #[command(
+        after_help = "Unspecified fields are preserved, including closed state and the exact existing due timestamp.\nJapanese/space-containing titles may require Web authentication. Its form cannot preserve an existing due timestamp during content edits: explicitly set/clear --due-on or use a REST-compatible title."
+    )]
     Edit {
         /// Milestone number
         number: u64,
         /// Updated title
         #[arg(long, short)]
         title: Option<String>,
-        /// Updated description
+        /// Updated description, or an empty string to clear
         #[arg(long, short)]
         description: Option<String>,
         /// Updated due date as YYYY-MM-DD, RFC3339, or an empty string to clear
