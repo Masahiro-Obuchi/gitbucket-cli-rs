@@ -280,6 +280,8 @@ Web HTTP 200 is only a submitted request: stored values must confirm the change.
 Failed or unverified mutations exit 1 and include operation outcomes on stderr;
 `--json-errors` adds `error.operations` with `succeeded`, `failed`, `unverified`,
 and `not_attempted` statuses, the route, and the verified Web actor when available.
+Direct rejections are distinguished from failures after redirects, including
+redirects back to the same URL. Encoded paths cannot bypass the deployment boundary.
 Inspect the target before retrying an unverified write. Mixed edits are not atomic.
 See [Web operations and verification](docs/WEB_OPERATIONS.md) for route constraints.
 

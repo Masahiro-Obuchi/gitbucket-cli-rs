@@ -1256,6 +1256,8 @@ A different actor from the REST token requires explicit `GB_WEB_USER`; otherwise
 mismatches fail before Web writes. `Notice:` output names both actors. Password
 prompts and `GB_PASSWORD` apply to that Web user. Interactive SSO/OIDC and redirects
 outside the configured origin/deployment are unsupported by this flow.
+Redirect paths are checked at each percent-decoding level with the same boundary
+rules as API requests. URL fragments do not change the HTTP route.
 
 Inputs and known Web constraints are checked before the first Web write. Issue
 forms reject title/body values that Java String.trim would alter; new assignees
@@ -1275,8 +1277,11 @@ Mutation failures retain the source error code/status where available and add
 | `not_attempted` | This step was planned but was not submitted. |
 
 A failed readback remains `unverified` even when it returns 401/403/404. A failure
-after a redirect from a mutation is also ambiguous. Group entries summarize a
-phase; nested entries identify confirmed fields or individual assignee/label steps.
+after a redirect from a mutation is also ambiguous. Redirect history is tracked
+separately for each mutation, even if its
+final URL equals the starting URL; Unicode URL encoding alone is not a redirect.
+Group entries summarize a phase; nested entries identify confirmed fields or
+individual assignee/label steps.
 These statuses describe the observation at that phase, not protection from later
 concurrent writes. No rollback or automatic retry of writes is assumed. Full
 success is printed only after confirmation; partial/unverified outcomes exit 1.

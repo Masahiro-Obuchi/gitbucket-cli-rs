@@ -402,3 +402,17 @@ checks description rejection and token-only Issue label deltas. Root and
 /gitbucket deployments both run it, alongside the direct server contract checks.
 The live delta flow preserves NBSP-padded labels and adds/removes ASCII-padded
 labels by their exact names.
+
+## Web Authentication and Mutation Outcomes
+
+`tests/web_outcomes.rs` verifies cookie-only identity probes, explicit actor
+selection, preflight failures and confirmed/failed/unverified/unattempted phases.
+Redirect regressions distinguish direct Unicode-URL rejections from failures
+after redirects back to the same URL, allow route fragments, and block encoded
+and repeatedly encoded traversal during password sign-in.
+`tests/repo_mutation_flows.rs` covers fork destination/parent proof and deletion
+readbacks. The live E2E runs these operation adapters at root and `/gitbucket`.
+
+```bash
+cargo test --locked --test web_outcomes --test repo_mutation_flows
+```

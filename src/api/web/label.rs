@@ -53,16 +53,17 @@ impl GitBucketWebSession {
             name,
         } = target;
         let response = self
-            .client
-            .post(format!("{}{edit_path}", self.base_url))
-            .header("X-Requested-With", "XMLHttpRequest")
-            .form(&[
-                ("labelName", name.to_string()),
-                ("labelColor", format!("#{color}")),
-            ])
-            .send()
+            .mutate(|client| {
+                client
+                    .post(format!("{}{edit_path}", self.base_url))
+                    .header("X-Requested-With", "XMLHttpRequest")
+                    .form(&[
+                        ("labelName", name.to_string()),
+                        ("labelColor", format!("#{color}")),
+                    ])
+            })
             .await?;
-        self.ensure_success(response, "update label color in place", edit_path)
+        self.ensure_success(response, "update label color in place")
             .await?;
         let after = self.label_html(path).await.map_err(|err| GbError::Other(format!(
             "Label Web update was submitted, but label identity verification failed: {err}. Inspect labels before retrying."

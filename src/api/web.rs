@@ -2,18 +2,56 @@ mod label;
 mod repository;
 pub(crate) use repository::verify_parent_html;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+use reqwest::cookie::Jar;
 use reqwest::redirect::Policy;
-use reqwest::{Client, Response, StatusCode};
+use reqwest::{Client, RequestBuilder, Response, StatusCode};
 
 use crate::error::{GbError, Result};
 
 use super::client::normalize_web_base_url;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct GitBucketWebSession {
     client: Client,
+    cookies: Arc<Jar>,
     base_url: String,
     principal: String,
+}
+
+struct MutationResponse {
+    response: Response,
+    redirected: bool,
+}
+
+fn web_client(
+    base_url: &str,
+    cookies: Arc<Jar>,
+    redirected: Option<Arc<AtomicBool>>,
+) -> Result<Client> {
+    let base_url = base_url.to_owned();
+    Ok(Client::builder()
+        .cookie_provider(cookies)
+        .redirect(Policy::custom(move |attempt| {
+            if let Some(redirected) = &redirected {
+                redirected.store(true, Ordering::Relaxed);
+            }
+            // Fragments do not participate in the HTTP route. Apply the same
+            // recursively decoded deployment boundary checks as API requests.
+            let mut target = attempt.url().clone();
+            target.set_fragment(None);
+            if attempt.previous().len() >= 10
+                || crate::api::url::normalize_origin_path_or_url(target.as_str(), &base_url)
+                    .is_err()
+            {
+                attempt.stop()
+            } else {
+                attempt.follow()
+            }
+        }))
+        .build()?)
 }
 
 impl GitBucketWebSession {
@@ -24,22 +62,8 @@ impl GitBucketWebSession {
         protocol: &str,
     ) -> Result<Self> {
         let base_url = normalize_web_base_url(hostname, protocol)?;
-        let deployment = url::Url::parse(&base_url)?;
-        let client = Client::builder()
-            .cookie_store(true)
-            .redirect(Policy::custom(move |attempt| {
-                let url = attempt.url();
-                let prefix = deployment.path().trim_end_matches('/');
-                if attempt.previous().len() >= 10
-                    || url.origin() != deployment.origin()
-                    || !(url.path() == prefix || url.path().starts_with(&format!("{prefix}/")))
-                {
-                    attempt.stop()
-                } else {
-                    attempt.follow()
-                }
-            }))
-            .build()?;
+        let cookies = Arc::new(Jar::default());
+        let client = web_client(&base_url, cookies.clone(), None)?;
 
         let response = client
             .post(format!("{base_url}/signin"))
@@ -82,6 +106,7 @@ impl GitBucketWebSession {
         }
         Ok(Self {
             client,
+            cookies,
             base_url,
             principal: user.login,
         })
@@ -268,35 +293,54 @@ impl GitBucketWebSession {
         };
 
         let response = self
-            .client
-            .get(format!(
-                "{}/{owner}/{repo}/issues/milestones/{number}/{action}",
-                self.base_url
-            ))
-            .send()
+            .mutate(|client| {
+                client.get(format!(
+                    "{}/{owner}/{repo}/issues/milestones/{number}/{action}",
+                    self.base_url
+                ))
+            })
             .await?;
-        self.ensure_success(
-            response,
-            "change the milestone state",
-            &format!("/{owner}/{repo}/issues/milestones/{number}/{action}"),
-        )
-        .await
+        self.ensure_success(response, "change the milestone state")
+            .await
     }
 
     async fn post_form(&self, path: &str, fields: Vec<(&str, String)>, action: &str) -> Result<()> {
         let response = self
-            .client
-            .post(format!("{}{}", self.base_url, path))
-            .form(&fields)
-            .send()
+            .mutate(|client| {
+                client
+                    .post(format!("{}{}", self.base_url, path))
+                    .form(&fields)
+            })
             .await?;
-        self.ensure_success(response, action, path).await
+        self.ensure_success(response, action).await
     }
 
-    async fn ensure_success(&self, response: Response, action: &str, path: &str) -> Result<()> {
+    async fn mutate(
+        &self,
+        build: impl FnOnce(&Client) -> RequestBuilder,
+    ) -> Result<MutationResponse> {
+        // The trace belongs to this request, including when concurrent writes or
+        // reads share the session. Cookies remain shared with the verified login.
+        let redirected = Arc::new(AtomicBool::new(false));
+        let client = web_client(
+            &self.base_url,
+            self.cookies.clone(),
+            Some(redirected.clone()),
+        )?;
+        let response = build(&client).send().await?;
+        Ok(MutationResponse {
+            response,
+            redirected: redirected.load(Ordering::Relaxed),
+        })
+    }
+
+    async fn ensure_success(&self, result: MutationResponse, action: &str) -> Result<()> {
+        let MutationResponse {
+            response,
+            redirected,
+        } = result;
         let status = response.status();
         let final_path = response.url().path().to_string();
-        let redirected = response.url().as_str() != format!("{}{path}", self.base_url);
         let _body = response.text().await?;
 
         if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)

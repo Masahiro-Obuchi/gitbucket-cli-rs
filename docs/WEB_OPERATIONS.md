@@ -43,6 +43,11 @@ Web principal verification requires password login and a cookie-authenticated
 `GB_WEB_USER` authorizes a different Web actor; notices show both actors and JSON
 operation records include the verified Web actor. Interactive SSO/OIDC is not
 implemented. Redirects stay within the selected origin and deployment.
+This boundary check includes repeated percent decoding, so encoded traversal
+cannot forward sign-in forms or cookies outside the selected deployment.
+Mutation outcomes use that request's redirect history, preserving uncertainty
+when a redirect returns to the original URL and avoiding false redirects for
+Unicode URL encoding. Cookie state remains shared with the verified session.
 
 Primary contracts:
 

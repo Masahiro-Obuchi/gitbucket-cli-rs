@@ -362,3 +362,102 @@ fn redirect_failure_after_submission_is_unverified_even_for_login_or_404() {
         server.join().unwrap();
     }
 }
+
+#[test]
+fn mutation_status_uses_redirect_history_instead_of_url_text() {
+    let mut statuses = Vec::new();
+    for (repo, redirect, fragment) in [
+        ("project", false, false),
+        ("案件", false, false),
+        ("project", true, false),
+        ("project", true, true),
+    ] {
+        let env = GbTestEnv::new();
+        let encoded =
+            percent_encoding::utf8_percent_encode(repo, percent_encoding::NON_ALPHANUMERIC)
+                .to_string();
+        let issue_path = format!("repos/alice/{encoded}/issues/7");
+        let mutation_path = format!("/bucket/alice/{encoded}/issue_comments/state");
+        let mut script = vec![
+            api("/bucket", "GET", &issue_path, "200 OK", issue("open")),
+            api("/bucket", "PATCH", &issue_path, "404 Not Found", json!({})),
+            token_identity("/bucket"),
+            signin("/bucket"),
+            token_identity("/bucket"),
+        ];
+        let rejected = ScriptedResponse::html(
+            &format!("POST {mutation_path} HTTP/1.1"),
+            if redirect {
+                "302 Found"
+            } else {
+                "403 Forbidden"
+            },
+            "",
+        );
+        script.push(if redirect {
+            let location = if fragment {
+                format!("{mutation_path}#result")
+            } else {
+                mutation_path.clone()
+            };
+            rejected.with_header("location", &location)
+        } else {
+            rejected
+        });
+        if redirect {
+            script.push(ScriptedResponse::html(
+                &format!("GET {mutation_path} HTTP/1.1"),
+                "403 Forbidden",
+                "denied after redirect",
+            ));
+        }
+        let (port, server) = spawn_scripted_server(script);
+        let output = env
+            .repo_api_command(format!("127.0.0.1:{port}/bucket"), format!("alice/{repo}"))
+            .env("GB_USER", "alice")
+            .env("GB_PASSWORD", "dummy")
+            .args(["--json-errors", "issue", "close", "7"])
+            .output()
+            .unwrap();
+        assert_failure(&output);
+        assert!(output.stdout.is_empty());
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"]["code"], "auth_error");
+        statuses.push(
+            error["error"]["operations"][0]["status"]
+                .as_str()
+                .unwrap()
+                .to_owned(),
+        );
+        server.join().unwrap();
+    }
+    assert_eq!(statuses, ["failed", "failed", "unverified", "unverified"]);
+}
+
+#[test]
+fn signin_rejects_encoded_redirects_that_escape_the_deployment() {
+    for destination in ["/bucket/..%2Foutside", "/bucket/%252e%252e%252foutside"] {
+        let env = GbTestEnv::new();
+        let mut script = state_preflight("/bucket");
+        script.extend([
+            token_identity("/bucket"),
+            ScriptedResponse::html("POST /bucket/signin HTTP/1.1", "307 Temporary Redirect", "")
+                .with_header("location", destination),
+        ]);
+        let (port, server) = spawn_scripted_server(script);
+        let output = env
+            .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
+            .env("GB_USER", "alice")
+            .env("GB_PASSWORD", "must-not-be-forwarded")
+            .args(["--json-errors", "issue", "close", "7"])
+            .output()
+            .unwrap();
+        assert_failure(&output);
+        assert!(output.stdout.is_empty());
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"]["code"], "auth_error", "{}", stderr(&output));
+        assert_eq!(error["error"]["operations"][0]["status"], "not_attempted");
+        assert!(!stderr(&output).contains("must-not-be-forwarded"));
+        server.join().unwrap();
+    }
+}
