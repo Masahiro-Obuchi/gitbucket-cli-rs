@@ -411,7 +411,10 @@ Redirect regressions distinguish direct Unicode-URL rejections from failures
 after redirects back to the same URL, allow route fragments, and block encoded
 and repeatedly encoded traversal during password sign-in.
 `tests/repo_mutation_flows.rs` covers fork destination/parent proof and deletion
-readbacks. The live E2E runs these operation adapters at root and `/gitbucket`.
+readbacks. Public fork verification covers existing and newly created forks when
+the deployment prefix matches the destination or upstream owner, with both
+deployment-prefixed and unprefixed header links and no Web password.
+The live E2E runs these operation adapters at root and `/gitbucket`.
 Milestone regressions also reject a mismatched refreshed target before accepting
 an already-satisfied state or attempting another mutation.
 

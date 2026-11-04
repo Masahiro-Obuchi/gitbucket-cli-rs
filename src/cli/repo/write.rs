@@ -272,7 +272,8 @@ async fn verify_parent(
     }
     // Read-only public metadata does not need a Web password. If a private or
     // unfamiliar page cannot establish the parent, report it as unverified.
-    let page = client.get_text_from_origin(&format!("/{target}")).await?;
+    let page_url = client.web_url(&format!("/{target}"));
+    let page = client.get_text_from_origin(&page_url).await?;
     crate::api::web::verify_parent_html(&page, &client.web_url(""), &target, &source)
 }
 

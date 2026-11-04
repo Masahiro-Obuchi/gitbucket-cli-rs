@@ -352,47 +352,66 @@ fn deleting_missing_or_private_repository_never_attempts_delete_or_signin() {
 
 #[test]
 fn missing_rest_parent_is_verified_from_public_header_without_web_login() {
-    for existing in [false, true] {
-        let env = GbTestEnv::new();
-        let mut script = preflight("alice");
-        let missing_metadata = json!({"name":"project","full_name":"alice/project"});
-        if existing {
-            script.pop();
-            script.push(api(
-                "GET",
-                "repos/alice/project",
+    for (deployment, prefixed_links) in [
+        ("bucket", false),
+        ("alice", false),
+        ("alice", true),
+        ("bob", false),
+        ("bob", true),
+    ] {
+        for existing in [false, true] {
+            let env = GbTestEnv::new();
+            let mut script = preflight("alice");
+            let missing_metadata = json!({"name":"project","full_name":"alice/project"});
+            if existing {
+                script.pop();
+                script.push(api(
+                    "GET",
+                    "repos/alice/project",
+                    "200 OK",
+                    missing_metadata,
+                ));
+            } else {
+                script.extend([
+                    api(
+                        "POST",
+                        "repos/bob/project/forks",
+                        "201 Created",
+                        missing_metadata.clone(),
+                    ),
+                    api("GET", "repos/alice/project", "200 OK", missing_metadata),
+                ]);
+            }
+            for response in &mut script {
+                response.expected_request_line = response
+                    .expected_request_line
+                    .replace("/bucket/", &format!("/{deployment}/"));
+            }
+            let page = include_str!("fixtures/gitbucket-4.44-fork-header.html");
+            let page = if prefixed_links {
+                page.replace("href=\"/", &format!("href=\"/{deployment}/"))
+            } else {
+                page.to_string()
+            };
+            script.push(ScriptedResponse::html(
+                &format!("GET /{deployment}/alice/project HTTP/1.1"),
                 "200 OK",
-                missing_metadata,
+                &page,
             ));
-        } else {
-            script.extend([
-                api(
-                    "POST",
-                    "repos/bob/project/forks",
-                    "201 Created",
-                    missing_metadata.clone(),
-                ),
-                api("GET", "repos/alice/project", "200 OK", missing_metadata),
-            ]);
+            let (port, server) = spawn_scripted_server(script);
+            let output = env
+                .api_command(format!("127.0.0.1:{port}/{deployment}"))
+                .env_remove("GB_PASSWORD")
+                .args(["repo", "fork", "bob/project"])
+                .output()
+                .unwrap();
+            assert_success(&output);
+            assert!(server
+                .join()
+                .unwrap()
+                .iter()
+                .all(|r| !r.target.ends_with("/signin")));
         }
-        script.push(ScriptedResponse::html(
-            "GET /bucket/alice/project HTTP/1.1",
-            "200 OK",
-            include_str!("fixtures/gitbucket-4.44-fork-header.html"),
-        ));
-        let (port, server) = spawn_scripted_server(script);
-        let output = env
-            .api_command(format!("127.0.0.1:{port}/bucket"))
-            .env_remove("GB_PASSWORD")
-            .args(["repo", "fork", "bob/project"])
-            .output()
-            .unwrap();
-        assert_success(&output);
-        assert!(server
-            .join()
-            .unwrap()
-            .iter()
-            .all(|r| !r.target.ends_with("/signin")));
     }
 }
 

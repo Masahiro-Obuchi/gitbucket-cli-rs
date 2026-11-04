@@ -27,7 +27,9 @@ rejections can select the corresponding Web adapter. Authentication failures,
 metadata**, not evidence that a repository is not a fork. When required, the
 strict header adapter checks both the destination link and its `forked from`
 link, which renders the immediate parent. Root-relative proxy links are resolved
-within the configured deployment. Public verification reads need no password;
+within the configured deployment and must match the exact expected repository,
+including when an owner matches the deployment prefix. Public verification
+requests use an absolute deployment URL and need no password;
 Web writes and private cookie-session reads use the verified Web session.
 Unknown layouts, inaccessible proof and inconsistent destinations remain errors.
 

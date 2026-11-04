@@ -40,7 +40,17 @@ pub(crate) fn verify_parent_html(page: &str, base: &str, target: &str, source: &
         let actual = crate::api::url::normalize_origin_path_or_url(href, base)?;
         let expected = url::Url::parse(&format!("{}/{name}", base.trim_end_matches('/')))?;
         if actual != expected.as_str() {
-            return Err(error());
+            // Proxy headers can omit the deployment prefix even when an owner
+            // has the same name. Accept that interpretation only if it matches
+            // this exact repository; absolute and foreign links are not rebased.
+            let deployment_relative = format!("{}{href}", base.trim_end_matches('/'));
+            if !href.starts_with('/')
+                || href.starts_with("//")
+                || crate::api::url::normalize_origin_path_or_url(&deployment_relative, base)?
+                    != expected.as_str()
+            {
+                return Err(error());
+            }
         }
     }
     if link.text().collect::<String>().trim() != target.rsplit('/').next().unwrap_or_default()
@@ -62,6 +72,17 @@ mod tests {
         }
     }
     #[test]
+    fn verifies_links_when_owner_matches_the_deployment_prefix() {
+        for base in ["https://example.test/alice", "https://example.test/bob"] {
+            verify_parent_html(PAGE, base, "alice/project", "bob/project").unwrap();
+            let page = PAGE.replace(
+                "href=\"/",
+                &format!("href=\"{}/", url::Url::parse(base).unwrap().path()),
+            );
+            verify_parent_html(&page, base, "alice/project", "bob/project").unwrap();
+        }
+    }
+    #[test]
     fn compares_encoded_urls_for_unicode_repository_names() {
         let page = PAGE
             .replace("alice", "アリス")
@@ -77,23 +98,31 @@ mod tests {
     }
     #[test]
     fn rejects_foreign_links_changed_parent_and_ambiguous_or_missing_headers() {
-        for page in [
-            PAGE.replace("/bob/project", "/carol/project"),
-            PAGE.replace(
-                "href=\"/bob/project\"",
-                "href=\"https://foreign.test/bob/project\"",
-            ),
-            format!("{PAGE}{PAGE}"),
-            PAGE.replace("class=\"forked\"", "class=\"unknown\""),
-            PAGE.replace("/alice/project", "/alice/other"),
+        for base in [
+            "https://example.test/gitbucket",
+            "https://example.test/alice",
+            "https://example.test/bob",
         ] {
-            assert!(verify_parent_html(
-                &page,
-                "https://example.test/gitbucket",
-                "alice/project",
-                "bob/project"
-            )
-            .is_err());
+            for page in [
+                PAGE.replace("/bob/project", "/carol/project"),
+                PAGE.replace(
+                    "href=\"/bob/project\"",
+                    "href=\"https://foreign.test/bob/project\"",
+                ),
+                PAGE.replace(
+                    "href=\"/bob/project\"",
+                    "href=\"//foreign.test/bob/project\"",
+                ),
+                PAGE.replace(
+                    "href=\"/bob/project\"",
+                    "href=\"https://example.test/bob/project\"",
+                ),
+                format!("{PAGE}{PAGE}"),
+                PAGE.replace("class=\"forked\"", "class=\"unknown\""),
+                PAGE.replace("/alice/project", "/alice/other"),
+            ] {
+                assert!(verify_parent_html(&page, base, "alice/project", "bob/project").is_err());
+            }
         }
     }
 }
