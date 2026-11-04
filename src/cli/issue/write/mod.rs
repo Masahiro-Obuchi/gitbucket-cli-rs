@@ -1,6 +1,7 @@
 mod comment;
 mod create;
 mod edit;
+mod labels;
 mod lifecycle;
 
 pub(super) use comment::comment;

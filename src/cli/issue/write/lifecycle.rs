@@ -53,7 +53,6 @@ async fn set_issue_state(
         state: Some(api_state.to_string()),
         title: None,
         body: None,
-        labels: None,
         assignees: None,
         milestone: None,
     };

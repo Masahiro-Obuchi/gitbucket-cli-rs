@@ -86,9 +86,10 @@ gb repo fork alice/my-app
 
 ```bash
 gb label list
-gb label create bug --color fc2929 --description "Broken behavior"
+gb label create bug --color fc2929
 gb label view bug
-gb label edit bug --name defect --color cc0000 --description "Confirmed defect"
+gb label edit bug --name defect
+gb label edit defect --color cc0000 --web
 gb label delete bug --yes
 ```
 
@@ -268,7 +269,7 @@ when `--web` permits them; the flag does not force REST fields through Web.
 REST failures, including `404`, are returned directly instead of triggering a
 Web retry.
 When a web fallback is used, `gb` writes a `Notice:` line to stderr so scripts can distinguish REST-only success from fallback success.
-For `gb issue edit`, the web fallback currently covers title/body/assignee/milestone/state updates. Label edits still require REST issue edit support from the target GitBucket.
+For `gb issue edit`, Web handles metadata when needed; labels always use their dedicated REST add/remove endpoints. Label-only changes need no Web password and do not require Issue PATCH support.
 Use `GB_USER` and `GB_PASSWORD` to preseed those prompts when needed.
 
 Issue label and assignee options can be repeated or comma-separated:
@@ -545,14 +546,44 @@ The command does not install the scripts for you; redirect the output to the app
 gb label list
 gb label list --json
 gb label view bug
-gb label create needs-review --color abcdef --description "Needs extra review"
-gb label edit needs-review --color 123abc --remove-description
-gb label delete needs-review --yes
+gb label create needs-review --color abcdef
+gb label edit needs-review --name reviewed
+gb label edit reviewed --color 123abc --web
+gb label delete reviewed --yes
 ```
 
-`gb label` manages repository label definitions through the GitBucket REST API.
-It currently supports listing, viewing, creating, editing, and deleting labels in the target repository.
-Colors accept 6-digit hex values with or without a leading `#`.
+Label creation and rename use REST and verify stored values. Rename supplies the
+current color when `--color` is omitted. Colors accept six hex digits with an
+optional `#`. A no-op edit sends no mutation.
+
+GitBucket 4.44 rejects a same-name REST color update with 422. Pass `--web` to
+permit the verified in-place Web route when that exact limitation is encountered;
+it checks the numeric ID, name and current color before submitting the form and
+verifies the same ID and saved values afterward. A server accepting the REST
+request needs no Web credentials, even with `--web`. Conflicting renames, 404s and
+other REST failures do not trigger this route. Labels are never deleted/recreated
+or temporarily renamed to change their color. Unknown HTML layouts or changed
+forms fail before submission.
+
+Label descriptions are not persisted by the verified 4.44 REST/Web contracts.
+`--description` and `--remove-description` remain recognized but return an explicit
+unsupported error before mutation, including mixed rename/description requests.
+This CLI does not infer write support on another instance from HTTP success or a
+read-only field. Descriptions returned on reads are still displayed. Server fixes
+and capability requirements are recorded in [the upstream follow-up](docs/UPSTREAM_LABEL_API.md).
+
+Issue label edits use individual removals and additive requests, preserving labels
+outside the requested delta. Issue create/edit label names are matched exactly
+after comma splitting, including surrounding spaces and Unicode whitespace.
+Use `bug,urgent` without padding unless the padding belongs to the label name.
+Additions must already exist in the repository:
+`gb label create` them first. This preflight avoids the pinned server's implicit
+creation of misspelled labels. Repeated options are deduplicated; if a label is
+both removed and added, addition wins. Label-only edits need only API credentials.
+For mixed metadata/label edits, metadata is applied and verified first, then labels
+are changed and read back. Failures report confirmed steps and inspection-before-
+retry guidance. These operations are not atomic; unrelated writers can still race
+with snapshots. Unsafe dot-segment/path names are rejected before requests.
 
 ## Milestone commands
 

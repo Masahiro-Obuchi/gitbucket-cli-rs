@@ -1,8 +1,38 @@
 mod support;
 
 use serde_json::Value;
-use support::gb_cmd::GbTestEnv;
+use support::gb_cmd::{assert_success, GbTestEnv};
 use support::mock_http::{spawn_scripted_server, spawn_server, ScriptedResponse};
+
+#[test]
+fn issue_create_preserves_label_names_with_surrounding_whitespace() {
+    let env = GbTestEnv::new();
+    let (port, server) = spawn_server(
+        "201 Created",
+        r#"{"number":7,"title":"Bug report","state":"open"}"#,
+    );
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
+        .args([
+            "issue",
+            "create",
+            "--title",
+            "Bug report",
+            "--body",
+            "body",
+            "--label",
+            " bug ,\u{a0}bug\u{a0},\u{3000}bug\u{3000}",
+        ])
+        .output()
+        .unwrap();
+    assert_success(&output);
+    let request = server.join().unwrap();
+    let body: Value = serde_json::from_str(&request.body).unwrap();
+    assert_eq!(
+        body["labels"],
+        serde_json::json!([" bug ", "\u{a0}bug\u{a0}", "\u{3000}bug\u{3000}"])
+    );
+}
 
 #[test]
 fn issue_create_sends_labels_assignees_and_body() {

@@ -2,7 +2,8 @@ use clap::{Args, Subcommand};
 use colored::Colorize;
 use dialoguer::{Confirm, Input};
 
-use crate::cli::common::RepoContext;
+use crate::api::label::validate_label_segment;
+use crate::cli::common::{create_web_session, RepoContext};
 use crate::error::{GbError, Result};
 use crate::models::label::{CreateLabel, UpdateLabel};
 use crate::output;
@@ -20,6 +21,7 @@ struct LabelEditRequest {
     color: Option<String>,
     description: Option<String>,
     remove_description: bool,
+    web: bool,
 }
 
 #[derive(Subcommand)]
@@ -42,11 +44,14 @@ pub enum LabelCommand {
         /// Label color as 6-digit hex, with or without '#'
         #[arg(long, short)]
         color: Option<String>,
-        /// Optional label description
+        /// Label description (unsupported on verified GitBucket versions)
         #[arg(long, short)]
         description: Option<String>,
     },
     /// Edit a label
+    #[command(
+        after_help = "Rename uses REST and retains the stored color. Same-name color changes may require --web on GitBucket 4.44; the numeric label ID is preserved. Description writes are unsupported and rejected before changes."
+    )]
     Edit {
         /// Current label name
         name: String,
@@ -56,10 +61,13 @@ pub enum LabelCommand {
         /// New label color as 6-digit hex, with or without '#'
         #[arg(long, short)]
         color: Option<String>,
-        /// New label description
+        /// Label description (unsupported on verified GitBucket versions)
         #[arg(long, short, conflicts_with = "remove_description")]
         description: Option<String>,
-        /// Clear the label description
+        /// Permit a verified Web color update if same-name REST PATCH is rejected
+        #[arg(long)]
+        web: bool,
+        /// Clear the label description (unsupported on verified GitBucket versions)
         #[arg(long)]
         remove_description: bool,
     },
@@ -103,6 +111,7 @@ pub async fn run(
             color,
             description,
             remove_description,
+            web,
         } => {
             edit(
                 cli_hostname,
@@ -114,6 +123,7 @@ pub async fn run(
                     color,
                     description,
                     remove_description,
+                    web,
                 },
             )
             .await
@@ -184,6 +194,9 @@ async fn create(
     color: Option<String>,
     description: Option<String>,
 ) -> Result<()> {
+    if description.is_some() {
+        return Err(description_unsupported());
+    }
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
     let name = match name {
@@ -191,6 +204,7 @@ async fn create(
         None => Input::new().with_prompt("Label name").interact_text()?,
     };
 
+    validate_label_name(&name)?;
     let raw_color = match color {
         Some(color) => color,
         None => Input::new()
@@ -206,12 +220,18 @@ async fn create(
             &ctx.repo,
             &CreateLabel {
                 name: name.clone(),
-                color,
-                description,
+                color: color.clone(),
             },
         )
         .await?;
 
+    verify_label(&label, &name, &color, None)?;
+    let stored = ctx
+        .client
+        .get_label(&ctx.owner, &ctx.repo, &name)
+        .await
+        .map_err(|err| after_submission(err, "Label create"))?;
+    verify_label(&stored, &name, &color, None)?;
     println!("✓ Created label {}", label.name);
     if let Some(color) = label.color.as_deref() {
         println!("Color: {}", format_color(color));
@@ -237,31 +257,80 @@ async fn edit(
         ));
     }
 
-    let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
-    let color = request
+    if request.description.is_some() || request.remove_description {
+        return Err(description_unsupported());
+    }
+    validate_label_segment(name)?;
+    if let Some(new_name) = &request.new_name {
+        validate_label_name(new_name)?;
+    }
+    let requested_color = request
         .color
         .as_deref()
         .map(normalize_label_color)
         .transpose()?;
-    let description = if request.remove_description {
-        Some(String::new())
+    let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
+    let current = ctx.client.get_label(&ctx.owner, &ctx.repo, name).await?;
+    if current.name != name {
+        return Err(GbError::Other(
+            "Label lookup returned a different name. No changes were applied.".into(),
+        ));
+    }
+    let old_color = current
+        .color
+        .as_deref()
+        .map(normalize_label_color)
+        .transpose()?;
+    let new_name = request.new_name.unwrap_or_else(|| current.name.clone());
+    let color = requested_color
+        .or_else(|| old_color.clone())
+        .ok_or_else(|| {
+            GbError::Other(
+                "Cannot preserve an unknown label color. Specify --color explicitly.".into(),
+            )
+        })?;
+    let label = if new_name == current.name && old_color.as_deref() == Some(&color) {
+        current.clone()
     } else {
-        request.description
+        let response = ctx
+            .client
+            .update_label(
+                &ctx.owner,
+                &ctx.repo,
+                name,
+                &UpdateLabel {
+                    name: new_name.clone(),
+                    color: color.clone(),
+                    description: current.description.clone(),
+                },
+            )
+            .await;
+        match response {
+            Ok(label) => {
+                verify_label(&label, &new_name, &color, current.description.as_deref())?;
+            }
+            Err(GbError::Api { status: 422, .. }) if new_name == current.name => {
+                if !request.web {
+                    return Err(GbError::Other("The same-name REST label update was rejected (GitBucket 4.44 limitation). Re-run with --web to permit an in-place color update; the label will not be deleted or recreated.".into()));
+                }
+                validate_web_label(&current)?;
+                let old_color = old_color.as_deref().ok_or_else(|| GbError::Other("Cannot verify the Web form without the current label color. No Web mutation was attempted.".into()))?;
+                eprintln!("Notice: Same-name REST label update was rejected; using the verified Web color route in place.");
+                let session = create_web_session(&ctx.hostname, cli_profile).await?;
+                session
+                    .update_label_color(&ctx.owner, &ctx.repo, name, old_color, &color)
+                    .await?;
+            }
+            Err(err) => return Err(err),
+        }
+        let stored = ctx
+            .client
+            .get_label(&ctx.owner, &ctx.repo, &new_name)
+            .await
+            .map_err(|err| after_submission(err, "Label update"))?;
+        verify_label(&stored, &new_name, &color, current.description.as_deref())?;
+        stored
     };
-
-    let label = ctx
-        .client
-        .update_label(
-            &ctx.owner,
-            &ctx.repo,
-            name,
-            &UpdateLabel {
-                name: request.new_name,
-                color,
-                description,
-            },
-        )
-        .await?;
 
     println!("✓ Updated label {}", label.name);
     if let Some(color) = label.color.as_deref() {
@@ -303,6 +372,62 @@ async fn delete(
     Ok(())
 }
 
+fn description_unsupported() -> GbError {
+    GbError::Other("Label description writes are unsupported by the verified GitBucket 4.44 API and Web contracts; this CLI cannot confirm support on other instances. No changes were applied.".into())
+}
+
+fn validate_label_name(name: &str) -> Result<()> {
+    validate_label_segment(name)?;
+    if name.trim_matches(|ch| ch <= '\u{20}').is_empty()
+        || name.encode_utf16().count() > 100
+        || name.starts_with(['_', '-'])
+    {
+        return Err(GbError::Other("Label names must be nonblank, at most 100 UTF-16 units, and cannot start with '_' or '-'.".into()));
+    }
+    Ok(())
+}
+
+fn validate_web_label(current: &crate::models::label::Label) -> Result<()> {
+    validate_label_name(&current.name)?;
+    if current.name.trim_matches(|ch| ch <= '\u{20}') != current.name
+        || current.name.contains(',')
+        || current
+            .description
+            .as_deref()
+            .is_some_and(|value| !value.is_empty())
+    {
+        return Err(GbError::Other("The verified Web label form cannot preserve this name or description. No Web mutation was attempted; use a server-side REST fix.".into()));
+    }
+    Ok(())
+}
+
+fn after_submission(err: GbError, action: &str) -> GbError {
+    GbError::Other(format!(
+        "{action} was submitted, but verification failed: {err}. Inspect labels before retrying."
+    ))
+}
+
+fn verify_label(
+    label: &crate::models::label::Label,
+    name: &str,
+    color: &str,
+    description: Option<&str>,
+) -> Result<()> {
+    if label.name != name
+        || label
+            .color
+            .as_deref()
+            .map(normalize_label_color)
+            .transpose()?
+            .as_deref()
+            != Some(color)
+        || label.description.as_deref().unwrap_or_default() != description.unwrap_or_default()
+    {
+        return Err(GbError::Other("Label mutation was submitted, but stored name/color/description does not match. Inspect labels and Issue associations before retrying.".into()));
+    }
+    Ok(())
+}
+
 fn normalize_label_color(value: &str) -> Result<String> {
     let trimmed = value.trim().trim_start_matches('#');
     if trimmed.len() != 6 || !trimmed.chars().all(|ch| ch.is_ascii_hexdigit()) {
@@ -320,7 +445,14 @@ fn format_color(color: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_label_color;
+    use super::{normalize_label_color, validate_web_label};
+
+    #[test]
+    fn web_label_validation_preserves_non_ascii_spaces_like_java_trim() {
+        let label =
+            serde_json::from_value(serde_json::json!({"name":"\u{a0}", "color":"123abc"})).unwrap();
+        validate_web_label(&label).unwrap();
+    }
 
     #[test]
     fn normalize_label_color_accepts_hash_prefix() {

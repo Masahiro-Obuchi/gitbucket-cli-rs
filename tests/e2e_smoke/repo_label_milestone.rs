@@ -74,8 +74,6 @@ fn e2e_label_list_create_and_delete_against_live_instance() {
         &label_name,
         "--color",
         "123abc",
-        "--description",
-        "Created by E2E",
     ]);
     for (key, value) in e2e_env(temp.path()) {
         create_command.env(key, value);
@@ -532,4 +530,290 @@ fn e2e_milestone_unicode_and_space_titles_use_web_only_where_needed() {
         &["milestone", "delete", &number_arg, "--yes"],
         false,
     );
+}
+
+fn label_run(temp: &std::path::Path, args: &[&str], web: bool) -> String {
+    let mut command = gb_command();
+    command
+        .current_dir(temp)
+        .args(args)
+        .stdin(std::process::Stdio::null());
+    for (key, value) in e2e_env(temp) {
+        command.env(key, value);
+    }
+    if !web {
+        command.env_remove("GB_PASSWORD");
+    }
+    let output = command.output().unwrap();
+    assert!(
+        output.status.success(),
+        "{args:?}\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    if !web {
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("Notice:"));
+    }
+    String::from_utf8(output.stdout).unwrap()
+}
+
+fn label_reject(temp: &std::path::Path, args: &[&str]) -> String {
+    let mut command = gb_command();
+    command
+        .current_dir(temp)
+        .args(args)
+        .stdin(std::process::Stdio::null());
+    for (key, value) in e2e_env(temp) {
+        command.env(key, value);
+    }
+    command.env_remove("GB_PASSWORD");
+    let output = command.output().unwrap();
+    assert!(!output.status.success(), "{args:?} unexpectedly succeeded");
+    assert!(output.stdout.is_empty());
+    String::from_utf8(output.stderr).unwrap()
+}
+
+async fn web_label_id(web: &reqwest::Client, repo: &str, name: &str) -> u64 {
+    let response = web
+        .get(format!(
+            "{}/{repo}/issues/labels",
+            required_env("GB_E2E_BASE_URL")
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert!(response.status().is_success());
+    let page = response.text().await.unwrap();
+    let document = scraper::Html::parse_document(&page);
+    let anchors = scraper::Selector::parse("a[id^='label-row-content-']").unwrap();
+    let ids: Vec<_> = document
+        .select(&anchors)
+        .filter_map(|anchor| {
+            let visible = anchor
+                .text()
+                .collect::<String>()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            if visible != name {
+                return None;
+            }
+            anchor
+                .value()
+                .attr("id")?
+                .strip_prefix("label-row-content-")?
+                .parse::<u64>()
+                .ok()
+        })
+        .collect();
+    assert_eq!(ids.len(), 1, "could not locate unique label {name:?}");
+    ids[0]
+}
+
+#[tokio::test]
+#[ignore = "requires a Docker-backed GitBucket instance"]
+async fn e2e_label_updates_preserve_numeric_identity_and_issue_associations() {
+    let temp = tempdir().unwrap();
+    login(temp.path());
+    let suffix = unique_suffix();
+    let name = format!("needs & review-{suffix}");
+    let renamed = format!("renamed & label-{suffix}");
+    let keep = format!("\u{a0}keep-{suffix}\u{a0}");
+    let urgent = format!(" urgent-{suffix} ");
+    let repo = required_env("GB_E2E_REPO");
+    for label in [&name, &keep, &urgent] {
+        label_run(
+            temp.path(),
+            &["label", "create", label, "--color", "123abc"],
+            false,
+        );
+    }
+    let number = create_live_issue(temp.path(), &format!("label-linked-{suffix}"), "keep body");
+    let number_arg = number.to_string();
+    label_run(
+        temp.path(),
+        &[
+            "issue",
+            "edit",
+            &number_arg,
+            "--add-label",
+            &name,
+            "--add-label",
+            &keep,
+        ],
+        false,
+    );
+    let web = reqwest::Client::builder()
+        .cookie_store(true)
+        .build()
+        .unwrap();
+    let signin = web
+        .post(format!("{}/signin", required_env("GB_E2E_BASE_URL")))
+        .form(&[
+            ("userName", required_env("GB_E2E_USER")),
+            ("password", required_env("GB_E2E_PASSWORD")),
+            ("hash", String::new()),
+        ])
+        .send()
+        .await
+        .unwrap();
+    assert!(signin.status().is_success());
+    let id = web_label_id(&web, &repo, &name).await;
+    label_run(
+        temp.path(),
+        &["label", "edit", &name, "--name", &renamed],
+        false,
+    );
+    assert_eq!(web_label_id(&web, &repo, &renamed).await, id);
+    let mut label_path = url::Url::parse(&format!(
+        "{}/api/v3/repos/{repo}/labels/",
+        required_env("GB_E2E_BASE_URL")
+    ))
+    .unwrap();
+    label_path
+        .path_segments_mut()
+        .unwrap()
+        .pop_if_empty()
+        .push(&renamed);
+    let saved: Value = serde_json::from_str(&label_run(
+        temp.path(),
+        &["api", label_path.as_str()],
+        false,
+    ))
+    .unwrap();
+    assert_eq!(saved["color"], "123abc");
+    let error = label_reject(
+        temp.path(),
+        &["label", "edit", &renamed, "--color", "abcdef"],
+    );
+    assert!(error.contains("--web"), "{error}");
+    assert_eq!(web_label_id(&web, &repo, &renamed).await, id);
+    label_run(
+        temp.path(),
+        &["label", "edit", &renamed, "--color", "abcdef", "--web"],
+        true,
+    );
+    assert_eq!(web_label_id(&web, &repo, &renamed).await, id);
+    let saved: Value = serde_json::from_str(&label_run(
+        temp.path(),
+        &["api", label_path.as_str()],
+        false,
+    ))
+    .unwrap();
+    assert_eq!(saved["color"], "abcdef");
+    let issue_path = format!("repos/{repo}/issues/{number}");
+    let linked: Value =
+        serde_json::from_str(&label_run(temp.path(), &["api", &issue_path], false)).unwrap();
+    assert!(linked["labels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|label| label["name"] == renamed && label["color"] == "abcdef"));
+    assert!(linked["labels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|label| label["name"] == keep));
+    let rejected_name = format!("must-not-create-{suffix}");
+    assert!(label_reject(
+        temp.path(),
+        &[
+            "label",
+            "create",
+            &rejected_name,
+            "--color",
+            "123abc",
+            "--description",
+            "not supported"
+        ]
+    )
+    .contains("description writes are unsupported"));
+    assert!(label_reject(
+        temp.path(),
+        &[
+            "label",
+            "edit",
+            &renamed,
+            "--name",
+            &rejected_name,
+            "--description",
+            "not supported"
+        ]
+    )
+    .contains("description writes are unsupported"));
+    assert!(label_reject(
+        temp.path(),
+        &["label", "edit", &renamed, "--remove-description"]
+    )
+    .contains("description writes are unsupported"));
+    assert_eq!(web_label_id(&web, &repo, &renamed).await, id);
+    let all: Value =
+        serde_json::from_str(&label_run(temp.path(), &["label", "list", "--json"], false)).unwrap();
+    assert!(!all
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|label| label["name"] == rejected_name));
+    label_run(
+        temp.path(),
+        &[
+            "issue",
+            "edit",
+            &number_arg,
+            "--add-label",
+            &urgent,
+            "--remove-label",
+            &renamed,
+        ],
+        false,
+    );
+    let changed: Value =
+        serde_json::from_str(&label_run(temp.path(), &["api", &issue_path], false)).unwrap();
+    assert!(changed["labels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|label| label["name"] == keep));
+    assert!(changed["labels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|label| label["name"] == urgent));
+    assert!(!changed["labels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|label| label["name"] == renamed));
+    label_run(
+        temp.path(),
+        &[
+            "issue",
+            "edit",
+            &number_arg,
+            "--title",
+            "metadata and labels edited",
+            "--add-label",
+            &renamed,
+            "--remove-label",
+            &urgent,
+        ],
+        true,
+    );
+    let mixed: Value =
+        serde_json::from_str(&label_run(temp.path(), &["api", &issue_path], false)).unwrap();
+    assert_eq!(mixed["title"], "metadata and labels edited");
+    assert!(mixed["labels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|label| label["name"] == keep));
+    assert!(mixed["labels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|label| label["name"] == renamed));
+    assert_eq!(web_label_id(&web, &repo, &renamed).await, id);
+    for label in [&renamed, &keep, &urgent] {
+        label_run(temp.path(), &["label", "delete", label, "--yes"], false);
+    }
 }

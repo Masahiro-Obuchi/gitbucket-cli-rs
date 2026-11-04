@@ -30,6 +30,13 @@ All REST paths below are relative to `/api/v3/repos/{owner}/{repo}`.
 | Label same-name PATCH | Supplying the existing name and a new color returns 422; the old color remains | Merely filling in missing fields does not solve color editing on 4.44.0 |
 | Label rename PATCH | Supplying a fresh name and color succeeds; GET finds the new values at the new name and returns 404 for the old name | The REST update route exists, despite the same-name constraint |
 
+PR-06 additionally verifies that the numeric-ID Web edit updates color without
+changing label identity or Issue associations. Its label-only Issue edits use the
+existing dedicated add/remove APIs without Web credentials. The scoped HTML
+parser is covered by sanitized row/form fixtures in `tests/fixtures/`, including
+root-relative links from the `/gitbucket` proxy. Description writes now fail
+before mutation; [upstream requirements](UPSTREAM_LABEL_API.md) remain explicit.
+
 These contracts were exercised in both root and `/gitbucket` proxy deployments.
 The tests create disposable PRs and an inline comment, and create/delete their
 own milestones and labels. Run them only against the bootstrapped test instance,
@@ -49,8 +56,8 @@ generated afresh instead of committing an
 entire authenticated HTML page, runtime credentials, or server-specific IDs.
 This makes the contracts repeatable across both deployment paths.
 
-Before adding an HTML parser, capture and sanitize focused HTML fragments from
-these fixtures. Old-side comments, renamed/deleted files, replies, outdated
+Before extending the HTML parser to another operation, capture and sanitize focused
+HTML fragments from these fixtures. Old-side comments, renamed/deleted files, replies, outdated
 comments after a head update, fork removal, and persisted SHA retrieval still
 need dedicated fixtures. The present tests establish a first baseline; they do
 not finish the entire review compatibility matrix.

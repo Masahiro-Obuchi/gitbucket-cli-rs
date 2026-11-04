@@ -49,6 +49,9 @@ pub enum IssueCommand {
         no_pager: bool,
     },
     /// Create a new issue
+    #[command(
+        after_help = "Label names are used exactly as passed after comma splitting, including surrounding spaces."
+    )]
     Create {
         /// Issue title (prompts when omitted)
         #[arg(long, short)]
@@ -64,6 +67,9 @@ pub enum IssueCommand {
         assignee: Vec<String>,
     },
     /// Edit an issue
+    #[command(
+        after_help = "Labels use dedicated REST add/remove endpoints and need no Web password when edited alone. Additions must already exist as repository labels. Label names are used exactly as passed after comma splitting, including surrounding spaces. Other metadata may require Web authentication; mixed edits are verified in phases and are not atomic."
+    )]
     Edit {
         /// Issue number
         number: u64,
@@ -163,7 +169,7 @@ pub async fn run(
                 cli_profile,
                 title,
                 body,
-                normalize_str_vec(label),
+                nonempty_label_names(label),
                 normalize_str_vec(assignee),
             )
             .await
@@ -188,8 +194,8 @@ pub async fn run(
                     number,
                     title,
                     body,
-                    add_labels: normalize_str_vec(add_label),
-                    remove_labels: normalize_str_vec(remove_label),
+                    add_labels: nonempty_label_names(add_label),
+                    remove_labels: nonempty_label_names(remove_label),
                     add_assignees: normalize_str_vec(add_assignee),
                     remove_assignees: normalize_str_vec(remove_assignee),
                     milestone,
@@ -211,4 +217,13 @@ pub async fn run(
             edit_last,
         } => write::comment(cli_hostname, cli_repo, cli_profile, number, body, edit_last).await,
     }
+}
+
+fn nonempty_label_names(values: Vec<String>) -> Vec<String> {
+    // Surrounding whitespace is part of a label's identity; trimming could
+    // select a different existing label for an addition or removal.
+    values
+        .into_iter()
+        .filter(|value| !value.is_empty())
+        .collect()
 }

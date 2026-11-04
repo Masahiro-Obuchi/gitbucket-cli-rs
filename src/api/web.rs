@@ -1,3 +1,5 @@
+mod label;
+
 use reqwest::redirect::Policy;
 use reqwest::{Client, Response, StatusCode};
 

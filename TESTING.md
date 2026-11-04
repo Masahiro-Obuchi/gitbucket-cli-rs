@@ -378,3 +378,27 @@ edit), compare stored fields after every step, reject merged reopening, and veri
 that ordinary Issues/comments stay unchanged after attempted PR commands. The
 existing mixed Web assignee E2E test verifies the resulting assignee set. Both root
 and /gitbucket deployments run these tests.
+
+## Label Delta Updates and In-Place Web Color Edits
+
+`tests/label_command.rs` covers color-preserving rename, required complete PATCH
+inputs, REST-first behavior, explicit Web permission, ID/form verification,
+unsupported descriptions before mutation, no-op requests, failed verification
+and unsafe names. `tests/issue_edit_flows.rs` checks dedicated add/remove requests,
+no Issue PATCH or password for label-only edits, preservation of unrelated labels,
+preflight of missing additions, metadata-first verification, and partial failures.
+Issue create and label deltas also distinguish padded names from unpadded names,
+including ASCII spaces, NBSP and fullwidth spaces.
+
+```bash
+cargo test --locked --test label_command --test issue_edit_flows
+cargo test --locked --bin gb api::web::label
+```
+
+The parser unit tests use actual sanitized 4.44.0 row/form captures and reject
+ambiguous rows, changed identity and form values. The live E2E follows a numeric
+label ID and Issue association through REST rename and Web color update, then
+checks description rejection and token-only Issue label deltas. Root and
+/gitbucket deployments both run it, alongside the direct server contract checks.
+The live delta flow preserves NBSP-padded labels and adds/removes ASCII-padded
+labels by their exact names.

@@ -2,7 +2,7 @@ use crate::cli::common::{
     create_web_session, merge_named_values, normalize_edit_state, RepoContext,
 };
 use crate::cli::issue_like::{
-    run_issue_like_edit, IssueLikeCurrent, IssueLikeEdit, IssueLikeTarget,
+    apply_issue_like_edit, IssueLikeCurrent, IssueLikeEdit, IssueLikeTarget,
 };
 use crate::error::{GbError, Result};
 use crate::models::issue::UpdateIssue;
@@ -54,15 +54,13 @@ pub(in crate::cli::issue) async fn edit(
         .get_issue(&ctx.owner, &ctx.repo, request.number)
         .await?;
 
-    let labels = if request.add_labels.is_empty() && request.remove_labels.is_empty() {
-        None
-    } else {
-        Some(merge_named_values(
-            current.labels.iter().map(|label| label.name.clone()),
-            request.add_labels,
-            request.remove_labels,
-        ))
-    };
+    if current.number != request.number {
+        return Err(GbError::Other(
+            "Issue lookup returned another number. No changes were applied.".into(),
+        ));
+    }
+    let labels = super::labels::LabelChanges::new(request.add_labels, request.remove_labels)?;
+    labels.preflight(&ctx).await?;
 
     let assignees = if request.add_assignees.is_empty() && request.remove_assignees.is_empty() {
         None
@@ -87,57 +85,99 @@ pub(in crate::cli::issue) async fn edit(
         state,
         title: request.title,
         body: request.body,
-        labels,
         assignees,
         milestone,
     };
 
-    match ctx
-        .client
-        .update_issue(&ctx.owner, &ctx.repo, request.number, &update_body)
-        .await
-    {
-        Ok(issue) => {
-            println!("✓ Updated issue #{}: {}", issue.number, issue.title);
-            Ok(())
-        }
-        Err(GbError::Api { status: 404, .. }) => {
-            if update_body.labels.is_some() {
-                return Err(GbError::Other(
-                    "This GitBucket instance does not support editing issue labels through the web fallback; the web fallback cannot edit labels. Retry against an instance with REST issue edit support, or update title/body/assignees/milestone/state only.".into(),
-                ));
-            }
-
-            let session = create_web_session(&ctx.hostname, cli_profile).await?;
-            let current = IssueLikeCurrent::issue(current);
-            run_issue_like_edit(
-                IssueLikeTarget {
-                    session: &session,
-                    owner: &ctx.owner,
-                    repo: &ctx.repo,
-                    number: request.number,
-                },
-                IssueLikeEdit {
-                    current: &current,
-                    update: &update_body,
-                    allow_web_fallback: true,
-                    unsupported_web_fallback_message: Some(
-                        "This GitBucket instance does not support editing issue labels through the web fallback; the web fallback cannot edit labels. Retry against an instance with REST issue edit support, or update title/body/assignees/milestone/state only.",
-                    ),
-                    rest_unavailable_notice:
-                        "Notice: REST issue edit is unavailable on this GitBucket instance; using web fallback.",
-                    success_noun: "issue",
-                },
-                || async {
-                    let issue = ctx
-                        .client
-                        .get_issue(&ctx.owner, &ctx.repo, request.number)
-                        .await?;
-                    Ok((issue.number, issue.title))
-                },
-            )
+    let metadata_requested = update_body.title.is_some()
+        || update_body.body.is_some()
+        || update_body.state.is_some()
+        || update_body.assignees.is_some()
+        || update_body.milestone.is_some();
+    let mut stored = current.clone();
+    if metadata_requested {
+        match ctx
+            .client
+            .update_issue(&ctx.owner, &ctx.repo, request.number, &update_body)
             .await
+        {
+            Ok(issue) => {
+                if issue.number != request.number {
+                    return Err(GbError::Other("Issue metadata request was submitted, but response number mismatches. Inspect the Issue before retrying.".into()));
+                }
+            }
+            Err(GbError::Api { status: 404, .. }) => {
+                let session = create_web_session(&ctx.hostname, cli_profile).await?;
+                let current = IssueLikeCurrent::issue(current.clone());
+                apply_issue_like_edit(
+                    IssueLikeTarget { session: &session, owner: &ctx.owner, repo: &ctx.repo, number: request.number },
+                    IssueLikeEdit {
+                        current: &current, update: &update_body,
+                        rest_unavailable_notice: "Notice: REST issue metadata edit is unavailable; using Web for metadata only. Labels use their dedicated REST endpoints.",
+                    },
+                ).await.map_err(|err| GbError::Other(format!("Issue Web metadata update failed: {err}. Metadata may be partially applied; no label changes were attempted. Inspect the Issue before retrying.")))?;
+            }
+            Err(err) => return Err(err),
         }
-        Err(err) => Err(err),
     }
+    if metadata_requested {
+        stored = read_after_edit(&ctx, request.number).await?;
+        verify_metadata(&stored, request.number, &update_body)?;
+    }
+    if !labels.is_empty() {
+        labels.apply(&ctx, request.number).await.map_err(|err| {
+            if metadata_requested {
+                GbError::Other(format!(
+                    "Metadata update steps completed before label processing failed: {err}"
+                ))
+            } else {
+                err
+            }
+        })?;
+    }
+    if !labels.is_empty() {
+        stored = read_after_edit(&ctx, request.number).await?;
+        labels.verify(&stored.labels)?;
+    }
+    verify_metadata(&stored, request.number, &update_body)?;
+    println!("✓ Updated issue #{}: {}", stored.number, stored.title);
+    Ok(())
+}
+
+async fn read_after_edit(ctx: &RepoContext, number: u64) -> Result<crate::models::issue::Issue> {
+    ctx.client.get_issue(&ctx.owner, &ctx.repo, number).await.map_err(|err|
+        GbError::Other(format!("Issue edit steps completed, but verification failed: {err}. Inspect the Issue before retrying.")))
+}
+
+fn verify_metadata(
+    stored: &crate::models::issue::Issue,
+    number: u64,
+    update_body: &UpdateIssue,
+) -> Result<()> {
+    if stored.number != number {
+        return Err(GbError::Other("Issue edit was submitted, but verification returned another number. Inspect the Issue before retrying.".into()));
+    }
+    if update_body
+        .title
+        .as_deref()
+        .is_some_and(|title| title != stored.title)
+        || update_body
+            .body
+            .as_deref()
+            .is_some_and(|body| body != stored.body.as_deref().unwrap_or_default())
+        || update_body
+            .state
+            .as_deref()
+            .is_some_and(|state| state != stored.state)
+        || update_body.milestone.is_some_and(|milestone| {
+            milestone != stored.milestone.as_ref().map(|value| value.number)
+        })
+        || update_body.assignees.as_ref().is_some_and(|next| {
+            next.iter().collect::<std::collections::BTreeSet<_>>()
+                != stored.assignees.iter().map(|user| &user.login).collect()
+        })
+    {
+        return Err(GbError::Other("Issue edit was submitted, but stored metadata does not match. Inspect the Issue before retrying; changes may be partially applied.".into()));
+    }
+    Ok(())
 }
