@@ -21,6 +21,7 @@ mod config;
 mod error;
 mod git;
 mod models;
+mod operation;
 mod output;
 mod target;
 
@@ -79,6 +80,8 @@ struct ErrorOutput {
 
 #[derive(Serialize)]
 struct ErrorBody {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    operations: Option<Vec<operation::Operation>>,
     code: &'static str,
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -92,6 +95,7 @@ struct ErrorBody {
 fn print_json_error(error: &error::GbError) {
     let output = ErrorOutput {
         error: ErrorBody {
+            operations: error.operations().map(<[_]>::to_vec),
             code: error.code(),
             message: error.to_string(),
             cause: error.cause_code(),

@@ -11,3 +11,10 @@ The row intentionally retains the server's root-relative link even when fetched
 through `/gitbucket`. The parser resolves this as metadata within the configured
 base; network requests still use the selected deployment URL. Entity escaping,
 input IDs, values and HTML structure are retained to detect layout drift.
+
+`gitbucket-4.44-fork-header.html` retains the focused repository identity and
+`forked from` structure observed during PR-07 E2E, with targets replaced by
+`alice/project` and `bob/project` and unrelated header controls removed. The
+pinned `src/main/twirl/gitbucket/core/menu.scala.html` renders the immediate
+parent here; REST `ApiRepository` omits fork/parent/source. Root-relative links
+are retained as emitted through the proxy. No authentication material is included.

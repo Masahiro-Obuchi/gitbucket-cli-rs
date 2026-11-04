@@ -29,7 +29,8 @@ impl GbTestEnv {
         command
             .current_dir(self.path())
             .env("GB_CONFIG_DIR", self.path())
-            .env("NO_COLOR", "1");
+            .env("NO_COLOR", "1")
+            .env_remove("GB_WEB_USER");
         command
     }
 

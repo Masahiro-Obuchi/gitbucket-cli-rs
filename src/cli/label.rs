@@ -305,6 +305,7 @@ async fn edit(
                 },
             )
             .await;
+        let mut stored_after_web = None;
         match response {
             Ok(label) => {
                 verify_label(&label, &new_name, &color, current.description.as_deref())?;
@@ -316,18 +317,48 @@ async fn edit(
                 validate_web_label(&current)?;
                 let old_color = old_color.as_deref().ok_or_else(|| GbError::Other("Cannot verify the Web form without the current label color. No Web mutation was attempted.".into()))?;
                 eprintln!("Notice: Same-name REST label update was rejected; using the verified Web color route in place.");
-                let session = create_web_session(&ctx.hostname, cli_profile).await?;
-                session
-                    .update_label_color(&ctx.owner, &ctx.repo, name, old_color, &color)
-                    .await?;
+                let mut progress = crate::operation::Progress::default();
+                let step = progress.plan("label.color", crate::operation::Route::Web);
+                let session = create_web_session(&ctx.client, &ctx.hostname, cli_profile)
+                    .await
+                    .map_err(|err| progress.error(err))?;
+                progress.actor(session.principal());
+                let target = session
+                    .prepare_label_color(&ctx.owner, &ctx.repo, name, old_color)
+                    .await
+                    .map_err(|err| progress.error(err))?;
+                stored_after_web = Some(
+                    progress
+                        .run(
+                            step,
+                            session.update_label_color(&target, &color),
+                            |_| async {
+                                let stored = ctx
+                                    .client
+                                    .get_label(&ctx.owner, &ctx.repo, &new_name)
+                                    .await?;
+                                verify_label(
+                                    &stored,
+                                    &new_name,
+                                    &color,
+                                    current.description.as_deref(),
+                                )?;
+                                Ok(stored)
+                            },
+                        )
+                        .await?,
+                );
             }
             Err(err) => return Err(err),
         }
-        let stored = ctx
-            .client
-            .get_label(&ctx.owner, &ctx.repo, &new_name)
-            .await
-            .map_err(|err| after_submission(err, "Label update"))?;
+        let stored = if let Some(stored) = stored_after_web {
+            stored
+        } else {
+            ctx.client
+                .get_label(&ctx.owner, &ctx.repo, &new_name)
+                .await
+                .map_err(|err| after_submission(err, "Label update"))?
+        };
         verify_label(&stored, &new_name, &color, current.description.as_deref())?;
         stored
     };

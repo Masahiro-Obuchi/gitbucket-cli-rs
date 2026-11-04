@@ -3,7 +3,10 @@ mod support;
 use serde_json::{json, Value};
 use support::gb_cmd::GbTestEnv;
 use support::gb_cmd::{assert_failure, assert_success, stderr};
-use support::mock_http::{spawn_scripted_server, spawn_server, ScriptedResponse};
+use support::mock_http::{
+    spawn_scripted_server, spawn_server, with_verified_web_session, without_identity_probes,
+    ScriptedResponse,
+};
 
 #[test]
 fn label_list_prints_json() {
@@ -289,7 +292,7 @@ fn label_same_name_rejection_requires_explicit_web_permission() {
 #[test]
 fn label_color_web_updates_the_same_numeric_id_and_verifies_saved_color() {
     let env = GbTestEnv::new();
-    let (port, server) = spawn_scripted_server(vec![
+    let (port, server) = spawn_scripted_server(with_verified_web_session(vec![
         response(
             "GET",
             "/needs%20review",
@@ -329,7 +332,7 @@ fn label_color_web_updates_the_same_numeric_id_and_verifies_saved_color() {
             "200 OK",
             &label("needs review", "ffffff"),
         ),
-    ]);
+    ]));
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
         .env("GB_USER", "alice")
@@ -345,7 +348,7 @@ fn label_color_web_updates_the_same_numeric_id_and_verifies_saved_color() {
         .output()
         .unwrap();
     assert_success(&output);
-    let requests = server.join().unwrap();
+    let requests = without_identity_probes(server.join().unwrap());
     let form: std::collections::HashMap<_, _> =
         url::form_urlencoded::parse(requests[5].body.as_bytes())
             .into_owned()
@@ -409,7 +412,7 @@ fn label_web_layout_or_snapshot_mismatch_refuses_before_form_submission() {
                 ),
             ));
         }
-        let (port, server) = spawn_scripted_server(responses);
+        let (port, server) = spawn_scripted_server(with_verified_web_session(responses));
         let output = env
             .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
             .env("GB_USER", "alice")
@@ -419,7 +422,7 @@ fn label_web_layout_or_snapshot_mismatch_refuses_before_form_submission() {
             .unwrap();
         assert_failure(&output);
         assert!(output.stdout.is_empty());
-        let requests = server.join().unwrap();
+        let requests = without_identity_probes(server.join().unwrap());
         assert!(requests
             .iter()
             .filter(|request| request.method == "POST")
@@ -604,7 +607,7 @@ fn label_web_post_is_not_success_until_identity_and_color_are_verified() {
         if mode == "not-saved" {
             responses.push(response("GET", "/bug", "200 OK", &label("bug", "123abc")));
         }
-        let (port, server) = spawn_scripted_server(responses);
+        let (port, server) = spawn_scripted_server(with_verified_web_session(responses));
         let output = env
             .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
             .env("GB_USER", "alice")

@@ -2,7 +2,9 @@ mod support;
 
 use serde_json::{json, Value};
 use support::gb_cmd::{assert_failure, assert_success, stderr, GbTestEnv};
-use support::mock_http::{spawn_scripted_server, ScriptedResponse};
+use support::mock_http::{
+    spawn_scripted_server, with_verified_web_session, without_identity_probes, ScriptedResponse,
+};
 
 fn response(
     method: &str,
@@ -150,11 +152,12 @@ fn pr_assignee_changes_require_permission_before_rest_mutation() {
 #[test]
 fn pr_assignee_authentication_failure_precedes_rest_mutation() {
     let env = GbTestEnv::new();
-    let (port, server) = spawn_scripted_server(vec![
+    let (port, server) = spawn_scripted_server(with_verified_web_session(vec![
         response("GET", "", PR, "200 OK", &current()),
         response("GET", "", ISSUE, "200 OK", &issue(&["alice"])),
+        response("GET", "", "users/bob", "200 OK", &json!({"login":"bob"})),
         ScriptedResponse::html("POST /signin HTTP/1.1", "401 Unauthorized", "incorrect"),
-    ]);
+    ]));
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .env("GB_USER", "alice")
@@ -174,7 +177,7 @@ fn pr_assignee_authentication_failure_precedes_rest_mutation() {
     assert_failure(&output);
     assert!(output.stdout.is_empty());
     assert!(stderr(&output).contains("sign-in failed"));
-    assert_eq!(server.join().unwrap().len(), 3);
+    assert_eq!(without_identity_probes(server.join().unwrap()).len(), 4);
 }
 
 fn signin() -> ScriptedResponse {
@@ -186,9 +189,16 @@ fn signin() -> ScriptedResponse {
 fn pr_mixed_edit_keeps_assignees_out_of_rest_payload_and_verifies_web_changes() {
     let env = GbTestEnv::new();
     let updated = json!({"number":5,"title":"New","body":"new body","state":"closed"});
-    let (port, server) = spawn_scripted_server(vec![
+    let (port, server) = spawn_scripted_server(with_verified_web_session(vec![
         response("GET", "/bucket", PR, "200 OK", &current()),
         response("GET", "/bucket", ISSUE, "200 OK", &issue(&["alice"])),
+        response(
+            "GET",
+            "/bucket",
+            "users/bob",
+            "200 OK",
+            &json!({"login":"bob"}),
+        ),
         signin(),
         response("PATCH", "/bucket", PR, "200 OK", &updated),
         ScriptedResponse::html(
@@ -196,13 +206,14 @@ fn pr_mixed_edit_keeps_assignees_out_of_rest_payload_and_verifies_web_changes() 
             "200 OK",
             "removed",
         ),
+        response("GET", "/bucket", ISSUE, "200 OK", &issue(&[])),
         ScriptedResponse::html(
             "POST /bucket/alice/project/issues/5/assignee/new HTTP/1.1",
             "200 OK",
             "added",
         ),
         response("GET", "/bucket", ISSUE, "200 OK", &issue(&["bob"])),
-    ]);
+    ]));
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
         .env("GB_USER", "alice")
@@ -226,9 +237,9 @@ fn pr_mixed_edit_keeps_assignees_out_of_rest_payload_and_verifies_web_changes() 
         .output()
         .unwrap();
     assert_success(&output);
-    let requests = server.join().unwrap();
+    let requests = without_identity_probes(server.join().unwrap());
     assert_eq!(
-        serde_json::from_str::<Value>(&requests[3].body).unwrap(),
+        serde_json::from_str::<Value>(&requests[4].body).unwrap(),
         json!({"title":"New","body":"new body","state":"closed"})
     );
     let form = |body: &str| {
@@ -236,10 +247,10 @@ fn pr_mixed_edit_keeps_assignees_out_of_rest_payload_and_verifies_web_changes() 
             .into_owned()
             .collect::<std::collections::HashMap<_, _>>()
     };
-    assert_eq!(form(&requests[4].body)["assigneeUserName"], "alice");
-    assert_eq!(form(&requests[5].body)["assigneeUserName"], "bob");
+    assert_eq!(form(&requests[5].body)["assigneeUserName"], "alice");
+    assert_eq!(form(&requests[7].body)["assigneeUserName"], "bob");
     assert_eq!(
-        requests[5].headers.get("cookie").map(String::as_str),
+        requests[7].headers.get("cookie").map(String::as_str),
         Some("JSESSIONID=pr-session")
     );
 }
@@ -263,9 +274,16 @@ fn pr_assignee_noop_needs_no_web_flag_or_authentication() {
 #[test]
 fn pr_assignee_only_edits_do_not_send_an_empty_patch() {
     let env = GbTestEnv::new();
-    let (port, server) = spawn_scripted_server(vec![
+    let (port, server) = spawn_scripted_server(with_verified_web_session(vec![
         response("GET", "/bucket", PR, "200 OK", &current()),
         response("GET", "/bucket", ISSUE, "200 OK", &issue(&[])),
+        response(
+            "GET",
+            "/bucket",
+            "users/bob",
+            "200 OK",
+            &json!({"login":"bob"}),
+        ),
         signin(),
         ScriptedResponse::html(
             "POST /bucket/alice/project/issues/5/assignee/new HTTP/1.1",
@@ -273,7 +291,7 @@ fn pr_assignee_only_edits_do_not_send_an_empty_patch() {
             "added",
         ),
         response("GET", "/bucket", ISSUE, "200 OK", &issue(&["bob"])),
-    ]);
+    ]));
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
         .env("GB_USER", "alice")
@@ -282,7 +300,7 @@ fn pr_assignee_only_edits_do_not_send_an_empty_patch() {
         .output()
         .unwrap();
     assert_success(&output);
-    assert_eq!(server.join().unwrap().len(), 5);
+    assert_eq!(without_identity_probes(server.join().unwrap()).len(), 6);
 }
 
 #[test]
@@ -293,6 +311,13 @@ fn pr_later_assignee_failure_reports_completed_rest_fields() {
         let mut responses = vec![
             response("GET", "/bucket", PR, "200 OK", &current()),
             response("GET", "/bucket", ISSUE, "200 OK", &issue(&[])),
+            response(
+                "GET",
+                "/bucket",
+                "users/bob",
+                "200 OK",
+                &json!({"login":"bob"}),
+            ),
             signin(),
             response("PATCH", "/bucket", PR, "200 OK", &updated),
             ScriptedResponse::html(
@@ -308,7 +333,7 @@ fn pr_later_assignee_failure_reports_completed_rest_fields() {
         if !fails_on_post {
             responses.push(response("GET", "/bucket", ISSUE, "200 OK", &issue(&[])));
         }
-        let (port, server) = spawn_scripted_server(responses);
+        let (port, server) = spawn_scripted_server(with_verified_web_session(responses));
         let mut command = env.repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project");
         if !fails_on_post {
             command.arg("--json-errors");
@@ -331,7 +356,7 @@ fn pr_later_assignee_failure_reports_completed_rest_fields() {
         assert_failure(&output);
         assert!(output.stdout.is_empty());
         assert!(
-            stderr(&output).contains("REST title/body/state updates completed"),
+            stderr(&output).contains("pr.title_body_state=succeeded"),
             "{}",
             stderr(&output)
         );
@@ -341,7 +366,7 @@ fn pr_later_assignee_failure_reports_completed_rest_fields() {
             assert_eq!(value["error"]["code"], "error");
             assert!(!stderr(&output).contains("Notice:"));
         }
-        server.join().unwrap();
+        without_identity_probes(server.join().unwrap());
     }
 }
 

@@ -3,7 +3,10 @@ mod support;
 use serde_json::{json, Value};
 use support::gb_cmd::GbTestEnv;
 use support::gb_cmd::{assert_failure, assert_success, stderr};
-use support::mock_http::{spawn_scripted_server, spawn_server, ScriptedResponse};
+use support::mock_http::{
+    spawn_scripted_server, spawn_server, with_verified_web_session, without_identity_probes,
+    ScriptedResponse,
+};
 
 #[test]
 fn milestone_list_prints_json_and_state_query() {
@@ -442,7 +445,7 @@ fn signin() -> ScriptedResponse {
 fn milestone_unicode_create_uses_web_only_after_known_title_rejection() {
     let env = GbTestEnv::new();
     let milestone = json!({"number":7,"title":"日本語 release","state":"open","description":"説明","due_on":"2026-04-01T00:00:00Z"});
-    let (port, server) = spawn_scripted_server(vec![
+    let (port, server) = spawn_scripted_server(with_verified_web_session(vec![
         response("POST", "/bucket", false, "404 Not Found", &json!({})),
         ScriptedResponse::json(
             "GET /bucket/api/v3/repos/alice/project/milestones?state=all HTTP/1.1",
@@ -460,7 +463,7 @@ fn milestone_unicode_create_uses_web_only_after_known_title_rejection() {
             "200 OK",
             &json!([milestone]).to_string(),
         ),
-    ]);
+    ]));
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
         .env("GB_USER", "alice")
@@ -477,7 +480,7 @@ fn milestone_unicode_create_uses_web_only_after_known_title_rejection() {
         .output()
         .unwrap();
     assert_success(&output);
-    let requests = server.join().unwrap();
+    let requests = without_identity_probes(server.join().unwrap());
     assert_eq!(form(&requests[3].body)["title"], "日本語 release");
     assert_eq!(form(&requests[3].body)["description"], "説明");
     assert_eq!(form(&requests[3].body)["dueDate"], "2026-04-01");
@@ -508,7 +511,7 @@ fn milestone_web_edit_keeps_closed_state_and_clears_fields_explicitly() {
     let env = GbTestEnv::new();
     let current = json!({"number":7,"title":"日本語 release","state":"closed","description":"説明","due_on":"2026-04-01T00:00:00Z"});
     let updated = json!({"number":7,"title":"日本語 release","state":"closed","description":"","due_on":null});
-    let (port, server) = spawn_scripted_server(vec![
+    let (port, server) = spawn_scripted_server(with_verified_web_session(vec![
         response("GET", "/bucket", true, "200 OK", &current),
         response("PATCH", "/bucket", true, "404 Not Found", &json!({})),
         response("GET", "/bucket", true, "200 OK", &current),
@@ -519,7 +522,7 @@ fn milestone_web_edit_keeps_closed_state_and_clears_fields_explicitly() {
             "updated",
         ),
         response("GET", "/bucket", true, "200 OK", &updated),
-    ]);
+    ]));
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
         .env("GB_USER", "alice")
@@ -536,7 +539,7 @@ fn milestone_web_edit_keeps_closed_state_and_clears_fields_explicitly() {
         .output()
         .unwrap();
     assert_success(&output);
-    let requests = server.join().unwrap();
+    let requests = without_identity_probes(server.join().unwrap());
     assert_eq!(form(&requests[4].body)["title"], "日本語 release");
     assert_eq!(form(&requests[4].body)["description"], "");
     assert_eq!(form(&requests[4].body)["dueDate"], "");
@@ -552,7 +555,7 @@ fn milestone_unicode_state_only_uses_only_web_state_action_and_preserves_timesta
     current["title"] = json!("日本語 release");
     let mut updated = current.clone();
     updated["state"] = json!("open");
-    let (port, server) = spawn_scripted_server(vec![
+    let (port, server) = spawn_scripted_server(with_verified_web_session(vec![
         response("GET", "/bucket", true, "200 OK", &current),
         response("PATCH", "/bucket", true, "404 Not Found", &json!({})),
         response("GET", "/bucket", true, "200 OK", &current),
@@ -563,7 +566,7 @@ fn milestone_unicode_state_only_uses_only_web_state_action_and_preserves_timesta
             "opened",
         ),
         response("GET", "/bucket", true, "200 OK", &updated),
-    ]);
+    ]));
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
         .env("GB_USER", "alice")
@@ -572,7 +575,7 @@ fn milestone_unicode_state_only_uses_only_web_state_action_and_preserves_timesta
         .output()
         .unwrap();
     assert_success(&output);
-    assert_eq!(server.join().unwrap().len(), 6);
+    assert_eq!(without_identity_probes(server.join().unwrap()).len(), 6);
 }
 
 #[test]
@@ -654,7 +657,7 @@ fn milestone_web_preserves_unicode_spacing_that_java_trim_retains() {
     let title = "\u{3000}日本語 release\u{3000}";
     let description = "\u{a0}説明\u{a0}";
     let milestone = json!({"number":7,"title":title,"state":"open","description":description});
-    let (port, server) = spawn_scripted_server(vec![
+    let (port, server) = spawn_scripted_server(with_verified_web_session(vec![
         response("POST", "/bucket", false, "404 Not Found", &json!({})),
         ScriptedResponse::json(
             "GET /bucket/api/v3/repos/alice/project/milestones?state=all HTTP/1.1",
@@ -672,7 +675,7 @@ fn milestone_web_preserves_unicode_spacing_that_java_trim_retains() {
             "200 OK",
             &json!([milestone]).to_string(),
         ),
-    ]);
+    ]));
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
         .env("GB_USER", "alice")
@@ -681,7 +684,7 @@ fn milestone_web_preserves_unicode_spacing_that_java_trim_retains() {
         .output()
         .unwrap();
     assert_success(&output);
-    let requests = server.join().unwrap();
+    let requests = without_identity_probes(server.join().unwrap());
     assert_eq!(form(&requests[3].body)["title"], title);
     assert_eq!(form(&requests[3].body)["description"], description);
 }
@@ -691,7 +694,7 @@ fn milestone_web_false_success_is_not_printed_as_success() {
     let env = GbTestEnv::new();
     let current =
         json!({"number":7,"title":"日本語 release","state":"closed","description":"説明"});
-    let (port, server) = spawn_scripted_server(vec![
+    let (port, server) = spawn_scripted_server(with_verified_web_session(vec![
         response("GET", "/bucket", true, "200 OK", &current),
         response("PATCH", "/bucket", true, "404 Not Found", &json!({})),
         response("GET", "/bucket", true, "200 OK", &current),
@@ -702,7 +705,7 @@ fn milestone_web_false_success_is_not_printed_as_success() {
             "validation error",
         ),
         response("GET", "/bucket", true, "200 OK", &current),
-    ]);
+    ]));
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
         .env("GB_USER", "alice")
@@ -713,7 +716,7 @@ fn milestone_web_false_success_is_not_printed_as_success() {
     assert_failure(&output);
     assert!(output.stdout.is_empty());
     assert!(stderr(&output).contains("stored fields do not match"));
-    server.join().unwrap();
+    without_identity_probes(server.join().unwrap());
 }
 
 #[test]
@@ -741,7 +744,7 @@ fn milestone_unicode_create_missing_repository_does_not_prompt_for_web_auth() {
 fn milestone_web_create_verification_failure_does_not_report_success() {
     for list_fails in [false, true] {
         let env = GbTestEnv::new();
-        let (port, server) = spawn_scripted_server(vec![
+        let (port, server) = spawn_scripted_server(with_verified_web_session(vec![
             response("POST", "/bucket", false, "404 Not Found", &json!({})),
             ScriptedResponse::json(
                 "GET /bucket/api/v3/repos/alice/project/milestones?state=all HTTP/1.1",
@@ -763,7 +766,7 @@ fn milestone_web_create_verification_failure_does_not_report_success() {
                 },
                 if list_fails { "{}" } else { "[]" },
             ),
-        ]);
+        ]));
         let output = env
             .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
             .env("GB_USER", "alice")
@@ -774,7 +777,7 @@ fn milestone_web_create_verification_failure_does_not_report_success() {
         assert_failure(&output);
         assert!(output.stdout.is_empty());
         assert!(stderr(&output).contains("before retrying"));
-        server.join().unwrap();
+        without_identity_probes(server.join().unwrap());
     }
 }
 
@@ -828,7 +831,7 @@ fn milestone_web_edit_reloads_latest_values_and_handles_legacy_unset_due() {
     let mut expected = latest.clone();
     expected["title"] = json!("新しい release");
     expected["due_on"] = Value::Null;
-    let (port, server) = spawn_scripted_server(vec![
+    let (port, server) = spawn_scripted_server(with_verified_web_session(vec![
         response("GET", "/bucket", true, "200 OK", &current),
         response("PATCH", "/bucket", true, "404 Not Found", &json!({})),
         response("GET", "/bucket", true, "200 OK", &latest),
@@ -839,7 +842,7 @@ fn milestone_web_edit_reloads_latest_values_and_handles_legacy_unset_due() {
             "updated",
         ),
         response("GET", "/bucket", true, "200 OK", &expected),
-    ]);
+    ]));
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
         .env("GB_USER", "alice")
@@ -848,7 +851,7 @@ fn milestone_web_edit_reloads_latest_values_and_handles_legacy_unset_due() {
         .output()
         .unwrap();
     assert_success(&output);
-    let requests = server.join().unwrap();
+    let requests = without_identity_probes(server.join().unwrap());
     assert_eq!(form(&requests[4].body)["description"], "keep latest");
     assert_eq!(form(&requests[4].body)["dueDate"], "");
 }
@@ -899,7 +902,7 @@ fn milestone_refresh_to_rest_compatible_title_avoids_web_authentication() {
 fn milestone_later_web_state_failure_reports_possible_applied_content() {
     let env = GbTestEnv::new();
     let current = json!({"number":7,"title":"日本語 release","state":"open","description":"old"});
-    let (port, server) = spawn_scripted_server(vec![
+    let (port, server) = spawn_scripted_server(with_verified_web_session(vec![
         response("GET", "/bucket", true, "200 OK", &current),
         response("PATCH", "/bucket", true, "404 Not Found", &json!({})),
         response("GET", "/bucket", true, "200 OK", &current),
@@ -909,12 +912,19 @@ fn milestone_later_web_state_failure_reports_possible_applied_content() {
             "200 OK",
             "updated",
         ),
+        response(
+            "GET",
+            "/bucket",
+            true,
+            "200 OK",
+            &json!({"number":7,"title":"日本語 release","state":"open","description":"new"}),
+        ),
         ScriptedResponse::html(
             "GET /bucket/alice/project/issues/milestones/7/close HTTP/1.1",
             "403 Forbidden",
             "denied",
         ),
-    ]);
+    ]));
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
         .env("GB_USER", "alice")
@@ -933,10 +943,10 @@ fn milestone_later_web_state_failure_reports_possible_applied_content() {
     assert_failure(&output);
     assert!(output.stdout.is_empty());
     assert!(
-        stderr(&output).contains("Content changes may already be applied"),
+        stderr(&output).contains("milestone.content=succeeded"),
         "{}",
         stderr(&output)
     );
     assert!(stderr(&output).contains("before retrying"));
-    server.join().unwrap();
+    without_identity_probes(server.join().unwrap());
 }

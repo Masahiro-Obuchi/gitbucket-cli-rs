@@ -133,44 +133,66 @@ pub(super) async fn apply_edit(
             Some((issue, next))
         }
     };
+    let mut progress = crate::operation::Progress::default();
+    let rest_step = (!update.is_empty())
+        .then(|| progress.plan("pr.title_body_state", crate::operation::Route::Rest));
+    let assignee_step = assignees
+        .as_ref()
+        .map(|_| progress.plan("pr.assignees", crate::operation::Route::Web));
     // Preflight permission/auth before a mixed edit changes any REST fields.
     let session = if assignees.is_some() {
         if !request.web {
             return Err(GbError::Other("PR assignee changes require --web to permit GitBucket Web UI authentication. No changes were applied; title/body/state alone use REST without --web.".into()));
         }
-        Some(create_web_session(&ctx.hostname, cli_profile).await?)
+        if let Some((issue, next)) = &assignees {
+            crate::cli::common::preflight_assignees(&ctx.client, issue, next)
+                .await
+                .map_err(|err| progress.error(err))?;
+        }
+        Some(
+            create_web_session(&ctx.client, &ctx.hostname, cli_profile)
+                .await
+                .map_err(|err| progress.error(err))?,
+        )
     } else {
         None
     };
 
-    let updated = if update.is_empty() {
-        current.clone()
+    if let Some(session) = &session {
+        progress.actor(session.principal());
+    }
+    let updated = if let Some(step) = rest_step {
+        progress
+            .run(
+                step,
+                ctx.client
+                    .update_pull_request(&ctx.owner, &ctx.repo, request.number, &update),
+                |updated| async {
+                    verify_rest_update(&updated, &current, &update)?;
+                    Ok(updated)
+                },
+            )
+            .await?
     } else {
-        let updated = ctx
-            .client
-            .update_pull_request(&ctx.owner, &ctx.repo, request.number, &update)
-            .await?;
-        verify_rest_update(&updated, &current, &update)?;
-        updated
+        current.clone()
     };
 
-    if let (Some((issue, next)), Some(session)) = (assignees, session) {
-        eprintln!("Notice: Updating PR assignees through the Web UI; title/body/state use REST.");
-        let progress = if update.is_empty() {
-            ""
-        } else {
-            "REST title/body/state updates completed. "
-        };
-        update_issue_assignees_via_web(&session, &ctx.owner, &ctx.repo, request.number, &issue, &next)
-            .await.map_err(|err| GbError::Other(format!("{progress}PR assignee update failed: {err}. Assignee changes may be partially applied; inspect the PR before retrying.")))?;
-        let actual = ctx.client.get_issue(&ctx.owner, &ctx.repo, request.number).await.map_err(|err|
-            GbError::Other(format!("{progress}PR assignee changes were submitted, but verification failed: {err}. Inspect the PR before retrying.")))?;
-        check_issue_number(&actual, request.number).map_err(|err| GbError::Other(format!(
-            "{progress}PR assignee verification returned an invalid target: {err}. Inspect the PR before retrying."
-        )))?;
-        if assignee_names(&actual) != next.into_iter().collect() {
-            return Err(GbError::Other(format!("{progress}PR assignee changes were submitted, but stored assignees do not match. Inspect the PR before retrying; do not assume the Web form succeeded.")));
-        }
+    if let (Some((issue, next)), Some(session), Some(step)) = (assignees, session, assignee_step) {
+        progress
+            .run(
+                step,
+                update_issue_assignees_via_web(
+                    &ctx.client,
+                    &session,
+                    &ctx.owner,
+                    &ctx.repo,
+                    request.number,
+                    &issue,
+                    &next,
+                ),
+                |_| async { Ok(()) },
+            )
+            .await?;
     }
     Ok(updated)
 }

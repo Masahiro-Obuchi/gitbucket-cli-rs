@@ -40,7 +40,7 @@ pub struct CreateMilestone {
 
 /// GitBucket 4.44 replaces all editable fields, rather than applying a sparse PATCH.
 /// None is serialized as null to clear nullable fields.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpdateMilestone {
     pub title: String,
     pub description: Option<String>,

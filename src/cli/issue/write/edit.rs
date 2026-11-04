@@ -47,6 +47,22 @@ pub(in crate::cli::issue) async fn edit(
         ));
     }
 
+    if request
+        .title
+        .as_deref()
+        .is_some_and(|title| title.trim().is_empty())
+    {
+        return Err(GbError::Other(
+            "Issue title must not be blank. No changes were applied.".into(),
+        ));
+    }
+    for name in request
+        .add_assignees
+        .iter()
+        .chain(&request.remove_assignees)
+    {
+        crate::target::validate_component(name)?;
+    }
     let state = normalize_edit_state("issue", request.state)?;
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
     let current = ctx
@@ -94,59 +110,69 @@ pub(in crate::cli::issue) async fn edit(
         || update_body.state.is_some()
         || update_body.assignees.is_some()
         || update_body.milestone.is_some();
+    let mut progress = crate::operation::Progress::default();
+    let metadata_step =
+        metadata_requested.then(|| progress.plan("issue.metadata", crate::operation::Route::Rest));
+    let label_step =
+        (!labels.is_empty()).then(|| progress.plan("issue.labels", crate::operation::Route::Rest));
     let mut stored = current.clone();
-    if metadata_requested {
-        match ctx
+    if let Some(step) = metadata_step {
+        let result = ctx
             .client
             .update_issue(&ctx.owner, &ctx.repo, request.number, &update_body)
-            .await
-        {
-            Ok(issue) => {
-                if issue.number != request.number {
-                    return Err(GbError::Other("Issue metadata request was submitted, but response number mismatches. Inspect the Issue before retrying.".into()));
-                }
-            }
+            .await;
+        let submission = match result {
             Err(GbError::Api { status: 404, .. }) => {
-                let session = create_web_session(&ctx.hostname, cli_profile).await?;
+                progress.route(step, crate::operation::Route::Web);
+                preflight_web(&ctx, &current, &update_body)
+                    .await
+                    .map_err(|err| progress.error(err))?;
+                let session = create_web_session(&ctx.client, &ctx.hostname, cli_profile)
+                    .await
+                    .map_err(|err| progress.error(err))?;
+                progress.actor(session.principal());
                 let current = IssueLikeCurrent::issue(current.clone());
                 apply_issue_like_edit(
-                    IssueLikeTarget { session: &session, owner: &ctx.owner, repo: &ctx.repo, number: request.number },
-                    IssueLikeEdit {
-                        current: &current, update: &update_body,
-                        rest_unavailable_notice: "Notice: REST issue metadata edit is unavailable; using Web for metadata only. Labels use their dedicated REST endpoints.",
-                    },
-                ).await.map_err(|err| GbError::Other(format!("Issue Web metadata update failed: {err}. Metadata may be partially applied; no label changes were attempted. Inspect the Issue before retrying.")))?;
+                    IssueLikeTarget { client: &ctx.client, session: &session, owner: &ctx.owner, repo: &ctx.repo, number: request.number },
+                    IssueLikeEdit { current: &current, update: &update_body, rest_unavailable_notice: "Notice: REST issue metadata edit is unavailable; using Web for metadata only. Labels use their dedicated REST endpoints." },
+                ).await
             }
-            Err(err) => return Err(err),
-        }
+            result => result.and_then(|issue| {
+                if issue.number == request.number {
+                    Ok(())
+                } else {
+                    Err(GbError::Other(
+                        "Issue metadata response returned another number.".into(),
+                    ))
+                }
+            }),
+        };
+        stored = progress
+            .run(step, async { submission }, |_| async {
+                let stored = ctx
+                    .client
+                    .get_issue(&ctx.owner, &ctx.repo, request.number)
+                    .await?;
+                verify_metadata(&stored, request.number, &update_body)?;
+                Ok(stored)
+            })
+            .await?;
     }
-    if metadata_requested {
-        stored = read_after_edit(&ctx, request.number).await?;
-        verify_metadata(&stored, request.number, &update_body)?;
+    if let Some(step) = label_step {
+        stored = progress
+            .run(step, labels.apply(&ctx, request.number), |_| async {
+                let stored = ctx
+                    .client
+                    .get_issue(&ctx.owner, &ctx.repo, request.number)
+                    .await?;
+                labels.verify(&stored.labels)?;
+                verify_metadata(&stored, request.number, &update_body)?;
+                Ok(stored)
+            })
+            .await?;
     }
-    if !labels.is_empty() {
-        labels.apply(&ctx, request.number).await.map_err(|err| {
-            if metadata_requested {
-                GbError::Other(format!(
-                    "Metadata update steps completed before label processing failed: {err}"
-                ))
-            } else {
-                err
-            }
-        })?;
-    }
-    if !labels.is_empty() {
-        stored = read_after_edit(&ctx, request.number).await?;
-        labels.verify(&stored.labels)?;
-    }
-    verify_metadata(&stored, request.number, &update_body)?;
     println!("✓ Updated issue #{}: {}", stored.number, stored.title);
     Ok(())
-}
-
-async fn read_after_edit(ctx: &RepoContext, number: u64) -> Result<crate::models::issue::Issue> {
-    ctx.client.get_issue(&ctx.owner, &ctx.repo, number).await.map_err(|err|
-        GbError::Other(format!("Issue edit steps completed, but verification failed: {err}. Inspect the Issue before retrying.")))
 }
 
 fn verify_metadata(
@@ -178,6 +204,38 @@ fn verify_metadata(
         })
     {
         return Err(GbError::Other("Issue edit was submitted, but stored metadata does not match. Inspect the Issue before retrying; changes may be partially applied.".into()));
+    }
+    Ok(())
+}
+
+async fn preflight_web(
+    ctx: &RepoContext,
+    current: &crate::models::issue::Issue,
+    update: &UpdateIssue,
+) -> Result<()> {
+    // Both pinned Web forms apply Java String.trim. Reject lossy input before
+    // changing any other field, including when only a later field is invalid.
+    for value in [update.title.as_deref(), update.body.as_deref()]
+        .into_iter()
+        .flatten()
+    {
+        if value.trim_matches(|ch| ch <= '\u{20}') != value {
+            return Err(GbError::Other("Issue Web forms trim title/body whitespace and cannot preserve this input. No Web changes were applied.".into()));
+        }
+    }
+    if let Some(Some(number)) = update.milestone {
+        let milestone = ctx
+            .client
+            .get_milestone(&ctx.owner, &ctx.repo, number)
+            .await?;
+        if milestone.number != number {
+            return Err(GbError::Other(
+                "Milestone lookup returned another number. No Web changes were applied.".into(),
+            ));
+        }
+    }
+    if let Some(next) = &update.assignees {
+        crate::cli::common::preflight_assignees(&ctx.client, current, next).await?;
     }
     Ok(())
 }

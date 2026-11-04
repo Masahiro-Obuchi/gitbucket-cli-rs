@@ -62,6 +62,7 @@ pub(super) fn verify_web_result(actual: &Milestone, expected: &UpdateMilestone) 
 }
 
 pub(super) async fn read_after_web(ctx: &RepoContext, number: u64) -> Result<Milestone> {
-    ctx.client.get_milestone(&ctx.owner, &ctx.repo, number).await.map_err(|err|
-        GbError::Other(format!("Milestone Web mutation was submitted, but its result could not be verified: {err}. Inspect the milestone before retrying.")))
+    ctx.client
+        .get_milestone(&ctx.owner, &ctx.repo, number)
+        .await
 }

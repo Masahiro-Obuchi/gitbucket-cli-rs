@@ -4,6 +4,81 @@ use tempfile::tempdir;
 
 #[test]
 #[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
+fn e2e_web_auth_failures_leave_issue_unchanged_and_report_no_write() {
+    let temp = tempdir().unwrap();
+    login(temp.path());
+    let number = create_live_issue(
+        temp.path(),
+        "web authentication preflight",
+        "unchanged body",
+    )
+    .to_string();
+    for wrong_actor in [false, true] {
+        let mut command = gb_command();
+        command
+            .current_dir(temp.path())
+            .args(["--json-errors", "issue", "close", &number]);
+        for (key, value) in e2e_env(temp.path()) {
+            command.env(key, value);
+        }
+        if wrong_actor {
+            command.env("GB_USER", "root");
+        } else {
+            command.env("GB_PASSWORD", "invalid-e2e-password");
+        }
+        let output = command.output().unwrap();
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"]["code"], "auth_error");
+        assert_eq!(error["error"]["operations"][0]["status"], "not_attempted");
+        let actual: Value = serde_json::from_str(&gb_output_with_env(
+            temp.path(),
+            temp.path(),
+            &["issue", "view", &number, "--json"],
+        ))
+        .unwrap();
+        assert_eq!(actual["state"], "open");
+        assert_eq!(actual["body"], "unchanged body");
+    }
+}
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
+fn e2e_explicit_web_user_overrides_stale_git_user_and_names_the_actor() {
+    let temp = tempdir().unwrap();
+    login(temp.path());
+    let number = create_live_issue(temp.path(), "explicit Web actor", "body").to_string();
+    let user = required_env("GB_E2E_USER");
+    let mut command = gb_command();
+    command
+        .current_dir(temp.path())
+        .args(["issue", "close", &number]);
+    for (key, value) in e2e_env(temp.path()) {
+        command.env(key, value);
+    }
+    command
+        .env("GB_USER", "stale-git-user")
+        .env("GB_WEB_USER", &user);
+    let output = command.output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stderr)
+        .contains(&format!("Web actor {user}; REST actor {user}")));
+    let actual: Value = serde_json::from_str(&gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["issue", "view", &number, "--json"],
+    ))
+    .unwrap();
+    assert_eq!(actual["state"], "closed");
+}
+
+#[test]
+#[ignore = "requires a Docker-backed GitBucket instance bootstrapped via scripts/e2e/bootstrap.sh"]
 fn e2e_issue_and_pr_list_json_against_live_instance() {
     let temp = tempdir().unwrap();
 

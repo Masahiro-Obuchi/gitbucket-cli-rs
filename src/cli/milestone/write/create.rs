@@ -53,31 +53,26 @@ pub(in crate::cli::milestone) async fn create(
                 ));
             }
             eprintln!("Notice: GitBucket 4.44 REST rejects this milestone title; using the Web route for the same title.");
-            let session = create_web_session(&ctx.hostname, cli_profile).await?;
-            session
-                .create_milestone(
-                    &ctx.owner,
-                    &ctx.repo,
-                    &title,
-                    description.as_deref(),
-                    due_on.as_ref().map(|value| value.form_value.as_str()),
-                )
-                .await?;
-            let after = ctx.client.list_milestones(&ctx.owner, &ctx.repo, "all").await.map_err(|err|
-                GbError::Other(format!("Milestone Web create was submitted, but the result could not be verified: {err}. Inspect the milestone list before retrying.")))?;
-            let milestone = after.into_iter().find(|milestone| milestone.title == title
-                && !before.iter().any(|old| old.number == milestone.number)).ok_or_else(||
-                GbError::Other("Milestone Web create was submitted, but no new milestone with the requested title was found. Inspect the milestone list before retrying.".into()))?;
-            verify_web_result(
-                &milestone,
-                &UpdateMilestone {
-                    title,
-                    description,
-                    due_on: body.due_on,
-                    state: "open".into(),
-                },
-            )?;
-            milestone
+            let mut progress = crate::operation::Progress::default();
+            let step = progress.plan("milestone.create", crate::operation::Route::Web);
+            let session = create_web_session(&ctx.client, &ctx.hostname, cli_profile)
+                .await
+                .map_err(|err| progress.error(err))?;
+            progress.actor(session.principal());
+            let expected = UpdateMilestone {
+                title: title.clone(),
+                description: description.clone(),
+                due_on: body.due_on.clone(),
+                state: "open".into(),
+            };
+            progress.run(step, session.create_milestone(&ctx.owner, &ctx.repo, &title, description.as_deref(), due_on.as_ref().map(|value| value.form_value.as_str())), |_| async {
+                let after = ctx.client.list_milestones(&ctx.owner, &ctx.repo, "all").await?;
+                let mut candidates = after.into_iter().filter(|milestone| milestone.title == title && !before.iter().any(|old| old.number == milestone.number));
+                let milestone = candidates.next().ok_or_else(|| GbError::Other("Milestone Web create was submitted, but no new matching milestone was found.".into()))?;
+                if candidates.next().is_some() { return Err(GbError::Other("Milestone Web create result is ambiguous.".into())); }
+                verify_web_result(&milestone, &expected)?;
+                Ok(milestone)
+            }).await?
         }
         Err(err) => return Err(err),
     };

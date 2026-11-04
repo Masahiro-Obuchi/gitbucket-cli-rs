@@ -431,11 +431,27 @@ gb repo fork [OWNER/REPO] [OPTIONS]
 | Argument/Option | Short | Description |
 | --- | --- | --- |
 | `OWNER/REPO` | — | Repository to fork (or pass globally with `gb -R OWNER/REPO repo fork`) |
-| `--group <GROUP>` | — | Group to fork into (defaults to your user; `--org` remains accepted as an alias) |
+| `--group <GROUP>` | — | Group to fork into (defaults to the REST token user; `--org` remains accepted as an alias) |
 
-Implementation detail: if GitBucket returns `404` for the REST fork endpoint, `gb` falls back to the web fork flow and signs in with the configured username or `GB_USER`.
+Fork resolves the default destination from the REST token's `/user` response.
+`--group` is sent as the REST `organization` body field and is retained for the
+Web fork form. Source and destination are read before mutation. A pre-existing
+destination is accepted only when its immediate parent matches the requested
+source; matching only the fork network's `source` is insufficient.
 
-`gb repo delete` behaves similarly: if GitBucket returns `404` for `DELETE /repos/{owner}/{repo}`, `gb` retries through the web danger-zone form.
+A rejected REST fork (`404`) can use Web only while the source remains readable.
+The created destination and immediate parent are verified before success. Reads
+may be polled with up to five seconds of delay for asynchronous creation; writes
+are never repeated automatically. 4.44 omits `fork`, `parent` and `source` from
+REST repository responses, so the verified repository header supplies parent
+proof. Public header reads require no Web password. An inaccessible or unknown
+header cannot establish success.
+
+Delete reads the target before DELETE and verifies absence afterward. A missing
+or unreadable initial target does not trigger Web login or deletion. An explicit
+REST DELETE `404` can use the Web danger-zone form for the proven target; an HTTP
+200 form response alone is insufficient. Both flows use the authentication and
+operation-result rules in §6.4.
 
 ---
 
@@ -1228,7 +1244,43 @@ Available on view/browse flows using `--web` or `gb browse`.
 
 ### 6.4 Web fallback notices
 
-When a command falls back from a missing REST API endpoint to a GitBucket web UI route, `gb` writes a `Notice:` line to stderr before performing the web session flow. Unsupported fields must return an explicit error that distinguishes "REST API unavailable" from "web fallback does not support this field."
+REST/Web routing is specific to each operation and confirmed server constraint;
+`404` alone is not a capability probe. The current contracts, known input
+restrictions and unknown cases are listed in [WEB_OPERATIONS.md](docs/WEB_OPERATIONS.md).
+No persistent server capability cache or universal compatibility dispatcher is used.
+
+Web mutations first verify the REST token's `/api/v3/user` and a separate
+cookie-only `/api/v3/user` after password sign-in. The cookie probe carries no
+Authorization header. The cookie user must match the requested Web username.
+A different actor from the REST token requires explicit `GB_WEB_USER`; otherwise
+mismatches fail before Web writes. `Notice:` output names both actors. Password
+prompts and `GB_PASSWORD` apply to that Web user. Interactive SSO/OIDC and redirects
+outside the configured origin/deployment are unsupported by this flow.
+
+Inputs and known Web constraints are checked before the first Web write. Issue
+forms reject title/body values that Java String.trim would alter; new assignees
+and milestone targets are checked before metadata writes. Each Web mutation is
+followed by stored-value verification. Issue lifecycle operations use the
+state-only Web route and never implicitly create a comment with a REST `action`.
+
+Mutation failures retain the source error code/status where available and add
+`error.operations` under `--json-errors`. Each entry contains `operation`,
+`route` (`rest`/`web`), `status`, and optional verified Web `actor`:
+
+| Status | Meaning |
+| --- | --- |
+| `succeeded` | The intended result was confirmed at readback (or by a validated REST result). |
+| `failed` | The mutation was explicitly rejected; no successful effect is confirmed for this step. |
+| `unverified` | Submission or verification failed ambiguously; the write may already be applied. |
+| `not_attempted` | This step was planned but was not submitted. |
+
+A failed readback remains `unverified` even when it returns 401/403/404. A failure
+after a redirect from a mutation is also ambiguous. Group entries summarize a
+phase; nested entries identify confirmed fields or individual assignee/label steps.
+These statuses describe the observation at that phase, not protection from later
+concurrent writes. No rollback or automatic retry of writes is assumed. Full
+success is printed only after confirmation; partial/unverified outcomes exit 1.
+Successful commands retain their existing output, without a new success JSON mode.
 
 ---
 
@@ -1242,6 +1294,7 @@ When a command falls back from a missing REST API endpoint to a GitBucket web UI
 | `GB_TOKEN` | Access token override |
 | `GB_PROTOCOL` | Protocol override when `GB_TOKEN` is used with a plain hostname |
 | `GB_USER` | Username for GitBucket web-session fallbacks |
+| `GB_WEB_USER` | Explicit Web user override; authorizes an actor different from the REST token |
 | `GB_PASSWORD` | Password for GitBucket web-session fallbacks |
 | `GB_CONFIG_DIR` | Custom config directory |
 | `GB_JSON_ERRORS` | Print command failures as structured JSON on stderr |
@@ -1289,6 +1342,7 @@ Pass global `--json-errors` (or set `GB_JSON_ERRORS=true`) to print failures as 
 src/
   main.rs
   error.rs
+  operation.rs
   cli/
     mod.rs
     common.rs

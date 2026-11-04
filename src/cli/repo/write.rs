@@ -1,9 +1,7 @@
 use dialoguer::{Confirm, Input};
 
 use crate::api::client::ApiClient;
-use crate::cli::common::{
-    create_web_session, parse_owner_repo, resolve_host_config, HostContext, RepoContext,
-};
+use crate::cli::common::{create_web_session, parse_owner_repo, HostContext, RepoContext};
 use crate::error::{GbError, Result};
 use crate::models::repository::{CreateRepository, Repository};
 
@@ -73,21 +71,49 @@ pub(super) async fn delete(
     }
 
     let ctx = HostContext::resolve(hostname, cli_profile)?;
-    match ctx.client.delete_repo(&owner, &repo).await {
-        Ok(()) => {
-            println!("✓ Deleted repository {}/{}", owner, repo);
-            Ok(())
-        }
+    // Establish existence/read permission before interpreting DELETE 404 as a
+    // missing route. A missing/private target must never trigger Web deletion.
+    let before = ctx.client.get_repo(&owner, &repo).await?;
+    if before.full_name != format!("{owner}/{repo}") {
+        return Err(GbError::Other(
+            "Repository lookup returned another target.".into(),
+        ));
+    }
+    let mut progress = crate::operation::Progress::default();
+    let result = ctx.client.delete_repo(&owner, &repo).await;
+    match result {
         Err(GbError::Api { status: 404, .. }) => {
-            eprintln!(
-                "Notice: REST repository delete is unavailable on this GitBucket instance; using web fallback."
-            );
-            let session = create_web_session(&ctx.hostname, cli_profile).await?;
-            session.delete_repo(&owner, &repo).await?;
-            println!("✓ Deleted repository {}/{}", owner, repo);
-            Ok(())
+            let step = progress.plan("repository.delete", crate::operation::Route::Web);
+            let session = create_web_session(&ctx.client, &ctx.hostname, cli_profile)
+                .await
+                .map_err(|err| progress.error(err))?;
+            progress.actor(session.principal());
+            progress
+                .run(step, session.delete_repo(&owner, &repo), |_| {
+                    verify_deleted(&ctx.client, &owner, &repo)
+                })
+                .await?;
         }
+        result => {
+            let step = progress.plan("repository.delete", crate::operation::Route::Rest);
+            progress
+                .run(step, async { result }, |_| {
+                    verify_deleted(&ctx.client, &owner, &repo)
+                })
+                .await?;
+        }
+    }
+    println!("✓ Deleted repository {}/{}", owner, repo);
+    Ok(())
+}
+
+async fn verify_deleted(client: &ApiClient, owner: &str, repo: &str) -> Result<()> {
+    match client.get_repo(owner, repo).await {
+        Err(GbError::Api { status: 404, .. }) => Ok(()),
         Err(err) => Err(err),
+        Ok(_) => Err(GbError::Other(
+            "Repository delete was submitted, but the repository still exists.".into(),
+        )),
     }
 }
 
@@ -97,104 +123,157 @@ pub(super) async fn fork(
     cli_profile: &Option<String>,
     group: Option<String>,
 ) -> Result<()> {
-    let resolved = RepoContext::resolve(hostname, &repo_arg, cli_profile)?;
-    let (owner, repo) = (resolved.owner, resolved.repo);
-    let ctx = HostContext {
-        hostname: resolved.hostname,
-        client: resolved.client,
-    };
-    match ctx.client.fork_repo(&owner, &repo).await {
-        Ok(forked) => {
-            print_fork_result(&owner, &repo, &forked);
-            Ok(())
+    let ctx = RepoContext::resolve(hostname, &repo_arg, cli_profile)?;
+    if let Some(group) = &group {
+        crate::target::validate_component(group)?;
+    }
+    let api_user = ctx.client.current_user().await?;
+    let target = group.as_deref().unwrap_or(&api_user.login);
+    crate::target::validate_component(target)?;
+    let source = ctx.client.get_repo(&ctx.owner, &ctx.repo).await?;
+    if source.full_name != format!("{}/{}", ctx.owner, ctx.repo) {
+        return Err(GbError::Other(
+            "Source lookup returned another repository.".into(),
+        ));
+    }
+    // A pre-existing unrelated destination is never a successful fork.
+    if let Some(existing) = existing_fork(&ctx, cli_profile, target).await? {
+        print_fork_result(&ctx.owner, &ctx.repo, &existing);
+        return Ok(());
+    }
+    let mut progress = crate::operation::Progress::default();
+    let result = ctx
+        .client
+        .fork_repo(&ctx.owner, &ctx.repo, group.as_deref())
+        .await;
+    let forked = match result {
+        Err(GbError::Api { status: 404, .. }) => {
+            // Confirm the source is still readable; 404 alone is not evidence
+            // that an endpoint is unavailable.
+            ctx.client.get_repo(&ctx.owner, &ctx.repo).await?;
+            let step = progress.plan("repository.fork", crate::operation::Route::Web);
+            let session = create_web_session(&ctx.client, &ctx.hostname, cli_profile)
+                .await
+                .map_err(|err| progress.error(err))?;
+            if group.is_none() && !session.principal().eq_ignore_ascii_case(target) {
+                return Err(progress.error(GbError::Auth(
+                    "A fork for another Web actor requires an explicit --group destination.".into(),
+                )));
+            }
+            progress.actor(session.principal());
+            progress
+                .run(
+                    step,
+                    session.fork_repo(&ctx.owner, &ctx.repo, target),
+                    |_| verify_fork(&ctx.client, target, &ctx.repo, &ctx.owner, Some(&session)),
+                )
+                .await?
         }
-        Err(err @ GbError::Api { status, .. }) => {
-            if status != 404 {
-                if status == 409 || status >= 500 {
-                    if let Ok(target_account) =
-                        resolve_fork_target(&ctx.hostname, cli_profile, group)
+        result => {
+            let step = progress.plan("repository.fork", crate::operation::Route::Rest);
+            let ctx = &ctx;
+            progress
+                .run(step, async { result }, |returned| async move {
+                    if !repository_is_requested_fork(
+                        &returned, target, &ctx.repo, &ctx.owner, &ctx.repo,
+                    ) && (returned.parent.is_some()
+                        || returned.full_name != format!("{target}/{}", ctx.repo))
                     {
-                        if let Some(existing) =
-                            existing_fork(&ctx.client, &target_account, &repo, &owner, &repo)
-                                .await?
-                        {
-                            eprintln!(
-                                "Notice: fork request did not return a repository; using existing fork {}.",
-                                existing.full_name
-                            );
-                            print_fork_result(&owner, &repo, &existing);
-                            return Ok(());
-                        }
+                        return Err(GbError::Other(
+                            "Fork response does not match the destination and immediate upstream."
+                                .into(),
+                        ));
                     }
-                }
-                return Err(err);
-            }
-
-            let target_account = resolve_fork_target(&ctx.hostname, cli_profile, group)?;
-            if let Some(existing) =
-                existing_fork(&ctx.client, &target_account, &repo, &owner, &repo).await?
-            {
-                eprintln!(
-                    "Notice: fork request did not return a repository; using existing fork {}.",
-                    existing.full_name
-                );
-                print_fork_result(&owner, &repo, &existing);
-                return Ok(());
-            }
-
-            eprintln!(
-                "Notice: REST repository fork is unavailable on this GitBucket instance; using web fallback."
-            );
-            let session = create_web_session(&ctx.hostname, cli_profile).await?;
-            session.fork_repo(&owner, &repo, &target_account).await?;
-            println!("✓ Forked {}/{} → {}/{}", owner, repo, target_account, repo);
-            println!(
-                "{}",
-                ctx.client.web_url(&format!("/{}/{}", target_account, repo))
-            );
-            Ok(())
+                    verify_fork(&ctx.client, target, &ctx.repo, &ctx.owner, None).await
+                })
+                .await?
         }
+    };
+    print_fork_result(&ctx.owner, &ctx.repo, &forked);
+    Ok(())
+}
+
+async fn existing_fork(
+    ctx: &RepoContext,
+    cli_profile: &Option<String>,
+    target: &str,
+) -> Result<Option<Repository>> {
+    let (client, repo, owner) = (&ctx.client, ctx.repo.as_str(), ctx.owner.as_str());
+    match client.get_repo(target, repo).await {
+        Ok(existing) if repository_is_requested_fork(&existing, target, repo, owner, repo) => {
+            Ok(Some(existing))
+        }
+        Ok(existing)
+            if existing.parent.is_none() && existing.full_name == format!("{target}/{repo}") =>
+        {
+            if existing.is_private {
+                let session = create_web_session(client, &ctx.hostname, cli_profile).await?;
+                verify_parent(client, Some(&session), target, repo, owner).await?;
+            } else {
+                verify_parent(client, None, target, repo, owner).await?;
+            }
+            Ok(Some(existing))
+        }
+        Ok(_) => Err(GbError::Other(
+            "The fork destination already exists with a different upstream. No fork was attempted."
+                .into(),
+        )),
+        Err(GbError::Api { status: 404, .. }) => Ok(None),
         Err(err) => Err(err),
     }
 }
 
-async fn existing_fork(
+async fn verify_fork(
     client: &ApiClient,
-    target_owner: &str,
-    target_repo: &str,
-    source_owner: &str,
-    source_repo: &str,
-) -> Result<Option<Repository>> {
-    match client.get_repo(target_owner, target_repo).await {
-        Ok(repo)
-            if repository_is_requested_fork(
-                &repo,
-                target_owner,
-                target_repo,
-                source_owner,
-                source_repo,
-            ) =>
-        {
-            Ok(Some(repo))
-        }
-        Ok(repo) => {
-            if repo.fork && repo.full_name == format!("{target_owner}/{target_repo}") {
-                eprintln!(
-                    "Notice: found existing fork {}, but its upstream did not match {}/{}.",
-                    repo.full_name, source_owner, source_repo
-                );
+    target: &str,
+    repo: &str,
+    owner: &str,
+    session: Option<&crate::api::web::GitBucketWebSession>,
+) -> Result<Repository> {
+    // The pinned Web controller starts a background fork. Poll reads only;
+    // never repeat the mutation when creation is still in progress.
+    let mut attempts = 0;
+    let stored = loop {
+        match client.get_repo(target, repo).await {
+            Err(GbError::Api { status: 404, .. }) if attempts < 20 => {
+                attempts += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
             }
-            Ok(None)
+            result => break result?,
         }
-        Err(GbError::Api { status: 404, .. }) => Ok(None),
-        Err(err) => {
-            eprintln!(
-                "Notice: failed to check existing fork {}/{} after fork error for {}/{}: {}",
-                target_owner, target_repo, source_owner, source_repo, err
-            );
-            Ok(None)
-        }
+    };
+    if stored.full_name != format!("{target}/{repo}") || stored.name != repo {
+        return Err(GbError::Other(
+            "Stored fork destination does not match.".into(),
+        ));
     }
+    if stored.parent.is_none() {
+        verify_parent(client, session, target, repo, owner).await?;
+    } else if !repository_is_requested_fork(&stored, target, repo, owner, repo) {
+        return Err(GbError::Other(
+            "Fork was submitted, but stored destination or immediate upstream does not match."
+                .into(),
+        ));
+    }
+    Ok(stored)
+}
+
+async fn verify_parent(
+    client: &ApiClient,
+    session: Option<&crate::api::web::GitBucketWebSession>,
+    target: &str,
+    repo: &str,
+    owner: &str,
+) -> Result<()> {
+    let target = format!("{target}/{repo}");
+    let source = format!("{owner}/{repo}");
+    if let Some(session) = session {
+        return session.verify_fork_parent(&target, &source).await;
+    }
+    // Read-only public metadata does not need a Web password. If a private or
+    // unfamiliar page cannot establish the parent, report it as unverified.
+    let page = client.get_text_from_origin(&format!("/{target}")).await?;
+    crate::api::web::verify_parent_html(&page, &client.web_url(""), &target, &source)
 }
 
 fn repository_is_requested_fork(
@@ -212,10 +291,6 @@ fn repository_is_requested_fork(
     repo.parent
         .as_ref()
         .is_some_and(|parent| parent.full_name == source_full_name)
-        || repo
-            .source
-            .as_ref()
-            .is_some_and(|source| source.full_name == source_full_name)
 }
 
 fn print_fork_result(owner: &str, repo: &str, forked: &Repository) {
@@ -223,29 +298,4 @@ fn print_fork_result(owner: &str, repo: &str, forked: &Repository) {
     if let Some(url) = &forked.html_url {
         println!("{}", url);
     }
-}
-
-fn resolve_fork_target(
-    hostname: &str,
-    cli_profile: &Option<String>,
-    group: Option<String>,
-) -> Result<String> {
-    if let Some(group) = group {
-        return Ok(group);
-    }
-    if let Ok(user) = std::env::var("GB_USER") {
-        if !user.is_empty() {
-            return Ok(user);
-        }
-    }
-
-    let host = resolve_host_config(hostname, cli_profile)?;
-    if !host.user.is_empty() {
-        return Ok(host.user);
-    }
-
-    Err(GbError::Auth(
-        "GitBucket fork requires a destination user or group. Run `gb auth login` first, pass `--group`, or set `GB_USER`."
-            .into(),
-    ))
 }

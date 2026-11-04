@@ -51,6 +51,46 @@ impl ScriptedResponse {
     }
 }
 
+/// Add the two distinct principal probes to a script that exercises Web login.
+/// Dedicated authentication regressions assert the probes' headers and actors;
+/// older mutation tests can inspect their original requests with the helper below.
+pub fn with_verified_web_session(responses: Vec<ScriptedResponse>) -> Vec<ScriptedResponse> {
+    let mut result = Vec::new();
+    for response in responses {
+        if let Some(prefix) = response
+            .expected_request_line
+            .strip_prefix("POST ")
+            .and_then(|line| line.strip_suffix("/signin HTTP/1.1"))
+        {
+            let probe = format!("GET {prefix}/api/v3/user HTTP/1.1");
+            result.push(ScriptedResponse::json(
+                &probe,
+                "200 OK",
+                r#"{"login":"alice"}"#,
+            ));
+            let success = response.status_line.starts_with('2');
+            result.push(response);
+            if success {
+                result.push(ScriptedResponse::json(
+                    &probe,
+                    "200 OK",
+                    r#"{"login":"alice"}"#,
+                ));
+            }
+        } else {
+            result.push(response);
+        }
+    }
+    result
+}
+
+pub fn without_identity_probes(requests: Vec<CapturedRequest>) -> Vec<CapturedRequest> {
+    requests
+        .into_iter()
+        .filter(|request| !request.target.ends_with("/api/v3/user"))
+        .collect()
+}
+
 fn accept_with_timeout(listener: &TcpListener) -> TcpStream {
     listener.set_nonblocking(true).unwrap();
     let deadline = Instant::now() + CONNECT_TIMEOUT;
