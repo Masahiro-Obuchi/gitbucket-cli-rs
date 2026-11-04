@@ -618,8 +618,8 @@ async fn e2e_label_updates_preserve_numeric_identity_and_issue_associations() {
     let suffix = unique_suffix();
     let name = format!("needs & review-{suffix}");
     let renamed = format!("renamed & label-{suffix}");
-    let keep = format!("keep-{suffix}");
-    let urgent = format!("urgent-{suffix}");
+    let keep = format!("\u{a0}keep-{suffix}\u{a0}");
+    let urgent = format!(" urgent-{suffix} ");
     let repo = required_env("GB_E2E_REPO");
     for label in [&name, &keep, &urgent] {
         label_run(

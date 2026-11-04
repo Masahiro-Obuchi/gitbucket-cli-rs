@@ -573,7 +573,10 @@ read-only field. Descriptions returned on reads are still displayed. Server fixe
 and capability requirements are recorded in [the upstream follow-up](docs/UPSTREAM_LABEL_API.md).
 
 Issue label edits use individual removals and additive requests, preserving labels
-outside the requested delta. Additions must already exist in the repository:
+outside the requested delta. Issue create/edit label names are matched exactly
+after comma splitting, including surrounding spaces and Unicode whitespace.
+Use `bug,urgent` without padding unless the padding belongs to the label name.
+Additions must already exist in the repository:
 `gb label create` them first. This preflight avoids the pinned server's implicit
 creation of misspelled labels. Repeated options are deduplicated; if a label is
 both removed and added, addition wins. Label-only edits need only API credentials.

@@ -472,6 +472,64 @@ fn issue_label_deletion_encodes_spaces_and_does_not_remove_unrelated_labels() {
 }
 
 #[test]
+fn issue_label_deltas_preserve_surrounding_whitespace_and_distinct_names() {
+    for name in [" bug ", "\u{a0}bug\u{a0}", "\u{3000}bug\u{3000}"] {
+        for add in [true, false] {
+            let env = GbTestEnv::new();
+            let mut before = initial_issue();
+            let mut after = before.clone();
+            if add {
+                after["labels"] = json!([{"name":"bug"},{"name":name}]);
+            } else {
+                before["labels"] = json!([{"name":"bug"},{"name":name}]);
+            }
+            let encoded =
+                percent_encoding::utf8_percent_encode(name, percent_encoding::NON_ALPHANUMERIC)
+                    .to_string();
+            let mut responses = vec![item("GET", "", &before)];
+            if add {
+                responses.push(ScriptedResponse::json(
+                    &format!("GET /api/v3/repos/alice/project/labels/{encoded} HTTP/1.1"),
+                    "200 OK",
+                    &json!({"name":name,"color":"123abc"}).to_string(),
+                ));
+            }
+            responses.push(labels_response("GET", "", "", &before["labels"]));
+            responses.push(if add {
+                labels_response("POST", "", "", &after["labels"])
+            } else {
+                labels_response("DELETE", "", &format!("/{encoded}"), &after["labels"])
+            });
+            responses.push(labels_response("GET", "", "", &after["labels"]));
+            responses.push(item("GET", "", &after));
+            let (port, server) = spawn_scripted_server(responses);
+            let output = env
+                .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
+                .args([
+                    "issue",
+                    "edit",
+                    "7",
+                    if add { "--add-label" } else { "--remove-label" },
+                    name,
+                ])
+                .output()
+                .unwrap();
+            assert_success(&output);
+            let requests = server.join().unwrap();
+            if add {
+                assert_eq!(
+                    serde_json::from_str::<Value>(&requests[3].body).unwrap(),
+                    json!({"labels":[name]})
+                );
+            }
+            assert!(requests
+                .iter()
+                .all(|request| request.method != "PATCH" && request.method != "PUT"));
+        }
+    }
+}
+
+#[test]
 fn issue_later_label_failure_reports_completed_metadata_and_removals() {
     let env = GbTestEnv::new();
     let mut metadata = initial_issue();

@@ -736,6 +736,9 @@ Behavior:
 - Applies labels through POST additions and per-label DELETE operations, never
   Issue PATCH or a full-set PUT. Removals run before additions; addition wins if
   both are requested. Fresh label reads avoid replacing unrelated concurrent labels.
+- Issue create/edit label arguments preserve exact names after comma splitting,
+  including surrounding ASCII and Unicode whitespace; only empty entries are
+  ignored. Padding is part of a label name, not separator formatting.
 - Metadata and labels are separate phases. Metadata is applied and verified before
   label writes. Label-only requests send no Issue PATCH and open no Web session.
 - Reads stored labels/metadata before success. Partial failures identify confirmed
