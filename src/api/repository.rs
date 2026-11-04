@@ -52,10 +52,18 @@ impl ApiClient {
     }
 
     /// Fork a repository
-    pub async fn fork_repo(&self, owner: &str, repo: &str) -> Result<Repository> {
+    pub async fn fork_repo(
+        &self,
+        owner: &str,
+        repo: &str,
+        group: Option<&str>,
+    ) -> Result<Repository> {
+        let body = group
+            .map(|group| serde_json::json!({"organization":group}))
+            .unwrap_or_else(|| serde_json::json!({}));
         self.post::<Repository, serde_json::Value>(
             &format!("/repos/{}/{}/forks", owner, repo),
-            &serde_json::json!({}),
+            &body,
         )
         .await
     }

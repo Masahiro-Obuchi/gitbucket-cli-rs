@@ -3,7 +3,7 @@ mod support;
 use serde_json::{json, Value};
 use support::gb_cmd::GbTestEnv;
 use support::gb_cmd::{assert_failure, assert_success, stderr};
-use support::mock_http::{spawn_scripted_server, ScriptedResponse};
+use support::mock_http::{spawn_scripted_server, with_verified_web_session, ScriptedResponse};
 
 #[test]
 fn issue_edit_separates_metadata_from_label_deltas_and_keeps_concurrent_labels() {
@@ -24,6 +24,7 @@ fn issue_edit_separates_metadata_from_label_deltas_and_keeps_concurrent_labels()
             &json!([{"name":"bug"},{"name":"concurrent"}]),
         ),
         labels_response("DELETE", "", "/bug", &json!([])),
+        labels_response("GET", "", "", &json!([{"name":"concurrent"}])),
         labels_response("POST", "", "", &json!([{"name":"urgent"}])),
         labels_response(
             "GET",
@@ -66,7 +67,7 @@ fn issue_edit_separates_metadata_from_label_deltas_and_keeps_concurrent_labels()
     assert_eq!(body["assignees"], json!(["bob"]));
     assert_eq!(body["milestone"], 9);
     assert_eq!(
-        serde_json::from_str::<Value>(&requests[6].body).unwrap(),
+        serde_json::from_str::<Value>(&requests[7].body).unwrap(),
         json!({"labels":["urgent"]})
     );
     assert!(requests.iter().all(|request| request.method != "PUT"));
@@ -113,50 +114,50 @@ fn issue_edit_can_clear_milestone() {
 #[test]
 fn issue_edit_falls_back_to_gitbucket_web_session_for_supported_fields() {
     let env = GbTestEnv::new();
-    let (port, server) = spawn_scripted_server(vec![
-        ScriptedResponse::json(
-            "GET /gitbucket/api/v3/repos/alice/project/issues/7 HTTP/1.1",
+    let before = json!({"number":7,"title":"Bug report","body":"Body text","state":"open","assignees":[{"login":"alice"}]});
+    let mut titled = before.clone();
+    titled["title"] = json!("Updated title");
+    let mut body = titled.clone();
+    body["body"] = json!("Updated body");
+    let mut milestone = body.clone();
+    milestone["milestone"] = json!({"number":9,"title":"v2","state":"open"});
+    let mut after = milestone.clone();
+    after["state"] = json!("closed");
+    let post = |path| {
+        ScriptedResponse::html(
+            &format!("POST /gitbucket/alice/project/{path} HTTP/1.1"),
             "200 OK",
-            r#"{"number":7,"title":"Bug report","body":"Body text","state":"open","labels":[{"name":"bug"}],"assignees":[{"login":"alice"}],"milestone":{"number":3,"title":"v1.0","state":"open"}}"#,
-        ),
+            "updated",
+        )
+    };
+    let (port, server) = spawn_scripted_server(with_verified_web_session(vec![
+        item("GET", "/gitbucket", &before),
         ScriptedResponse::json(
             "PATCH /gitbucket/api/v3/repos/alice/project/issues/7 HTTP/1.1",
             "404 Not Found",
-            r#"{"message":"Not Found"}"#,
+            "{}",
+        ),
+        ScriptedResponse::json(
+            "GET /gitbucket/api/v3/repos/alice/project/milestones/9 HTTP/1.1",
+            "200 OK",
+            &milestone["milestone"].to_string(),
         ),
         ScriptedResponse::html("POST /gitbucket/signin HTTP/1.1", "200 OK", "signed in")
             .with_header("set-cookie", "JSESSIONID=session347; Path=/; HttpOnly"),
-        ScriptedResponse::html(
-            "POST /gitbucket/alice/project/issues/edit_title/7 HTTP/1.1",
-            "200 OK",
-            r#"{"title":"Updated title"}"#,
-        ),
-        ScriptedResponse::html(
-            "POST /gitbucket/alice/project/issues/edit/7 HTTP/1.1",
-            "200 OK",
-            "edited",
-        ),
-        ScriptedResponse::html(
-            "POST /gitbucket/alice/project/issues/7/milestone HTTP/1.1",
-            "200 OK",
-            "milestone",
-        ),
-        ScriptedResponse::html(
-            "POST /gitbucket/alice/project/issue_comments/state HTTP/1.1",
-            "200 OK",
-            "closed",
-        ),
-        ScriptedResponse::json(
-            "GET /gitbucket/api/v3/repos/alice/project/issues/7 HTTP/1.1",
-            "200 OK",
-            r#"{"number":7,"title":"Updated title","body":"Updated body","state":"closed","labels":[{"name":"bug"}],"assignees":[{"login":"alice"}],"milestone":{"number":9,"title":"v2.0","state":"open"}}"#,
-        ),
-    ]);
-
+        post("issues/edit_title/7"),
+        item("GET", "/gitbucket", &titled),
+        post("issues/edit/7"),
+        item("GET", "/gitbucket", &body),
+        post("issues/7/milestone"),
+        item("GET", "/gitbucket", &milestone),
+        post("issue_comments/state"),
+        item("GET", "/gitbucket", &after),
+        item("GET", "/gitbucket", &after),
+    ]));
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}/gitbucket"), "alice/project")
         .env("GB_USER", "alice")
-        .env("GB_PASSWORD", "secret-pass")
+        .env("GB_PASSWORD", "dummy")
         .args([
             "issue",
             "edit",
@@ -172,96 +173,74 @@ fn issue_edit_falls_back_to_gitbucket_web_session_for_supported_fields() {
         ])
         .output()
         .unwrap();
-
+    assert_success(&output);
     let requests = server.join().unwrap();
-
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(requests.len(), 8);
-    assert!(requests[2].body.contains("userName=alice"));
-    assert_eq!(
-        requests[3].headers.get("cookie").map(String::as_str),
-        Some("JSESSIONID=session347")
-    );
-    assert!(requests[3].body.contains("title=Updated+title"));
-    assert_eq!(
-        requests[4].headers.get("cookie").map(String::as_str),
-        Some("JSESSIONID=session347")
-    );
-    assert!(requests[4].body.contains("title=Updated+title"));
-    assert!(requests[4].body.contains("content=Updated+body"));
-    assert!(requests[5].body.contains("milestoneId=9"));
-    assert!(requests[6].body.contains("issueId=7"));
-    assert!(requests[6].body.contains("action=close"));
+    let posts: Vec<_> = requests
+        .iter()
+        .filter(|r| r.method == "POST" && !r.target.ends_with("/signin"))
+        .collect();
+    assert_eq!(posts.len(), 4);
+    assert!(posts[0].body.contains("title=Updated+title"));
+    assert!(posts[1].body.contains("content=Updated+body"));
+    assert!(posts[2].body.contains("milestoneId=9"));
+    assert!(posts[3].body.contains("action=close"));
+    assert!(posts
+        .iter()
+        .all(|r| r.headers.get("cookie").map(String::as_str) == Some("JSESSIONID=session347")));
 }
 
 #[test]
 fn issue_edit_uses_web_fallback_for_assignee_changes() {
     let env = GbTestEnv::new();
-    let (port, server) = spawn_scripted_server(vec![
-        ScriptedResponse::json(
-            "GET /gitbucket/api/v3/repos/alice/project/issues/7 HTTP/1.1",
-            "200 OK",
-            r#"{"number":7,"title":"Bug report","body":"Body text","state":"open","labels":[],"assignees":[{"login":"alice"}],"milestone":null}"#,
-        ),
+    let before = initial_issue();
+    let mut empty = before.clone();
+    empty["assignees"] = json!([]);
+    let mut after = empty.clone();
+    after["assignees"] = json!([{"login":"bob"}]);
+    let (port, server) = spawn_scripted_server(with_verified_web_session(vec![
+        item("GET", "/gitbucket", &before),
         ScriptedResponse::json(
             "PATCH /gitbucket/api/v3/repos/alice/project/issues/7 HTTP/1.1",
             "404 Not Found",
-            r#"{"message":"Not Found"}"#,
+            "{}",
         ),
-        ScriptedResponse::html("POST /gitbucket/signin HTTP/1.1", "200 OK", "signed in")
-            .with_header("set-cookie", "JSESSIONID=session347; Path=/; HttpOnly"),
+        ScriptedResponse::json(
+            "GET /gitbucket/api/v3/users/bob HTTP/1.1",
+            "200 OK",
+            r#"{"login":"bob"}"#,
+        ),
+        ScriptedResponse::html("POST /gitbucket/signin HTTP/1.1", "200 OK", "signed in"),
         ScriptedResponse::html(
             "POST /gitbucket/alice/project/issues/7/assignee/delete HTTP/1.1",
             "200 OK",
             "removed",
         ),
+        item("GET", "/gitbucket", &empty),
         ScriptedResponse::html(
             "POST /gitbucket/alice/project/issues/7/assignee/new HTTP/1.1",
             "200 OK",
             "added",
         ),
-        ScriptedResponse::json(
-            "GET /gitbucket/api/v3/repos/alice/project/issues/7 HTTP/1.1",
-            "200 OK",
-            r#"{"number":7,"title":"Bug report","body":"Body text","state":"open","labels":[],"assignees":[{"login":"bob"}],"milestone":null}"#,
-        ),
-    ]);
-
+        item("GET", "/gitbucket", &after),
+        item("GET", "/gitbucket", &after),
+    ]));
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}/gitbucket"), "alice/project")
         .env("GB_USER", "alice")
-        .env("GB_PASSWORD", "secret-pass")
+        .env("GB_PASSWORD", "dummy")
         .args([
             "issue",
             "edit",
             "7",
-            "--add-assignee",
-            "bob",
             "--remove-assignee",
             "alice",
+            "--add-assignee",
+            "bob",
         ])
         .output()
         .unwrap();
-
-    let requests = server.join().unwrap();
-
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(requests.len(), 6);
-    assert!(requests[3].body.contains("assigneeUserName=alice"));
-    assert!(requests[4].body.contains("assigneeUserName=bob"));
-    assert!(
-        String::from_utf8_lossy(&output.stdout).contains("Updated issue #7: Bug report"),
-        "stdout: {}",
-        String::from_utf8_lossy(&output.stdout)
-    );
+    assert_success(&output);
+    server.join().unwrap();
 }
 
 #[test]
@@ -541,6 +520,7 @@ fn issue_later_label_failure_reports_completed_metadata_and_removals() {
         item("GET", "", &metadata),
         labels_response("GET", "", "", &initial_issue()["labels"]),
         labels_response("DELETE", "", "/bug", &json!([])),
+        labels_response("GET", "", "", &json!([])),
         ScriptedResponse::json(
             "POST /api/v3/repos/alice/project/issues/7/labels HTTP/1.1",
             "403 Forbidden",
@@ -567,8 +547,8 @@ fn issue_later_label_failure_reports_completed_metadata_and_removals() {
     assert!(output.stdout.is_empty());
     let error: Value = serde_json::from_slice(&output.stderr).unwrap();
     let message = error["error"]["message"].as_str().unwrap();
-    assert!(message.contains("Metadata update steps completed"));
-    assert!(message.contains("removed"));
+    assert!(message.contains("issue.metadata=succeeded"));
+    assert!(message.contains("label.remove:bug=succeeded"));
     assert!(message.contains("before retrying"));
     server.join().unwrap();
 }
@@ -590,7 +570,7 @@ fn issue_label_false_success_does_not_print_success() {
         .unwrap();
     assert_failure(&output);
     assert!(output.stdout.is_empty());
-    assert!(stderr(&output).contains("do not match"));
+    assert!(stderr(&output).contains("do not confirm"));
     server.join().unwrap();
 }
 

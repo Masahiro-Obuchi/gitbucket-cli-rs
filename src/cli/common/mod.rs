@@ -10,4 +10,4 @@ pub use edit_values::{
     merge_named_values, normalize_edit_state, normalize_list_state, normalize_str_vec,
 };
 pub use repo_resolution::parse_owner_repo;
-pub use web::{create_web_session, update_issue_assignees_via_web};
+pub use web::{create_web_session, preflight_assignees, update_issue_assignees_via_web};

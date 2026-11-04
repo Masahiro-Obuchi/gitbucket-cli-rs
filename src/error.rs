@@ -2,6 +2,13 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum GbError {
+    #[error("{source}")]
+    Unverified { source: Box<GbError> },
+    #[error("{source}. Operations: {}. Inspect the target before retrying; unverified requests may already be applied.", crate::operation::describe(.operations))]
+    Operation {
+        source: Box<GbError>,
+        operations: Vec<crate::operation::Operation>,
+    },
     #[error("Authentication error: {0}")]
     Auth(String),
 
@@ -52,6 +59,7 @@ pub enum GbError {
 impl GbError {
     pub fn code(&self) -> &'static str {
         match self {
+            GbError::Operation { source, .. } | GbError::Unverified { source } => source.code(),
             GbError::Auth(_) => "auth_error",
             GbError::Api { .. } => "api_error",
             GbError::Config(_) => "config_error",
@@ -71,6 +79,9 @@ impl GbError {
 
     pub fn cause_code(&self) -> Option<&'static str> {
         match self {
+            GbError::Operation { source, .. } | GbError::Unverified { source } => {
+                source.cause_code()
+            }
             GbError::DiffUnavailable { cause, .. } => Some(cause),
             _ => None,
         }
@@ -78,7 +89,15 @@ impl GbError {
 
     pub fn status(&self) -> Option<u16> {
         match self {
+            GbError::Operation { source, .. } | GbError::Unverified { source } => source.status(),
             GbError::Api { status, .. } => Some(*status),
+            _ => None,
+        }
+    }
+
+    pub fn operations(&self) -> Option<&[crate::operation::Operation]> {
+        match self {
+            Self::Operation { operations, .. } => Some(operations),
             _ => None,
         }
     }

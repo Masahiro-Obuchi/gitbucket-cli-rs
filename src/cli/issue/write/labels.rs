@@ -60,45 +60,64 @@ impl LabelChanges {
             .into_iter()
             .map(|label| label.name)
             .collect();
-        let mut completed = Vec::new();
-        for name in self.remove.intersection(&current) {
-            ctx.client
-                .remove_issue_label(&ctx.owner, &ctx.repo, number, name)
-                .await
-                .map_err(|err| partial(err, &completed))?;
-            completed.push(format!("removed {name:?}"));
-        }
-        let additions: Vec<_> = self.add.difference(&current).cloned().collect();
-        if !additions.is_empty() {
-            ctx.client
-                .add_issue_labels(&ctx.owner, &ctx.repo, number, additions.clone())
-                .await
-                .map_err(|err| partial(err, &completed))?;
-            completed.push(format!("submitted additions {additions:?}"));
-        }
-        if completed.is_empty() {
-            return Ok(());
-        }
-        let actual: BTreeSet<_> = ctx
-            .client
-            .list_issue_labels(&ctx.owner, &ctx.repo, number)
-            .await
-            .map_err(|err| partial(err, &completed))?
-            .into_iter()
-            .map(|label| label.name)
+        let mut progress = crate::operation::Progress::default();
+        let removals: Vec<_> = self.remove.intersection(&current).collect();
+        let steps: Vec<_> = removals
+            .iter()
+            .map(|name| {
+                progress.plan(
+                    format!("label.remove:{name}"),
+                    crate::operation::Route::Rest,
+                )
+            })
             .collect();
-        if !self.add.is_subset(&actual) || !self.remove.is_disjoint(&actual) {
-            return Err(partial(
-                GbError::Other(
-                    "Stored Issue labels do not match the requested additions/removals.".into(),
-                ),
-                &completed,
-            ));
+        let additions: Vec<_> = self.add.difference(&current).cloned().collect();
+        let add_step = (!additions.is_empty())
+            .then(|| progress.plan("label.add", crate::operation::Route::Rest));
+        for (name, step) in removals.into_iter().zip(steps) {
+            progress
+                .run(
+                    step,
+                    ctx.client
+                        .remove_issue_label(&ctx.owner, &ctx.repo, number, name),
+                    |_| async {
+                        let actual = ctx
+                            .client
+                            .list_issue_labels(&ctx.owner, &ctx.repo, number)
+                            .await?;
+                        if actual.iter().any(|label| label.name == *name) {
+                            return Err(GbError::Other(format!(
+                                "Label {name:?} is still attached."
+                            )));
+                        }
+                        Ok(())
+                    },
+                )
+                .await?;
+        }
+        if let Some(step) = add_step {
+            progress
+                .run(
+                    step,
+                    ctx.client
+                        .add_issue_labels(&ctx.owner, &ctx.repo, number, additions.clone()),
+                    |_| async {
+                        let actual = ctx
+                            .client
+                            .list_issue_labels(&ctx.owner, &ctx.repo, number)
+                            .await?;
+                        let actual: BTreeSet<_> =
+                            actual.into_iter().map(|label| label.name).collect();
+                        if !additions.iter().all(|name| actual.contains(name)) {
+                            return Err(GbError::Other(
+                                "Stored Issue labels do not confirm the additions.".into(),
+                            ));
+                        }
+                        Ok(())
+                    },
+                )
+                .await?;
         }
         Ok(())
     }
-}
-
-fn partial(err: GbError, completed: &[String]) -> GbError {
-    GbError::Other(format!("Issue label update failed: {err}. Completed label steps: {}. Inspect the Issue before retrying; an in-flight request may already be applied.", if completed.is_empty() { "none confirmed".into() } else { completed.join(", ") }))
 }

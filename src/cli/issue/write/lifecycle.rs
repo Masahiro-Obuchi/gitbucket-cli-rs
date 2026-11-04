@@ -49,6 +49,16 @@ async fn set_issue_state(
 ) -> Result<()> {
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
+    let current = ctx.client.get_issue(&ctx.owner, &ctx.repo, number).await?;
+    if current.number != number {
+        return Err(GbError::Other(
+            "Issue lookup returned another number. No changes were applied.".into(),
+        ));
+    }
+    if current.state == api_state {
+        println!("✓ {} issue #{}", verb, number);
+        return Ok(());
+    }
     let body = UpdateIssue {
         state: Some(api_state.to_string()),
         title: None,
@@ -56,27 +66,45 @@ async fn set_issue_state(
         assignees: None,
         milestone: None,
     };
-
-    match ctx
+    let mut progress = crate::operation::Progress::default();
+    let rest = ctx
         .client
         .update_issue(&ctx.owner, &ctx.repo, number, &body)
-        .await
-    {
-        Ok(_) => {
-            println!("✓ {} issue #{}", verb, number);
-            Ok(())
-        }
+        .await;
+    match rest {
         Err(GbError::Api { status: 404, .. }) => {
-            eprintln!(
-                "Notice: REST issue state update is unavailable on this GitBucket instance; using web fallback."
-            );
-            let session = create_web_session(&ctx.hostname, cli_profile).await?;
-            session
-                .update_issue_state(&ctx.owner, &ctx.repo, number, web_action)
+            let step = progress.plan("issue.state", crate::operation::Route::Web);
+            let session = create_web_session(&ctx.client, &ctx.hostname, cli_profile)
+                .await
+                .map_err(|err| progress.error(err))?;
+            progress.actor(session.principal());
+            progress
+                .run(
+                    step,
+                    session.update_issue_state(&ctx.owner, &ctx.repo, number, web_action),
+                    |_| verify_state(&ctx, number, api_state),
+                )
                 .await?;
-            println!("✓ {} issue #{}", verb, number);
-            Ok(())
         }
-        Err(err) => Err(err),
+        result => {
+            let step = progress.plan("issue.state", crate::operation::Route::Rest);
+            progress
+                .run(step, async { result }, |_| {
+                    verify_state(&ctx, number, api_state)
+                })
+                .await?;
+        }
     }
+    println!("✓ {} issue #{}", verb, number);
+    Ok(())
+}
+
+async fn verify_state(ctx: &RepoContext, number: u64, state: &str) -> Result<()> {
+    let stored = ctx.client.get_issue(&ctx.owner, &ctx.repo, number).await?;
+    if stored.number != number || stored.state != state {
+        return Err(GbError::Other(
+            "Issue state change was submitted, but stored state does not match.".into(),
+        ));
+    }
+    Ok(())
 }

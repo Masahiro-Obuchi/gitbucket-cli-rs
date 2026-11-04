@@ -1,16 +1,57 @@
 mod label;
+mod repository;
+pub(crate) use repository::verify_parent_html;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+use reqwest::cookie::Jar;
 use reqwest::redirect::Policy;
-use reqwest::{Client, Response, StatusCode};
+use reqwest::{Client, RequestBuilder, Response, StatusCode};
 
 use crate::error::{GbError, Result};
 
 use super::client::normalize_web_base_url;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct GitBucketWebSession {
     client: Client,
+    cookies: Arc<Jar>,
     base_url: String,
+    principal: String,
+}
+
+struct MutationResponse {
+    response: Response,
+    redirected: bool,
+}
+
+fn web_client(
+    base_url: &str,
+    cookies: Arc<Jar>,
+    redirected: Option<Arc<AtomicBool>>,
+) -> Result<Client> {
+    let base_url = base_url.to_owned();
+    Ok(Client::builder()
+        .cookie_provider(cookies)
+        .redirect(Policy::custom(move |attempt| {
+            if let Some(redirected) = &redirected {
+                redirected.store(true, Ordering::Relaxed);
+            }
+            // Fragments do not participate in the HTTP route. Apply the same
+            // recursively decoded deployment boundary checks as API requests.
+            let mut target = attempt.url().clone();
+            target.set_fragment(None);
+            if attempt.previous().len() >= 10
+                || crate::api::url::normalize_origin_path_or_url(target.as_str(), &base_url)
+                    .is_err()
+            {
+                attempt.stop()
+            } else {
+                attempt.follow()
+            }
+        }))
+        .build()?)
 }
 
 impl GitBucketWebSession {
@@ -21,10 +62,8 @@ impl GitBucketWebSession {
         protocol: &str,
     ) -> Result<Self> {
         let base_url = normalize_web_base_url(hostname, protocol)?;
-        let client = Client::builder()
-            .cookie_store(true)
-            .redirect(Policy::limited(10))
-            .build()?;
+        let cookies = Arc::new(Jar::default());
+        let client = web_client(&base_url, cookies.clone(), None)?;
 
         let response = client
             .post(format!("{base_url}/signin"))
@@ -33,26 +72,48 @@ impl GitBucketWebSession {
             .await?;
 
         let status = response.status();
-        let final_path = response.url().path().to_string();
-        let body = response.text().await.unwrap_or_default();
+        response.bytes().await?;
 
-        if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
-            || (final_path.ends_with("/signin") && body.contains("incorrect"))
-        {
+        if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
             return Err(GbError::Auth(format!(
                 "GitBucket web sign-in failed for '{}'. Check your username/password.",
                 username
             )));
         }
 
-        if !status.is_success() && !status.is_redirection() {
-            return Err(GbError::Other(format!(
-                "GitBucket web sign-in failed: HTTP {}",
+        if !status.is_success() {
+            return Err(GbError::Auth(format!(
+                "GitBucket web sign-in failed: HTTP {}. Web fallback requires password authentication; interactive SSO/OIDC redirects are unsupported.",
                 status.as_u16()
             )));
         }
 
-        Ok(Self { client, base_url })
+        // No token or Basic header is attached: this proves the cookie session,
+        // rather than accidentally verifying the REST credentials a second time.
+        let response = client.get(format!("{base_url}/api/v3/user")).send().await?;
+        if !response.status().is_success()
+            || response.url().path()
+                != format!(
+                    "{}/api/v3/user",
+                    url::Url::parse(&base_url)?.path().trim_end_matches('/')
+                )
+        {
+            return Err(GbError::Auth("GitBucket web sign-in failed: the cookie session could not be verified. Check the password; interactive SSO/OIDC is unsupported.".into()));
+        }
+        let user: crate::models::user::User = response.json().await.map_err(|_| GbError::Auth("GitBucket web sign-in failed: expected a cookie-authenticated user, but received an unrecognized response (possibly a login/SSO form).".into()))?;
+        if user.login.is_empty() || !user.login.eq_ignore_ascii_case(username) {
+            return Err(GbError::Auth(format!("GitBucket web sign-in returned user {:?}, expected {:?}. No Web changes were attempted.", user.login, username)));
+        }
+        Ok(Self {
+            client,
+            cookies,
+            base_url,
+            principal: user.login,
+        })
+    }
+
+    pub fn principal(&self) -> &str {
+        &self.principal
     }
 
     pub async fn fork_repo(&self, owner: &str, repo: &str, account: &str) -> Result<()> {
@@ -232,12 +293,12 @@ impl GitBucketWebSession {
         };
 
         let response = self
-            .client
-            .get(format!(
-                "{}/{owner}/{repo}/issues/milestones/{number}/{action}",
-                self.base_url
-            ))
-            .send()
+            .mutate(|client| {
+                client.get(format!(
+                    "{}/{owner}/{repo}/issues/milestones/{number}/{action}",
+                    self.base_url
+                ))
+            })
             .await?;
         self.ensure_success(response, "change the milestone state")
             .await
@@ -245,42 +306,70 @@ impl GitBucketWebSession {
 
     async fn post_form(&self, path: &str, fields: Vec<(&str, String)>, action: &str) -> Result<()> {
         let response = self
-            .client
-            .post(format!("{}{}", self.base_url, path))
-            .form(&fields)
-            .send()
+            .mutate(|client| {
+                client
+                    .post(format!("{}{}", self.base_url, path))
+                    .form(&fields)
+            })
             .await?;
         self.ensure_success(response, action).await
     }
 
-    async fn ensure_success(&self, response: Response, action: &str) -> Result<()> {
+    async fn mutate(
+        &self,
+        build: impl FnOnce(&Client) -> RequestBuilder,
+    ) -> Result<MutationResponse> {
+        // The trace belongs to this request, including when concurrent writes or
+        // reads share the session. Cookies remain shared with the verified login.
+        let redirected = Arc::new(AtomicBool::new(false));
+        let client = web_client(
+            &self.base_url,
+            self.cookies.clone(),
+            Some(redirected.clone()),
+        )?;
+        let response = build(&client).send().await?;
+        Ok(MutationResponse {
+            response,
+            redirected: redirected.load(Ordering::Relaxed),
+        })
+    }
+
+    async fn ensure_success(&self, result: MutationResponse, action: &str) -> Result<()> {
+        let MutationResponse {
+            response,
+            redirected,
+        } = result;
         let status = response.status();
         let final_path = response.url().path().to_string();
-        let body = response.text().await.unwrap_or_default();
+        let _body = response.text().await?;
 
         if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
             || final_path.ends_with("/signin")
         {
-            return Err(GbError::Auth(format!(
+            let source = GbError::Auth(format!(
                 "GitBucket web session failed while trying to {}. Re-run the command and enter your password again.",
                 action
-            )));
+            ));
+            return Err(if redirected {
+                GbError::Unverified {
+                    source: Box::new(source),
+                }
+            } else {
+                source
+            });
         }
 
-        if status.is_success() || status.is_redirection() {
+        if status.is_success() {
             return Ok(());
         }
 
-        let suffix = if body.trim().is_empty() {
-            String::new()
+        let source = GbError::Api { status: status.as_u16(), message: format!("Web request could not {action}. Unexpected redirect or rejected form; verify the target before retrying.") };
+        Err(if redirected {
+            GbError::Unverified {
+                source: Box::new(source),
+            }
         } else {
-            format!(": {}", body.trim())
-        };
-        Err(GbError::Other(format!(
-            "Failed to {}: HTTP {}{}",
-            action,
-            status.as_u16(),
-            suffix
-        )))
+            source
+        })
     }
 }

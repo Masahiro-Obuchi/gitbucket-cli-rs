@@ -12,6 +12,7 @@ const CONFIG_ENV: &[&str] = &[
     "GB_TOKEN",
     "GB_PROTOCOL",
     "GB_USER",
+    "GB_WEB_USER",
     "GB_REPO",
 ];
 

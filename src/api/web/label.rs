@@ -5,16 +5,25 @@ use url::Url;
 use super::GitBucketWebSession;
 use crate::error::{GbError, Result};
 
+pub(crate) struct PreparedLabel {
+    path: String,
+    edit_path: String,
+    base: Url,
+    id: u64,
+    owner: String,
+    repo: String,
+    name: String,
+}
+
 impl GitBucketWebSession {
     /// The pinned Web controller updates the numeric label ID in place.
-    pub async fn update_label_color(
+    pub async fn prepare_label_color(
         &self,
         owner: &str,
         repo: &str,
         name: &str,
         old_color: &str,
-        color: &str,
-    ) -> Result<()> {
+    ) -> Result<PreparedLabel> {
         let path = format!("/{owner}/{repo}/issues/labels");
         let base = Url::parse(&format!("{}/", self.base_url))?;
         let page = self.label_html(&path).await?;
@@ -22,25 +31,47 @@ impl GitBucketWebSession {
         let edit_path = format!("{path}/{id}/edit");
         let form = self.label_html(&edit_path).await?;
         verify_edit_form(&form, id, name, old_color)?;
+        Ok(PreparedLabel {
+            path,
+            edit_path,
+            base,
+            id,
+            owner: owner.into(),
+            repo: repo.into(),
+            name: name.into(),
+        })
+    }
+
+    pub async fn update_label_color(&self, target: &PreparedLabel, color: &str) -> Result<()> {
+        let PreparedLabel {
+            path,
+            edit_path,
+            base,
+            id,
+            owner,
+            repo,
+            name,
+        } = target;
         let response = self
-            .client
-            .post(format!("{}{edit_path}", self.base_url))
-            .header("X-Requested-With", "XMLHttpRequest")
-            .form(&[
-                ("labelName", name.to_string()),
-                ("labelColor", format!("#{color}")),
-            ])
-            .send()
+            .mutate(|client| {
+                client
+                    .post(format!("{}{edit_path}", self.base_url))
+                    .header("X-Requested-With", "XMLHttpRequest")
+                    .form(&[
+                        ("labelName", name.to_string()),
+                        ("labelColor", format!("#{color}")),
+                    ])
+            })
             .await?;
         self.ensure_success(response, "update label color in place")
             .await?;
-        let after = self.label_html(&path).await.map_err(|err| GbError::Other(format!(
+        let after = self.label_html(path).await.map_err(|err| GbError::Other(format!(
             "Label Web update was submitted, but label identity verification failed: {err}. Inspect labels before retrying."
         )))?;
-        let after_id = find_label_id(&after, &base, owner, repo, name).map_err(|err| GbError::Other(format!(
+        let after_id = find_label_id(&after, base, owner, repo, name).map_err(|err| GbError::Other(format!(
             "Label Web update was submitted, but its identity cannot be verified: {err}. Inspect labels before retrying."
         )))?;
-        if after_id != id {
+        if after_id != *id {
             return Err(GbError::Other("Label Web update was submitted, but its numeric ID changed. Inspect labels and Issue associations before retrying.".into()));
         }
         Ok(())

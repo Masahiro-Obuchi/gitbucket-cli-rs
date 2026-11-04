@@ -63,7 +63,7 @@ pub enum RepoCommand {
         /// Directory to clone into
         directory: Option<String>,
     },
-    /// Delete a repository
+    /// Delete a repository and verify that it is absent
     Delete {
         /// Target repository in OWNER/REPO format
         #[arg(long = "repo", short = 'R', value_name = "OWNER/REPO")]
@@ -75,7 +75,7 @@ pub enum RepoCommand {
         #[arg(value_name = "OWNER/REPO")]
         repo: Option<String>,
     },
-    /// Fork a repository
+    /// Fork a repository and verify its destination and immediate parent
     Fork {
         /// Target repository in OWNER/REPO format
         #[arg(long = "repo", short = 'R', value_name = "OWNER/REPO")]
@@ -83,7 +83,7 @@ pub enum RepoCommand {
         /// Repository to fork (OWNER/REPO, or -R/--repo)
         #[arg(value_name = "OWNER/REPO")]
         repo: Option<String>,
-        /// Group to fork into (defaults to your user)
+        /// Group to fork into (defaults to the REST token's user)
         #[arg(long = "group", visible_alias = "org")]
         group: Option<String>,
     },

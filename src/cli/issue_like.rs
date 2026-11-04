@@ -12,6 +12,7 @@ pub(crate) struct IssueLikeEdit<'a> {
 }
 
 pub(crate) struct IssueLikeTarget<'a> {
+    pub client: &'a ApiClient,
     pub session: &'a GitBucketWebSession,
     pub owner: &'a str,
     pub repo: &'a str,
@@ -40,75 +41,131 @@ pub(crate) async fn apply_issue_like_edit(
     target: IssueLikeTarget<'_>,
     edit: IssueLikeEdit<'_>,
 ) -> Result<()> {
+    use crate::operation::{Progress, Route};
     eprintln!("{}", edit.rest_unavailable_notice);
-
-    let next_title = edit
+    let next_title = edit.update.title.as_deref().unwrap_or(&edit.current.title);
+    let current_body = edit.current.body.as_deref().unwrap_or_default();
+    let next_body = edit.update.body.as_deref().unwrap_or(current_body);
+    // Plan every phase before the first write, including phases left untouched
+    // when an earlier request or its verification fails.
+    let mut progress = Progress::default();
+    let title =
+        (next_title != edit.current.title).then(|| progress.plan("issue.title", Route::Web));
+    let body = (next_body != current_body).then(|| progress.plan("issue.body", Route::Web));
+    let milestone = edit
         .update
-        .title
-        .clone()
-        .unwrap_or_else(|| edit.current.title.clone());
-    let current_body = edit.current.body.clone().unwrap_or_default();
-    let next_body = edit
+        .milestone
+        .map(|_| progress.plan("issue.milestone", Route::Web));
+    let assignees = edit
         .update
-        .body
-        .clone()
-        .unwrap_or_else(|| current_body.clone());
-
-    if next_title != edit.current.title {
-        target
-            .session
-            .edit_issue_title(target.owner, target.repo, target.number, &next_title)
-            .await?;
-    }
-
-    if next_body != current_body {
-        target
-            .session
-            .edit_issue_content(
-                target.owner,
-                target.repo,
-                target.number,
-                &next_title,
-                &next_body,
+        .assignees
+        .as_ref()
+        .map(|_| progress.plan("issue.assignees", Route::Web));
+    let state = edit
+        .update
+        .state
+        .as_ref()
+        .filter(|s| **s != edit.current.state)
+        .map(|_| progress.plan("issue.state", Route::Web));
+    progress.actor(target.session.principal());
+    if let Some(step) = title {
+        progress
+            .run(
+                step,
+                target.session.edit_issue_title(
+                    target.owner,
+                    target.repo,
+                    target.number,
+                    next_title,
+                ),
+                |_| target.verify(|issue| issue.title == next_title),
             )
             .await?;
     }
-
-    if let Some(milestone) = edit.update.milestone {
-        target
-            .session
-            .update_issue_milestone(target.owner, target.repo, target.number, milestone)
+    if let Some(step) = body {
+        progress
+            .run(
+                step,
+                target.session.edit_issue_content(
+                    target.owner,
+                    target.repo,
+                    target.number,
+                    next_title,
+                    next_body,
+                ),
+                |_| {
+                    target.verify(|issue| {
+                        issue.title == next_title
+                            && issue.body.as_deref().unwrap_or_default() == next_body
+                    })
+                },
+            )
             .await?;
     }
-
-    if let Some(next_assignees) = edit.update.assignees.as_ref() {
+    if let (Some(step), Some(value)) = (milestone, edit.update.milestone) {
+        progress
+            .run(
+                step,
+                target.session.update_issue_milestone(
+                    target.owner,
+                    target.repo,
+                    target.number,
+                    value,
+                ),
+                |_| target.verify(|issue| issue.milestone.as_ref().map(|m| m.number) == value),
+            )
+            .await?;
+    }
+    if let (Some(step), Some(next)) = (assignees, &edit.update.assignees) {
         let current = edit.current.issue.as_ref().ok_or_else(|| {
-            GbError::Other(
-                "Cannot update assignees through web fallback without issue details.".into(),
-            )
+            progress.error(GbError::Other(
+                "Issue details required for assignee updates.".into(),
+            ))
         })?;
-        update_issue_assignees_via_web(
-            target.session,
-            target.owner,
-            target.repo,
-            target.number,
-            current,
-            next_assignees,
-        )
-        .await?;
+        progress
+            .run(
+                step,
+                update_issue_assignees_via_web(
+                    target.client,
+                    target.session,
+                    target.owner,
+                    target.repo,
+                    target.number,
+                    current,
+                    next,
+                ),
+                |_| async { Ok(()) },
+            )
+            .await?;
     }
-
-    if let Some(state) = edit.update.state.as_deref() {
-        if state != edit.current.state {
-            let action = if state == "closed" { "close" } else { "reopen" };
-            target
-                .session
-                .update_issue_state(target.owner, target.repo, target.number, action)
-                .await?;
-        }
+    if let (Some(step), Some(value)) = (state, &edit.update.state) {
+        let action = if value == "closed" { "close" } else { "reopen" };
+        progress
+            .run(
+                step,
+                target
+                    .session
+                    .update_issue_state(target.owner, target.repo, target.number, action),
+                |_| target.verify(|issue| issue.state == *value),
+            )
+            .await?;
     }
-
     Ok(())
+}
+
+impl IssueLikeTarget<'_> {
+    async fn verify(&self, matches: impl FnOnce(&Issue) -> bool) -> Result<()> {
+        let stored = self
+            .client
+            .get_issue(self.owner, self.repo, self.number)
+            .await?;
+        if stored.number != self.number || !matches(&stored) {
+            return Err(GbError::Other(
+                "Issue Web update was submitted, but stored fields do not match.".into(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 pub(crate) async fn latest_comment_by_current_user(

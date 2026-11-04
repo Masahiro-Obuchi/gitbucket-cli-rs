@@ -67,6 +67,11 @@ pub(in crate::cli::milestone) async fn edit(
         .client
         .get_milestone(&ctx.owner, &ctx.repo, request.number)
         .await?;
+    if current.number != request.number {
+        return Err(GbError::Other(
+            "Milestone lookup returned another number. No changes were applied.".into(),
+        ));
+    }
     // Repeating a state-only request needs neither replacement nor Web auth.
     if !changes.edits_content() && changes.state.as_deref() == Some(current.state.as_str()) {
         println!("✓ Updated milestone #{}: {}", current.number, current.title);
@@ -87,6 +92,11 @@ pub(in crate::cli::milestone) async fn edit(
                 .client
                 .get_milestone(&ctx.owner, &ctx.repo, request.number)
                 .await?;
+            if current.number != request.number {
+                return Err(GbError::Other(
+                    "Milestone lookup returned another number. No changes were applied.".into(),
+                ));
+            }
             let expected = changes.merge(&current);
             if rest_title(&expected.title) {
                 // Another editor may have changed the title since the rejected
@@ -145,40 +155,70 @@ async fn edit_via_web(
         None
     };
     eprintln!("Notice: GitBucket 4.44 REST rejects this milestone title; using the Web route for the same title.");
-    let session = create_web_session(&ctx.hostname, cli_profile).await?;
-    if changes.edits_content() {
-        session
-            .edit_milestone(
-                &ctx.owner,
-                &ctx.repo,
-                number,
-                &expected.title,
-                expected.description.as_deref(),
-                due_date.as_deref(),
-            )
-            .await?;
+    let mut progress = crate::operation::Progress::default();
+    let content_step = changes
+        .edits_content()
+        .then(|| progress.plan("milestone.content", crate::operation::Route::Web));
+    let state_step = (expected.state != current.state)
+        .then(|| progress.plan("milestone.state", crate::operation::Route::Web));
+    let session = create_web_session(&ctx.client, &ctx.hostname, cli_profile)
+        .await
+        .map_err(|err| progress.error(err))?;
+    progress.actor(session.principal());
+    let mut content_result = None;
+    if let Some(step) = content_step {
+        content_result = Some(
+            progress
+                .run(
+                    step,
+                    session.edit_milestone(
+                        &ctx.owner,
+                        &ctx.repo,
+                        number,
+                        &expected.title,
+                        expected.description.as_deref(),
+                        due_date.as_deref(),
+                    ),
+                    |_| async {
+                        let actual = read_after_web(ctx, number).await?;
+                        let mut content = expected.clone();
+                        content.state = current.state.clone();
+                        verify_web_result(&actual, &content)?;
+                        if actual.number != number {
+                            return Err(GbError::Other(
+                                "Milestone verification returned another number.".into(),
+                            ));
+                        }
+                        Ok(actual)
+                    },
+                )
+                .await?,
+        );
     }
-    if expected.state != current.state {
+    let actual = if let Some(step) = state_step {
         let action = if expected.state == "closed" {
             "close"
         } else {
             "open"
         };
-        session
-            .update_milestone_state(&ctx.owner, &ctx.repo, number, action)
-            .await
-            .map_err(|err| {
-                let progress = if changes.edits_content() {
-                    "Content changes may already be applied. "
-                } else {
-                    ""
-                };
-                GbError::Other(format!(
-                    "Milestone Web state update failed: {err}. {progress}Inspect the milestone before retrying."
-                ))
-            })?;
-    }
-    let actual = read_after_web(ctx, number).await?;
-    verify_web_result(&actual, expected)?;
+        progress
+            .run(
+                step,
+                session.update_milestone_state(&ctx.owner, &ctx.repo, number, action),
+                |_| async {
+                    let actual = read_after_web(ctx, number).await?;
+                    if actual.number != number {
+                        return Err(GbError::Other(
+                            "Milestone verification returned another number.".into(),
+                        ));
+                    }
+                    verify_web_result(&actual, expected)?;
+                    Ok(actual)
+                },
+            )
+            .await?
+    } else {
+        content_result.expect("a content or state step was planned")
+    };
     Ok(actual)
 }

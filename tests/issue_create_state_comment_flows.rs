@@ -2,7 +2,10 @@ mod support;
 
 use serde_json::Value;
 use support::gb_cmd::{assert_success, GbTestEnv};
-use support::mock_http::{spawn_scripted_server, spawn_server, ScriptedResponse};
+use support::mock_http::{
+    spawn_scripted_server, spawn_server, with_verified_web_session, without_identity_probes,
+    ScriptedResponse,
+};
 
 #[test]
 fn issue_create_preserves_label_names_with_surrounding_whitespace() {
@@ -121,60 +124,12 @@ fn issue_create_supports_repeated_label_and_assignee_flags() {
 
 #[test]
 fn issue_close_sends_closed_state_patch() {
-    let env = GbTestEnv::new();
-    let (port, server) = spawn_server(
-        "200 OK",
-        r#"{"number":7,"title":"Bug report","state":"closed","labels":[]}"#,
-    );
-
-    let output = env
-        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
-        .args(["issue", "close", "7"])
-        .output()
-        .unwrap();
-
-    let request = server.join().unwrap();
-
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(request.method, "PATCH");
-    assert_eq!(request.target, "/api/v3/repos/alice/project/issues/7");
-    let body: Value = serde_json::from_str(&request.body).unwrap();
-    assert_eq!(body["state"], "closed");
-    assert!(body["title"].is_null());
-    assert!(body["body"].is_null());
+    assert_issue_state_flow("close", "open", "closed", 7, false);
 }
 
 #[test]
 fn issue_reopen_sends_open_state_patch() {
-    let env = GbTestEnv::new();
-    let (port, server) = spawn_server(
-        "200 OK",
-        r#"{"number":7,"title":"Bug report","state":"open","labels":[]}"#,
-    );
-
-    let output = env
-        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
-        .args(["issue", "reopen", "7"])
-        .output()
-        .unwrap();
-
-    let request = server.join().unwrap();
-
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(request.method, "PATCH");
-    assert_eq!(request.target, "/api/v3/repos/alice/project/issues/7");
-    let body: Value = serde_json::from_str(&request.body).unwrap();
-    assert_eq!(body["state"], "open");
-    assert!(body["title"].is_null());
-    assert!(body["body"].is_null());
+    assert_issue_state_flow("reopen", "closed", "open", 7, false);
 }
 
 #[test]
@@ -381,94 +336,69 @@ fn issue_comment_edit_last_rejects_external_pagination_link() {
 
 #[test]
 fn issue_close_falls_back_to_gitbucket_web_session() {
-    let env = GbTestEnv::new();
-    let (port, server) = spawn_scripted_server(vec![
-        ScriptedResponse::json(
-            "PATCH /gitbucket/api/v3/repos/alice/project/issues/7 HTTP/1.1",
-            "404 Not Found",
-            r#"{"message":"Not Found"}"#,
-        ),
-        ScriptedResponse::html("POST /gitbucket/signin HTTP/1.1", "200 OK", "signed in")
-            .with_header("set-cookie", "JSESSIONID=session123; Path=/; HttpOnly"),
-        ScriptedResponse::html(
-            "POST /gitbucket/alice/project/issue_comments/state HTTP/1.1",
-            "200 OK",
-            "updated",
-        ),
-    ]);
-
-    let output = env
-        .repo_api_command(format!("127.0.0.1:{port}/gitbucket"), "alice/project")
-        .env("GB_USER", "alice")
-        .env("GB_PASSWORD", "secret-pass")
-        .args(["issue", "close", "7"])
-        .output()
-        .unwrap();
-
-    let requests = server.join().unwrap();
-
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(requests.len(), 3);
-    assert_eq!(
-        requests[0].headers.get("authorization").map(String::as_str),
-        Some("token test-token")
-    );
-    assert!(requests[1].body.contains("userName=alice"));
-    assert!(requests[1].body.contains("password=secret-pass"));
-    assert_eq!(
-        requests[2].headers.get("cookie").map(String::as_str),
-        Some("JSESSIONID=session123")
-    );
-    assert!(requests[2].body.contains("issueId=7"));
-    assert!(requests[2].body.contains("action=close"));
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Closed issue #7"));
+    assert_issue_state_flow("close", "open", "closed", 7, true);
 }
 
 #[test]
 fn issue_reopen_falls_back_to_gitbucket_web_session() {
-    let env = GbTestEnv::new();
-    let (port, server) = spawn_scripted_server(vec![
-        ScriptedResponse::json(
-            "PATCH /gitbucket/api/v3/repos/alice/project/issues/8 HTTP/1.1",
-            "404 Not Found",
-            r#"{"message":"Not Found"}"#,
-        ),
-        ScriptedResponse::html("POST /gitbucket/signin HTTP/1.1", "200 OK", "signed in")
-            .with_header("set-cookie", "JSESSIONID=session234; Path=/; HttpOnly"),
-        ScriptedResponse::html(
-            "POST /gitbucket/alice/project/issue_comments/state HTTP/1.1",
-            "200 OK",
-            "updated",
-        ),
-    ]);
+    assert_issue_state_flow("reopen", "closed", "open", 8, true);
+}
 
+fn assert_issue_state_flow(action: &str, before: &str, after: &str, number: u64, web: bool) {
+    let env = GbTestEnv::new();
+    let path = format!("/gitbucket/api/v3/repos/alice/project/issues/{number}");
+    let issue = |state| serde_json::json!({"number":number,"title":"Bug report","state":state});
+    let mut script = vec![
+        ScriptedResponse::json(
+            &format!("GET {path} HTTP/1.1"),
+            "200 OK",
+            &issue(before).to_string(),
+        ),
+        ScriptedResponse::json(
+            &format!("PATCH {path} HTTP/1.1"),
+            if web { "404 Not Found" } else { "200 OK" },
+            &issue(after).to_string(),
+        ),
+    ];
+    if web {
+        script.extend([
+            ScriptedResponse::html("POST /gitbucket/signin HTTP/1.1", "200 OK", "signed in")
+                .with_header("set-cookie", "JSESSIONID=state; Path=/; HttpOnly"),
+            ScriptedResponse::html(
+                "POST /gitbucket/alice/project/issue_comments/state HTTP/1.1",
+                "200 OK",
+                "updated",
+            ),
+        ]);
+    }
+    script.push(ScriptedResponse::json(
+        &format!("GET {path} HTTP/1.1"),
+        "200 OK",
+        &issue(after).to_string(),
+    ));
+    let (port, server) = spawn_scripted_server(with_verified_web_session(script));
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}/gitbucket"), "alice/project")
         .env("GB_USER", "alice")
-        .env("GB_PASSWORD", "secret-pass")
-        .args(["issue", "reopen", "8"])
+        .env("GB_PASSWORD", "dummy")
+        .args(["issue", action, &number.to_string()])
         .output()
         .unwrap();
-
-    let requests = server.join().unwrap();
-
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(requests.len(), 3);
+    support::gb_cmd::assert_success(&output);
+    let requests = without_identity_probes(server.join().unwrap());
     assert_eq!(
-        requests[2].headers.get("cookie").map(String::as_str),
-        Some("JSESSIONID=session234")
+        serde_json::from_str::<Value>(&requests[1].body).unwrap()["state"],
+        after
     );
-    assert!(requests[2].body.contains("issueId=8"));
-    assert!(requests[2].body.contains("action=reopen"));
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Reopened issue #8"));
+    assert!(requests
+        .iter()
+        .all(|r| !r.target.ends_with("/issue_comments/new")));
+    if web {
+        let state = &requests[3];
+        assert!(state.body.contains(&format!("action={action}")));
+        assert_eq!(
+            state.headers.get("cookie").map(String::as_str),
+            Some("JSESSIONID=state")
+        );
+    }
 }

@@ -4,7 +4,9 @@ use std::path::Path;
 use url::Url;
 
 pub(super) fn gb_command() -> std::process::Command {
-    std::process::Command::cargo_bin("gb").unwrap()
+    let mut command = std::process::Command::cargo_bin("gb").unwrap();
+    command.env_remove("GB_WEB_USER");
+    command
 }
 
 pub(super) fn required_env(name: &str) -> String {

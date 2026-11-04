@@ -270,7 +270,27 @@ REST failures, including `404`, are returned directly instead of triggering a
 Web retry.
 When a web fallback is used, `gb` writes a `Notice:` line to stderr so scripts can distinguish REST-only success from fallback success.
 For `gb issue edit`, Web handles metadata when needed; labels always use their dedicated REST add/remove endpoints. Label-only changes need no Web password and do not require Issue PATCH support.
-Use `GB_USER` and `GB_PASSWORD` to preseed those prompts when needed.
+Use `GB_USER` and `GB_PASSWORD` to preseed those prompts when needed. Before a Web
+write, `gb` verifies the cookie-authenticated user with `/api/v3/user` and compares
+it with the REST token's user. If they differ, set `GB_WEB_USER` explicitly to
+authorize the Web actor; the selected actors are displayed on stderr. Interactive
+SSO/OIDC sign-in is unsupported by this password flow.
+
+Web HTTP 200 is only a submitted request: stored values must confirm the change.
+Failed or unverified mutations exit 1 and include operation outcomes on stderr;
+`--json-errors` adds `error.operations` with `succeeded`, `failed`, `unverified`,
+and `not_attempted` statuses, the route, and the verified Web actor when available.
+Direct rejections are distinguished from failures after redirects, including
+redirects back to the same URL. Encoded paths cannot bypass the deployment boundary.
+Inspect the target before retrying an unverified write. Mixed edits are not atomic.
+See [Web operations and verification](docs/WEB_OPERATIONS.md) for route constraints.
+
+Repository deletion requires an initially readable target and a confirming 404
+afterward. Forks verify the selected destination and immediate parent, including
+4.44's Web header when REST omits fork metadata. Fork creation polls reads for up
+to five seconds of delay; a timeout is unverified and does not resubmit the fork.
+`--group` is also sent as `organization` when the REST fork route is available;
+the default destination comes from the REST token, rather than `GB_USER`.
 
 Issue label and assignee options can be repeated or comma-separated:
 
@@ -343,7 +363,7 @@ participate in this lock. Repository hooks still run: a failed post-checkout hoo
 can occur after the switch; the error explicitly reports this partial completion
 and asks you to inspect the working tree.
 
-For automation, pass global `--json-errors` or set `GB_JSON_ERRORS=true` to get a single JSON error object on stderr, including fields such as `error.code`, `error.cause`, `error.status`, and `error.exit_code`.
+For automation, pass global `--json-errors` or set `GB_JSON_ERRORS=true` to get a single JSON error object on stderr, including fields such as `error.code`, `error.cause`, `error.status`, `error.exit_code`, and `error.operations` when mutation progress is available.
 
 ### Git authentication
 
@@ -377,6 +397,7 @@ Existing HTTP remote userinfo is removed from the command URL used by PR fetches
 | `GB_CONFIG_DIR` | Config directory path (default: `~/.config/gb/`)          |
 | `GB_PROTOCOL`   | Protocol override when using `GB_TOKEN` with a plain host |
 | `GB_USER`       | Username for GitBucket web sessions and token-authenticated Git transfers |
+| `GB_WEB_USER`   | Explicit Web actor override; permits a different actor from the REST token |
 | `GB_PASSWORD`   | Password for GitBucket web-session fallbacks              |
 | `GB_JSON_ERRORS` | Print failures as structured JSON on stderr              |
 | `NO_COLOR`      | Disable colored output                                    |
