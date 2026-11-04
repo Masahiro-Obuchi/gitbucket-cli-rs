@@ -632,6 +632,8 @@ Behavior:
 - Only a `404` on a title outside the known REST title restriction permits Web use.
   REST-compatible titles, missing targets and other HTTP failures do not trigger it.
   Reloads the milestone before Web authentication and merges current values again.
+  Both initial and refreshed reads must return the requested milestone number,
+  including when the refreshed state already satisfies the request.
   If the refreshed title is REST-compatible, retries REST with that snapshot.
   Repeating a state-only request for the current state needs no mutation or Web authentication.
 - Web content forms trim leading/trailing U+0000..U+0020 characters, matching

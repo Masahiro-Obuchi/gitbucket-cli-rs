@@ -412,6 +412,8 @@ after redirects back to the same URL, allow route fragments, and block encoded
 and repeatedly encoded traversal during password sign-in.
 `tests/repo_mutation_flows.rs` covers fork destination/parent proof and deletion
 readbacks. The live E2E runs these operation adapters at root and `/gitbucket`.
+Milestone regressions also reject a mismatched refreshed target before accepting
+an already-satisfied state or attempting another mutation.
 
 ```bash
 cargo test --locked --test web_outcomes --test repo_mutation_flows

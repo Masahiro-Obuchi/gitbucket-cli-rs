@@ -899,6 +899,32 @@ fn milestone_refresh_to_rest_compatible_title_avoids_web_authentication() {
 }
 
 #[test]
+fn milestone_refreshed_number_mismatch_cannot_report_a_satisfied_state() {
+    let env = GbTestEnv::new();
+    let current = json!({"number":7,"title":"日本語 release","state":"closed"});
+    let wrong = json!({"number":8,"title":"日本語 release","state":"open"});
+    let (port, server) = spawn_scripted_server(vec![
+        response("GET", "", true, "200 OK", &current),
+        response("PATCH", "", true, "404 Not Found", &json!({})),
+        response("GET", "", true, "200 OK", &wrong),
+    ]);
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
+        .env_remove("GB_PASSWORD")
+        .args(["milestone", "edit", "7", "--state", "open"])
+        .output()
+        .unwrap();
+    assert_failure(&output);
+    assert!(output.stdout.is_empty());
+    assert!(
+        stderr(&output).contains("Milestone lookup returned another number"),
+        "{}",
+        stderr(&output)
+    );
+    assert_eq!(server.join().unwrap().len(), 3);
+}
+
+#[test]
 fn milestone_later_web_state_failure_reports_possible_applied_content() {
     let env = GbTestEnv::new();
     let current = json!({"number":7,"title":"日本語 release","state":"open","description":"old"});

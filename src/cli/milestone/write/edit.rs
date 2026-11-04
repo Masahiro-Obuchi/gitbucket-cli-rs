@@ -92,6 +92,11 @@ pub(in crate::cli::milestone) async fn edit(
                 .client
                 .get_milestone(&ctx.owner, &ctx.repo, request.number)
                 .await?;
+            if current.number != request.number {
+                return Err(GbError::Other(
+                    "Milestone lookup returned another number. No changes were applied.".into(),
+                ));
+            }
             let expected = changes.merge(&current);
             if rest_title(&expected.title) {
                 // Another editor may have changed the title since the rejected
