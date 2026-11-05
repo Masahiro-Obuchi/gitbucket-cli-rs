@@ -38,8 +38,8 @@ fn signals_and_ctrl_c_cancel_hostname_and_password_prompts() {
                     &mut master,
                     &mut slave,
                     std::ptr::null_mut(),
-                    std::ptr::null(),
-                    std::ptr::null(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
                 ),
                 0
             );
