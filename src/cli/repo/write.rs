@@ -18,9 +18,10 @@ pub(super) async fn create(
 
     let name = match name {
         Some(n) => n,
-        None => Input::new()
-            .with_prompt("Repository name")
-            .interact_text()?,
+        None => {
+            crate::cancel::input(|| Input::new().with_prompt("Repository name").interact_text())
+                .await?
+        }
     };
 
     let body = CreateRepository {
@@ -57,13 +58,11 @@ pub(super) async fn delete(
     let (owner, repo) = parse_owner_repo(&repo_arg)?;
 
     if !yes {
-        let confirmed = Confirm::new()
-            .with_prompt(format!(
-                "Are you sure you want to delete {}/{}?",
-                owner, repo
-            ))
-            .default(false)
-            .interact()?;
+        let prompt = format!("Are you sure you want to delete {}/{}?", owner, repo);
+        let confirmed = crate::cancel::input(move || {
+            Confirm::new().with_prompt(prompt).default(false).interact()
+        })
+        .await?;
         if !confirmed {
             println!("Aborted.");
             return Ok(());

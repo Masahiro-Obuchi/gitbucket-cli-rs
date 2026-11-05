@@ -1336,6 +1336,10 @@ by the subprocess deadline. The CLI handles Ctrl+C and SIGTERM on Unix,
 and Ctrl+C/Ctrl+Break on Windows. `git_timeout` has cause timeout; cancellation
 uses code/cause cancelled. Local writes may already be applied, so these errors
 also report an unverified outcome. Cleanup never resets/cleans/stashes user data.
+Blocking terminal prompts and JSON input reads run separately from the command
+task and return a cancelled error on the same signals; pending input is not
+submitted. A failed PR checkout readback preserves the original mutation error
+and provenance instead of reporting only the read-only verification failure.
 SIGKILL and a Unix helper that deliberately escapes its group cannot be reclaimed
 by an ordinary process-group supervisor. OS termination and cleanup latency are
 not network deadlines. Unrelated background work is not cancelled.

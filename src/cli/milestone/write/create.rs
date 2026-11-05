@@ -18,9 +18,10 @@ pub(in crate::cli::milestone) async fn create(
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
     let title = match title {
         Some(title) => title,
-        None => Input::new()
-            .with_prompt("Milestone title")
-            .interact_text()?,
+        None => {
+            crate::cancel::input(|| Input::new().with_prompt("Milestone title").interact_text())
+                .await?
+        }
     };
     validate_title(&title)?;
     let due_on = normalize_due_on_for_create(due_on)?;

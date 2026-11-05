@@ -441,6 +441,14 @@ process liveness checks for the timeout case. A unit regression covers a leader
 that exits while its descendant still holds stdout/stderr pipes. No real SSH
 server is contacted. Tests isolate the timeout environment variables.
 
+`tests/cancellation.rs` uses a Unix pseudo-terminal to cancel hostname/token
+prompts with SIGTERM and an actual Ctrl+C key, and checks a blocked
+`gb api --input -` pipe. PR checkout tests cancel a running post-checkout hook
+after HEAD has changed and verify that
+the mutation's cancelled/unverified error and provenance survive failed readback.
+The macOS/Windows CI jobs also run the Git deadline suite and applicable input
+cancellation cases.
+
 ```bash
 cargo test --locked --test transport_failures --test git_timeouts
 cargo test --locked --bin gb api::client::tests

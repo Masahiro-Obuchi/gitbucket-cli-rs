@@ -92,8 +92,22 @@ pub(super) async fn checkout(
         command.arg(&branch);
     }
     let result = command.arg("--").bounded_output();
-    let completed = matches!(&result, Ok(output) if output.status.success())
-        || checkout_completed(&branch, &commit)?;
+    let completed = if matches!(&result, Ok(output) if output.status.success()) {
+        true
+    } else {
+        match checkout_completed(&branch, &commit) {
+            Ok(completed) => completed,
+            // Cancellation/deadline failures may have changed HEAD and files.
+            // A failed readback must not replace that mutation's error or
+            // authorize removing its provenance record.
+            Err(_) if result.is_err() => return result.map(|_| ()),
+            Err(error) => {
+                return Err(GbError::Unverified {
+                    source: Box::new(error),
+                })
+            }
+        }
+    };
     if !completed && existing.is_none() {
         // Only metadata is restored; never reset/clean/stash user work to recover.
         let restored = match previous_marker {

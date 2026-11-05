@@ -34,9 +34,10 @@ pub async fn create_web_session(
     }
     let password = match std::env::var("GB_PASSWORD") {
         Ok(password) => password,
-        Err(_) => Password::new()
-            .with_prompt(format!("GitBucket password for {}", username))
-            .interact()?,
+        Err(_) => {
+            let prompt = format!("GitBucket password for {}", username);
+            crate::cancel::input(move || Password::new().with_prompt(prompt).interact()).await?
+        }
     };
 
     let session =

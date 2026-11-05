@@ -81,18 +81,25 @@ async fn login(
 ) -> Result<()> {
     let hostname = match hostname {
         Some(h) => h.clone(),
-        None => Input::new()
+        None => crate::cancel::input(|| {
+            Input::new()
             .with_prompt(
                 "GitBucket host or URL (e.g., gitbucket.example.com or https://gitbucket.example.com/gitbucket)",
             )
-            .interact_text()?,
+            .interact_text()
+        }).await?,
     };
 
     let token = match token {
         Some(t) => t,
-        None => Password::new()
-            .with_prompt("Personal access token")
-            .interact()?,
+        None => {
+            crate::cancel::input(|| {
+                Password::new()
+                    .with_prompt("Personal access token")
+                    .interact()
+            })
+            .await?
+        }
     };
 
     let config = AuthConfig::load()?;

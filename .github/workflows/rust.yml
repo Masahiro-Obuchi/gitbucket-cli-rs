@@ -44,3 +44,5 @@ jobs:
         run: 'cargo test --locked --bin gb config::'
       - name: Test safe PR checkout
         run: cargo test --locked --test pr_checkout
+      - name: Test Git deadlines and input cancellation
+        run: cargo test --locked --test git_timeouts --test cancellation

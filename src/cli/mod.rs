@@ -18,7 +18,7 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "gb",
     about = "GitBucket CLI - Work seamlessly with GitBucket from the command line",
-    after_help = "Run `gb <command> --help` for command-specific options. Deadlines in seconds: GB_HTTP_CONNECT_TIMEOUT (10), GB_HTTP_READ_TIMEOUT (30), GB_HTTP_TIMEOUT (120), GB_GIT_TIMEOUT (300).",
+    after_help = "Run `gb <command> --help` for command-specific options. Deadlines in seconds: GB_HTTP_CONNECT_TIMEOUT (10), GB_HTTP_READ_TIMEOUT (30), GB_HTTP_TIMEOUT (120), GB_GIT_TIMEOUT (300). Ctrl+C also cancels interactive prompts and input reads.",
     version
 )]
 pub struct Cli {

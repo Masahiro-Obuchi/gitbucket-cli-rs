@@ -37,7 +37,7 @@ pub async fn run(
     let method = resolve_method(args.method.as_deref(), args.input.is_some())?;
     let endpoint = normalize_endpoint(&args.endpoint, ctx.client.base_url())?;
     let body = match args.input {
-        Some(input) => Some(read_json_input(&input)?),
+        Some(input) => Some(crate::cancel::input(move || read_json_input(&input)).await?),
         None => None,
     };
 

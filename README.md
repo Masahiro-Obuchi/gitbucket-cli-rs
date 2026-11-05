@@ -415,6 +415,10 @@ credential prompts are disabled (`GIT_TERMINAL_PROMPT=0`). SSH or external helpe
 can have their own prompts, within the process deadline. No automatic stash/reset/clean is performed;
 clone directories, refs or worktrees may already have changed. Uncatchable process
 termination and a deliberately detached Unix helper are outside this cleanup.
+Interactive prompts and `gb api --input -` also respond to cancellation and exit
+with code 1 (`cancelled` with `--json-errors`). Cancelling input does not submit
+the pending operation. If PR checkout is interrupted and its state cannot be
+read back, the original mutation error and checkout provenance are retained.
 
 ## Environment variables
 

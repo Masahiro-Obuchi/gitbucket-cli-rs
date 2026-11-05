@@ -108,6 +108,7 @@ impl GbError {
 
     pub fn cause_code(&self) -> Option<&'static str> {
         match self {
+            GbError::Cancelled => Some("cancelled"),
             GbError::Git {
                 reason: "timed out",
                 ..
