@@ -478,3 +478,34 @@ fn error_diagnostics_redact_credentials_supplied_in_json_request_body() {
     assert!(!String::from_utf8_lossy(&output.stderr).contains("only-in-input-value"));
     server.join().unwrap();
 }
+
+#[test]
+fn saved_diff_failures_do_not_reintroduce_query_secrets() {
+    let env = GbTestEnv::new();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls/7 HTTP/1.1",
+            "200 OK",
+            r#"{"number":7,"title":"PR","state":"closed","diff_url":"/alice/project/pull/7.diff?token=only-in-diff-url"}"#,
+        ),
+        ScriptedResponse::json(
+            "GET /alice/project/pull/7.diff?token=only-in-diff-url HTTP/1.1",
+            "404 Not Found",
+            "{}",
+        ),
+        ScriptedResponse::json(
+            "GET /alice/project/pull/7.diff HTTP/1.1",
+            "404 Not Found",
+            "{}",
+        ),
+    ]);
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
+        .args(["--json-errors", "pr", "diff", "7", "--no-pager"])
+        .output()
+        .unwrap();
+    let e = error(&output);
+    assert_eq!(e["code"], "diff_unavailable");
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("only-in-diff-url"));
+    assert_eq!(server.join().unwrap().len(), 3);
+}

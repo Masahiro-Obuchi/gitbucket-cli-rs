@@ -448,6 +448,8 @@ after HEAD has changed and verify that
 the mutation's cancelled/unverified error and provenance survive failed readback.
 The macOS/Windows CI jobs also run the Git deadline suite and applicable input
 cancellation cases.
+Saved-diff failures check that callers do not reintroduce secret URL queries
+into sanitized transport diagnostics.
 
 ```bash
 cargo test --locked --test transport_failures --test git_timeouts

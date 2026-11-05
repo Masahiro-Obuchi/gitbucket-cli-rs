@@ -175,12 +175,19 @@ async fn saved_pr_diff(
     push_url(&mut urls, Some(&derived_diff_url));
 
     let mut failures = Vec::new();
-    for url in urls {
+    for (index, url) in urls.into_iter().enumerate() {
+        // Candidate URLs can carry signed query credentials. Transport errors
+        // already contain sanitized context; do not reattach the original URL.
+        let candidate = index + 1;
         match client.get_text_from_origin(&url).await {
             Ok(body) if is_diff_body(&body) => return Ok(body),
-            Ok(body) if body.trim().is_empty() => failures.push(format!("{url}: empty saved diff")),
-            Ok(_) => failures.push(format!("{url}: response was not a diff")),
-            Err(err) => failures.push(format!("{url}: {err}")),
+            Ok(body) if body.trim().is_empty() => failures.push(format!(
+                "Saved diff candidate {candidate}: empty saved diff"
+            )),
+            Ok(_) => failures.push(format!(
+                "Saved diff candidate {candidate}: response was not a diff"
+            )),
+            Err(err) => failures.push(format!("Saved diff candidate {candidate}: {err}")),
         }
     }
 
