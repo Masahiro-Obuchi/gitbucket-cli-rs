@@ -1,3 +1,4 @@
+use crate::git::GitCommandExt;
 use std::process::{Command, Output};
 
 use crate::cli::common::RepoContext;
@@ -7,35 +8,25 @@ use crate::models::pull_request::PullRequest;
 use crate::models::repository::Repository;
 use crate::output;
 
-pub(super) fn git_remote_names() -> Vec<String> {
-    let output = match std::process::Command::new("git").args(["remote"]).output() {
-        Ok(output) if output.status.success() => output,
-        _ => return Vec::new(),
-    };
-
-    String::from_utf8_lossy(&output.stdout)
+pub(super) fn git_remote_names() -> Result<Vec<String>> {
+    let output = Command::new("git").args(["remote"]).bounded_output()?;
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .map(ToOwned::to_owned)
-        .collect()
+        .collect())
 }
 
-pub(super) fn git_remote_url(remote: &str) -> Option<String> {
-    let output = std::process::Command::new("git")
-        .args(["config", "--get", &format!("remote.{}.url", remote)])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-
+pub(super) fn git_remote_url(remote: &str) -> Result<Option<String>> {
+    let output = Command::new("git")
+        .args(["config", "--get", &format!("remote.{remote}.url")])
+        .bounded_output()?;
     let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if url.is_empty() {
-        None
-    } else {
-        Some(url)
-    }
+    Ok((output.status.success() && !url.is_empty()).then_some(url))
 }
 
 #[derive(Debug, Clone)]
@@ -45,7 +36,7 @@ pub(super) struct GitFetchSource {
 }
 
 pub(super) fn resolve_git_fetch_source(source: &str) -> Result<GitFetchSource> {
-    let resolved = git_remote_url(source).unwrap_or_else(|| source.to_string());
+    let resolved = git_remote_url(source)?.unwrap_or_else(|| source.to_string());
     let clean = crate::git::clean_source(&resolved)?;
     Ok(GitFetchSource {
         command_source: clean.clone(),
@@ -53,55 +44,48 @@ pub(super) fn resolve_git_fetch_source(source: &str) -> Result<GitFetchSource> {
     })
 }
 
-pub(super) fn matching_remote_name(repo: &Repository) -> Option<String> {
-    let expected_url = repo.clone_url.as_deref()?;
+pub(super) fn matching_remote_name(repo: &Repository) -> Result<Option<String>> {
+    let Some(expected_url) = repo.clone_url.as_deref() else {
+        return Ok(None);
+    };
 
-    for remote in git_remote_names() {
-        let Some(url) = git_remote_url(&remote) else {
+    for remote in git_remote_names()? {
+        let Some(url) = git_remote_url(&remote)? else {
             continue;
         };
 
         if crate::git::repository_urls_match(expected_url, &url) {
-            return Some(remote);
+            return Ok(Some(remote));
         }
     }
 
-    None
+    Ok(None)
 }
 
-fn pr_repo_fetch_source(repo: Option<&Repository>, auth: &crate::git::GitAuth) -> String {
+fn pr_repo_fetch_source(repo: Option<&Repository>, auth: &crate::git::GitAuth) -> Result<String> {
     let Some(repo) = repo else {
-        return "origin".to_string();
+        return Ok("origin".to_string());
     };
     let clone_url = auth.clone_url(repo);
     let mut resolved = repo.clone();
     resolved.clone_url = Some(clone_url.clone());
-    matching_remote_name(&resolved).unwrap_or(clone_url)
+    Ok(matching_remote_name(&resolved)?.unwrap_or(clone_url))
 }
 
-pub(super) fn pr_head_fetch_source(pr: &PullRequest, auth: &crate::git::GitAuth) -> String {
+pub(super) fn pr_head_fetch_source(pr: &PullRequest, auth: &crate::git::GitAuth) -> Result<String> {
     pr_repo_fetch_source(pr.head.as_ref().and_then(|head| head.repo.as_ref()), auth)
 }
 
-pub(super) fn pr_base_fetch_source(pr: &PullRequest, auth: &crate::git::GitAuth) -> String {
+pub(super) fn pr_base_fetch_source(pr: &PullRequest, auth: &crate::git::GitAuth) -> Result<String> {
     pr_repo_fetch_source(pr.base.as_ref().and_then(|base| base.repo.as_ref()), auth)
 }
 
-pub(super) fn current_branch_name() -> Option<String> {
-    let output = std::process::Command::new("git")
+pub(super) fn current_branch_name() -> Result<Option<String>> {
+    let output = Command::new("git")
         .args(["branch", "--show-current"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-
+        .bounded_output()?;
     let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if branch.is_empty() {
-        None
-    } else {
-        Some(branch)
-    }
+    Ok((output.status.success() && !branch.is_empty()).then_some(branch))
 }
 
 pub(super) fn target_identity(ctx: &RepoContext, number: u64) -> String {
@@ -129,7 +113,7 @@ pub(super) fn git_fetch_ref(
 ) -> Result<Output> {
     let valid = Command::new("git")
         .args(["check-ref-format", &format!("refs/heads/{branch}")])
-        .output()?;
+        .bounded_output()?;
     if !valid.status.success() {
         return Err(GbError::Other(
             "API returned an invalid PR branch ref.".into(),
@@ -147,7 +131,7 @@ pub(super) fn git_fetch_ref(
         ])
         .arg(source)
         .arg(format!("+refs/heads/{branch}:{target_ref}"))
-        .output()?;
+        .bounded_output()?;
     auth.redact_output(&mut output);
     Ok(output)
 }

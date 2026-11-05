@@ -58,4 +58,8 @@ Primary contracts:
 - [AccountController](https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/controller/AccountController.scala), [RepositoryCreationService](https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/service/RepositoryCreationService.scala), [ApiRepository](https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/api/ApiRepository.scala), [repository menu](https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/twirl/gitbucket/core/menu.scala.html): asynchronous fork and parent proof.
 - [GitHub's compatible fork request](https://docs.github.com/en/rest/repos/forks#create-a-fork): REST `organization` field; this does not imply that 4.44 implements that route.
 
-Transport-wide deadlines and response-body failure handling are a separate follow-up.
+REST and Web now share the bounded transport policy in `src/limits.rs` and
+`src/api/transport.rs`. Incomplete responses preserve transport causes and known
+status, and an ambiguous write reports an unverified outcome without retries.
+The separate Git supervisor applies its deadline through group/job termination
+and child reaping. See SPEC §6.5 for limits, output contracts and diagnostics.

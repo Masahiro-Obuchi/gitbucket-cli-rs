@@ -1,3 +1,4 @@
+use crate::git::GitCommandExt;
 use std::process::Command;
 
 use crate::config::auth::AuthConfig;
@@ -19,10 +20,11 @@ pub(super) fn resolve_target(
     }
     let output = Command::new("git")
         .args(["remote", "get-url", "origin"])
-        .output();
+        .bounded_output();
     let output = match output {
         Ok(output) if output.status.success() => output,
-        _ => return Err(GbError::RepoNotFound),
+        Ok(_) => return Err(GbError::RepoNotFound),
+        Err(err) => return Err(err),
     };
     let remote = String::from_utf8_lossy(&output.stdout);
     crate::target::RepositoryTarget::from_remote(instance, remote.trim())

@@ -12,6 +12,7 @@ use reqwest::{Client, RequestBuilder, Response, StatusCode};
 use crate::error::{GbError, Result};
 
 use super::client::normalize_web_base_url;
+use super::transport::{self, Context, Secrets};
 
 #[derive(Clone)]
 pub struct GitBucketWebSession {
@@ -19,11 +20,13 @@ pub struct GitBucketWebSession {
     cookies: Arc<Jar>,
     base_url: String,
     principal: String,
+    secrets: Secrets,
 }
 
 struct MutationResponse {
     response: Response,
     redirected: bool,
+    context: Context,
 }
 
 fn web_client(
@@ -32,7 +35,7 @@ fn web_client(
     redirected: Option<Arc<AtomicBool>>,
 ) -> Result<Client> {
     let base_url = base_url.to_owned();
-    Ok(Client::builder()
+    Ok(crate::limits::http_builder()?
         .cookie_provider(cookies)
         .redirect(Policy::custom(move |attempt| {
             if let Some(redirected) = &redirected {
@@ -65,14 +68,19 @@ impl GitBucketWebSession {
         let cookies = Arc::new(Jar::default());
         let client = web_client(&base_url, cookies.clone(), None)?;
 
-        let response = client
-            .post(format!("{base_url}/signin"))
-            .form(&[("userName", username), ("password", password), ("hash", "")])
-            .send()
-            .await?;
-
+        let secrets = Secrets::new(&[password]);
+        let (response, context) = transport::send(
+            client.post(format!("{base_url}/signin")).form(&[
+                ("userName", username),
+                ("password", password),
+                ("hash", ""),
+            ]),
+            false,
+            &secrets,
+        )
+        .await?;
         let status = response.status();
-        response.bytes().await?;
+        transport::read(response, &context, &secrets).await?;
 
         if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
             return Err(GbError::Auth(format!(
@@ -90,9 +98,17 @@ impl GitBucketWebSession {
 
         // No token or Basic header is attached: this proves the cookie session,
         // rather than accidentally verifying the REST credentials a second time.
-        let response = client.get(format!("{base_url}/api/v3/user")).send().await?;
-        if !response.status().is_success()
-            || response.url().path()
+        let (response, context) = transport::send(
+            client.get(format!("{base_url}/api/v3/user")),
+            false,
+            &secrets,
+        )
+        .await?;
+        let status = response.status();
+        let final_url = response.url().clone();
+        let body = transport::read(response, &context, &secrets).await?;
+        if !status.is_success()
+            || final_url.path()
                 != format!(
                     "{}/api/v3/user",
                     url::Url::parse(&base_url)?.path().trim_end_matches('/')
@@ -100,7 +116,7 @@ impl GitBucketWebSession {
         {
             return Err(GbError::Auth("GitBucket web sign-in failed: the cookie session could not be verified. Check the password; interactive SSO/OIDC is unsupported.".into()));
         }
-        let user: crate::models::user::User = response.json().await.map_err(|_| GbError::Auth("GitBucket web sign-in failed: expected a cookie-authenticated user, but received an unrecognized response (possibly a login/SSO form).".into()))?;
+        let user: crate::models::user::User = serde_json::from_slice(&body).map_err(|_| GbError::Auth("GitBucket web sign-in failed: expected a cookie-authenticated user, but received an unrecognized response (possibly a login/SSO form).".into()))?;
         if user.login.is_empty() || !user.login.eq_ignore_ascii_case(username) {
             return Err(GbError::Auth(format!("GitBucket web sign-in returned user {:?}, expected {:?}. No Web changes were attempted.", user.login, username)));
         }
@@ -109,6 +125,7 @@ impl GitBucketWebSession {
             cookies,
             base_url,
             principal: user.login,
+            secrets,
         })
     }
 
@@ -327,10 +344,11 @@ impl GitBucketWebSession {
             self.cookies.clone(),
             Some(redirected.clone()),
         )?;
-        let response = build(&client).send().await?;
+        let (response, context) = transport::send(build(&client), true, &self.secrets).await?;
         Ok(MutationResponse {
             response,
             redirected: redirected.load(Ordering::Relaxed),
+            context,
         })
     }
 
@@ -338,10 +356,11 @@ impl GitBucketWebSession {
         let MutationResponse {
             response,
             redirected,
+            context,
         } = result;
         let status = response.status();
         let final_path = response.url().path().to_string();
-        let _body = response.text().await?;
+        transport::read(response, &context, &self.secrets).await?;
 
         if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
             || final_path.ends_with("/signin")

@@ -43,6 +43,63 @@ async fn stored(client: &Client, path: &str) -> Value {
 
 #[tokio::test]
 #[ignore = "requires the pinned Docker GitBucket fixture"]
+async fn contract_pr_create_string_and_merge_action_result_wrappers_are_route_specific() {
+    let temp = tempdir().unwrap();
+    login(temp.path());
+    let (_, branch, _) = create_live_pr_fixture(temp.path(), "contract-response");
+    // A dedicated base branch avoids racing other E2E merges into main.
+    let base = format!("{branch}-base");
+    let work = temp.path().join(format!("work-{branch}"));
+    run_git(&work, &["branch", &base, "HEAD^"]);
+    run_git(&work, &["push", "origin", &base]);
+    let client = client();
+    let path = format!("repos/{}/pulls", required_env("GB_E2E_REPO"));
+    let title = format!("response contract {}", unique_suffix());
+    let response = request(
+        &client,
+        Method::POST,
+        &path,
+        Some(json!({"title":title,"head":branch,"base":base,"body":"contract"})),
+    )
+    .await;
+    assert!(response.status().is_success());
+    let outer: Value = serde_json::from_str(&response.text().await.unwrap()).unwrap();
+    let created: Value = serde_json::from_str(
+        outer
+            .as_str()
+            .expect("4.44 create must be a JSON string wrapper"),
+    )
+    .unwrap();
+    assert_eq!(created["title"], title);
+    assert_eq!(created["head"]["ref"], branch);
+    assert_eq!(created["base"]["ref"], base);
+    let number = created["number"].as_u64().unwrap();
+    let response = request(
+        &client,
+        Method::PUT,
+        &format!("{path}/{number}/merge"),
+        Some(json!({"commit_message":"response contract"})),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let outer: Value = serde_json::from_str(&response.text().await.unwrap()).unwrap();
+    let envelope = outer
+        .as_object()
+        .expect("4.44 merge must serialize its ActionResult");
+    assert_eq!(envelope.len(), 3);
+    assert_eq!(outer["status"], 200);
+    assert!(outer["headers"].is_object());
+    let merged: Value = serde_json::from_str(outer["body"].as_str().unwrap()).unwrap();
+    assert_eq!(merged["merged"], true);
+    assert!(merged["sha"].is_string());
+    assert_eq!(
+        stored(&client, &format!("{path}/{number}")).await["merged"],
+        true
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires the pinned Docker GitBucket fixture"]
 async fn contract_pr_patch_and_inline_comments_have_distinct_api_paths() {
     let temp = tempdir().unwrap();
     login(temp.path());

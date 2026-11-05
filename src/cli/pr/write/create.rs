@@ -28,7 +28,7 @@ pub(in crate::cli::pr) async fn create(
 
     let head_branch = match request.head {
         Some(h) => h,
-        None => current_branch_name().ok_or_else(|| {
+        None => current_branch_name()?.ok_or_else(|| {
             GbError::Other(
                 "Could not determine current branch. Specify --head when running from a detached HEAD state.".into(),
             )

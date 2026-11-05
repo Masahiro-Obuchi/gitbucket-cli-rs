@@ -16,10 +16,12 @@ macro_rules! eprint {
 }
 
 mod api;
+mod cancel;
 mod cli;
 mod config;
 mod error;
 mod git;
+mod limits;
 mod models;
 mod operation;
 mod output;
@@ -43,6 +45,16 @@ fn main() {
 async fn run_cli() {
     let cli = Cli::parse();
     output::set_suppress_stderr(cli.json_errors);
+
+    if let Err(err) = cancel::install() {
+        let err = error::GbError::Io(err);
+        if cli.json_errors {
+            print_json_error(&err);
+        } else {
+            std::eprintln!("Error: {err}");
+        }
+        std::process::exit(1);
+    }
 
     let result = match cli.command {
         Commands::Api(args) => cli::api::run(args, &cli.hostname, &cli.profile).await,
@@ -81,6 +93,8 @@ struct ErrorOutput {
 #[derive(Serialize)]
 struct ErrorBody {
     #[serde(skip_serializing_if = "Option::is_none")]
+    outcome: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     operations: Option<Vec<operation::Operation>>,
     code: &'static str,
     message: String,
@@ -95,6 +109,7 @@ struct ErrorBody {
 fn print_json_error(error: &error::GbError) {
     let output = ErrorOutput {
         error: ErrorBody {
+            outcome: error.outcome(),
             operations: error.operations().map(<[_]>::to_vec),
             code: error.code(),
             message: error.to_string(),

@@ -1291,6 +1291,57 @@ Successful commands retain their existing output, without a new success JSON mod
 
 ---
 
+### 6.5 HTTP contracts and deadlines
+
+REST and Web clients share connection (10 s), read inactivity (30 s), and total
+request (120 s, including body) deadlines. Every Git subprocess, including local
+metadata queries and output pipe collection, has a 300 s deadline. The four
+`GB_*_TIMEOUT` variables below accept seconds from 0.001 through 86400; invalid,
+zero, negative or non-finite values fail before the affected transport starts.
+Deadlines apply per request/process, rather than to an entire multi-step command
+or an interactive prompt. Git child termination/reaping may add cleanup time.
+
+| Response contract | Behavior |
+| --- | --- |
+| Typed JSON endpoint | Parse JSON and deserialize the expected model. Empty/204, malformed or incompatible data is an error. |
+| Raw `gb api` JSON | Preserve ordinary strings, arrays and status/body objects. Zero-byte success prints JSON null; nonempty non-JSON/whitespace-only bodies fail. |
+| Text (diff/HTML) | Read text without JSON decoding; a successful empty/204 response is an empty string. |
+| Empty mutation (DELETE) | Accept HTTP success after reading the response to completion; do not swallow a broken transfer. |
+| PR create compatibility | Only this operation accepts one JSON string layer containing a PR object, as verified on 4.44.0. |
+| PR merge compatibility | Only this operation accepts the verified 4.44.0 ActionResult envelope: exactly status/body/headers, matching HTTP status, object headers, and a string body containing the merge object. A boolean merged field is required. |
+
+Wrapper inference is not global and does not depend on arbitrary status/body
+property names. PR details fall back to the PR collection only for the verified
+JSON null response, not for missing JSON, a broken transfer or malformed data.
+
+HTTP transport/decode errors preserve the request method/path and phase. Known
+HTTP status is retained even when its body fails. Source codes remain
+`http_error` / `json_error`; `cause` identifies timeout, connect failure, body read
+failure or invalid JSON. Queries, userinfo, headers and request bodies are not
+included in request context. Error diagnostics read at most 8192 body bytes and
+emit at most 2048 bytes of detail plus context/markers. HTML is omitted. Configured
+secrets, recognized credentials from JSON inputs, and sensitive diagnostic lines
+are redacted/omitted; they are not a raw HTTP dump.
+
+A mutating request that times out, disconnects, fails decoding or is cancelled has
+`error.outcome: "unverified"`, and participates in PR-07 progress reporting when
+available. The same rule covers Web state-changing GETs. There is no automatic
+HTTP retry, including protocol-level retries. Definite complete 4xx rejections
+remain ordinary API errors and retain established route-selection behavior.
+
+Git uses Unix process groups or Windows Job Objects, concurrent stdout/stderr
+readers, and explicit termination/reaping on timeout or cancellation. Its stdin
+is closed and GIT_TERMINAL_PROMPT=0. SSH/external helper prompts are still bounded
+by the subprocess deadline. The CLI handles Ctrl+C and SIGTERM on Unix,
+and Ctrl+C/Ctrl+Break on Windows. `git_timeout` has cause timeout; cancellation
+uses code/cause cancelled. Local writes may already be applied, so these errors
+also report an unverified outcome. Cleanup never resets/cleans/stashes user data.
+SIGKILL and a Unix helper that deliberately escapes its group cannot be reclaimed
+by an ordinary process-group supervisor. OS termination and cleanup latency are
+not network deadlines. Unrelated background work is not cancelled.
+
+---
+
 ## 7. Environment variables
 
 | Variable | Description |
@@ -1303,6 +1354,10 @@ Successful commands retain their existing output, without a new success JSON mod
 | `GB_USER` | Username for GitBucket web-session fallbacks |
 | `GB_WEB_USER` | Explicit Web user override; authorizes an actor different from the REST token |
 | `GB_PASSWORD` | Password for GitBucket web-session fallbacks |
+| `GB_HTTP_CONNECT_TIMEOUT` | HTTP connect deadline in seconds (default 10) |
+| `GB_HTTP_READ_TIMEOUT` | HTTP read inactivity deadline in seconds (default 30) |
+| `GB_HTTP_TIMEOUT` | HTTP total deadline including body in seconds (default 120) |
+| `GB_GIT_TIMEOUT` | Deadline per Git subprocess including output (default 300) |
 | `GB_CONFIG_DIR` | Custom config directory |
 | `GB_JSON_ERRORS` | Print command failures as structured JSON on stderr |
 | `NO_COLOR` | Disable colored output (terminal/toolchain dependent) |
@@ -1319,6 +1374,10 @@ Successful commands retain their existing output, without a new success JSON mod
 - `NotAuthenticated`
 - `RepoNotFound`
 - `DiffUnavailable { number, cause, message }`
+- `Request { source, operation, phase, status, mutating, detail }` (sanitized HTTP context)
+- `Git { operation, reason, source, mutating }`
+- `Cancelled`
+- `Operation { source, operations }` / `Unverified { source }`
 - `Http(reqwest::Error)`
 - `Io(std::io::Error)`
 - `Json(serde_json::Error)`
@@ -1349,6 +1408,8 @@ Pass global `--json-errors` (or set `GB_JSON_ERRORS=true`) to print failures as 
 src/
   main.rs
   error.rs
+  limits.rs
+  cancel.rs
   operation.rs
   cli/
     mod.rs

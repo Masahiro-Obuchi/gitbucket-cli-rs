@@ -344,45 +344,24 @@ fn pr_view_surfaces_api_404() {
 }
 
 #[test]
-fn pr_view_falls_back_to_list_when_single_pr_response_is_empty() {
+fn pr_view_empty_response_fails_without_hiding_it_with_list_fallback() {
     let env = GbTestEnv::new();
-    let (port, server) = spawn_scripted_server(vec![
-        ScriptedResponse::json(
-            "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
-            "200 OK",
-            "",
-        ),
-        ScriptedResponse::json(
-            "GET /api/v3/repos/alice/project/pulls?state=all HTTP/1.1",
-            "200 OK",
-            r#"[{"number":5,"title":"Fallback PR","body":"PR body","state":"open","merged":false,"user":{"login":"alice"},"head":{"ref":"feature/demo"},"base":{"ref":"main"},"created_at":"2026-03-24T00:00:00Z"}]"#,
-        ),
-    ]);
-
+    let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
+        "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
+        "200 OK",
+        "",
+    )]);
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
-        .args(["pr", "view", "5"])
+        .args(["--json-errors", "pr", "view", "5"])
         .output()
         .unwrap();
-
-    let requests = server.join().unwrap();
-
-    assert_eq!(requests.len(), 2);
-    for request in &requests {
-        assert_eq!(
-            request.headers.get("authorization").map(String::as_str),
-            Some("token test-token")
-        );
-    }
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Fallback PR #5"));
-    assert!(stdout.contains("OPEN"));
-    assert!(stdout.contains("feature/demo"));
+    assert!(!output.status.success());
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["code"], "json_error");
+    assert_eq!(error["error"]["status"], 200);
+    assert!(output.stdout.is_empty());
+    assert_eq!(server.join().unwrap().len(), 1);
 }
 
 #[test]
