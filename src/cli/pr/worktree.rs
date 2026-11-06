@@ -1,3 +1,4 @@
+use crate::git::GitCommandExt;
 use std::process::{Command, Output};
 
 use crate::cli::common::RepoContext;
@@ -68,13 +69,15 @@ fn live_branch_diff(
             message: "API response does not include a base ref.".into(),
         })?;
 
-    let fetch_source =
-        resolve_git_fetch_source(&pr_head_fetch_source(pr, auth)).map_err(|err| DiffFailure {
+    let fetch_source = pr_head_fetch_source(pr, auth)
+        .and_then(|source| resolve_git_fetch_source(&source))
+        .map_err(|err| DiffFailure {
             cause: "head_fetch_failed",
             message: err.to_string(),
         })?;
-    let base_fetch_source =
-        resolve_git_fetch_source(&pr_base_fetch_source(pr, auth)).map_err(|err| DiffFailure {
+    let base_fetch_source = pr_base_fetch_source(pr, auth)
+        .and_then(|source| resolve_git_fetch_source(&source))
+        .map_err(|err| DiffFailure {
             cause: "base_fetch_failed",
             message: err.to_string(),
         })?;
@@ -172,12 +175,19 @@ async fn saved_pr_diff(
     push_url(&mut urls, Some(&derived_diff_url));
 
     let mut failures = Vec::new();
-    for url in urls {
+    for (index, url) in urls.into_iter().enumerate() {
+        // Candidate URLs can carry signed query credentials. Transport errors
+        // already contain sanitized context; do not reattach the original URL.
+        let candidate = index + 1;
         match client.get_text_from_origin(&url).await {
             Ok(body) if is_diff_body(&body) => return Ok(body),
-            Ok(body) if body.trim().is_empty() => failures.push(format!("{url}: empty saved diff")),
-            Ok(_) => failures.push(format!("{url}: response was not a diff")),
-            Err(err) => failures.push(format!("{url}: {err}")),
+            Ok(body) if body.trim().is_empty() => failures.push(format!(
+                "Saved diff candidate {candidate}: empty saved diff"
+            )),
+            Ok(_) => failures.push(format!(
+                "Saved diff candidate {candidate}: response was not a diff"
+            )),
+            Err(err) => failures.push(format!("Saved diff candidate {candidate}: {err}")),
         }
     }
 
@@ -205,7 +215,7 @@ fn push_url(urls: &mut Vec<String>, url: Option<&str>) {
     }
 }
 
-fn git_diff_refs(base_ref: &str, head_ref: &str, no_pager: bool) -> std::io::Result<Output> {
+fn git_diff_refs(base_ref: &str, head_ref: &str, no_pager: bool) -> Result<Output> {
     let mut command = Command::new("git");
     if no_pager {
         command.env("GIT_PAGER", "cat");
@@ -215,5 +225,5 @@ fn git_diff_refs(base_ref: &str, head_ref: &str, no_pager: bool) -> std::io::Res
     command
         .arg("diff")
         .arg(format!("{base_ref}...{head_ref}"))
-        .output()
+        .bounded_output()
 }

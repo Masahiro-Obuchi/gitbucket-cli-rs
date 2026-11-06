@@ -3,6 +3,7 @@ use scraper::{Html, Selector};
 use url::Url;
 
 use super::GitBucketWebSession;
+use crate::api::transport;
 use crate::error::{GbError, Result};
 
 pub(crate) struct PreparedLabel {
@@ -65,9 +66,7 @@ impl GitBucketWebSession {
             .await?;
         self.ensure_success(response, "update label color in place")
             .await?;
-        let after = self.label_html(path).await.map_err(|err| GbError::Other(format!(
-            "Label Web update was submitted, but label identity verification failed: {err}. Inspect labels before retrying."
-        )))?;
+        let after = self.label_html(path).await?;
         let after_id = find_label_id(&after, base, owner, repo, name).map_err(|err| GbError::Other(format!(
             "Label Web update was submitted, but its identity cannot be verified: {err}. Inspect labels before retrying."
         )))?;
@@ -79,32 +78,34 @@ impl GitBucketWebSession {
 
     async fn label_html(&self, path: &str) -> Result<String> {
         let expected = Url::parse(&format!("{}{path}", self.base_url))?;
-        let response = self
-            .client
-            .get(expected.clone())
-            .header("X-Requested-With", "XMLHttpRequest")
-            .send()
-            .await?;
-        if matches!(
-            response.status(),
-            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
-        ) || response.url().path().ends_with("/signin")
+        let (response, context) = transport::send(
+            self.client
+                .get(expected.clone())
+                .header("X-Requested-With", "XMLHttpRequest"),
+            false,
+            &self.secrets,
+        )
+        .await?;
+        let status = response.status();
+        let final_url = response.url().clone();
+        let body = transport::read(response, &context, &self.secrets).await?;
+        if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
+            || final_url.path().ends_with("/signin")
         {
             return Err(GbError::Auth(
                 "Web label access requires a valid, permitted session.".into(),
             ));
         }
-        if response.url().origin() != expected.origin() || response.url().path() != expected.path()
-        {
+        if final_url.origin() != expected.origin() || final_url.path() != expected.path() {
             return Err(GbError::Other("Web label metadata redirected outside the expected route. No Web mutation was attempted.".into()));
         }
-        if !response.status().is_success() {
+        if !status.is_success() {
             return Err(GbError::Other(format!(
                 "Cannot read Web label metadata: HTTP {}",
-                response.status().as_u16()
+                status.as_u16()
             )));
         }
-        Ok(response.text().await?)
+        Ok(String::from_utf8_lossy(&body).into_owned())
     }
 }
 

@@ -2,6 +2,7 @@ use crate::cli::common::{
     parse_owner_repo, resolve_host_config, resolve_hostname, validate_selected_profile,
 };
 use crate::error::Result;
+use crate::git::GitCommandExt;
 use crate::output;
 
 pub(super) async fn clone(
@@ -50,7 +51,7 @@ pub(super) async fn clone(
         cmd.arg(dir);
     }
 
-    let mut output = cmd.output()?;
+    let mut output = cmd.bounded_output()?;
     if let Some(auth) = &git_auth {
         auth.redact_output(&mut output);
     }

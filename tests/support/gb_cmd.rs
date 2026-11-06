@@ -26,6 +26,14 @@ impl GbTestEnv {
 
     pub fn command(&self) -> Command {
         let mut command = gb_command();
+        for name in [
+            "GB_HTTP_CONNECT_TIMEOUT",
+            "GB_HTTP_READ_TIMEOUT",
+            "GB_HTTP_TIMEOUT",
+            "GB_GIT_TIMEOUT",
+        ] {
+            command.env_remove(name);
+        }
         command
             .current_dir(self.path())
             .env("GB_CONFIG_DIR", self.path())

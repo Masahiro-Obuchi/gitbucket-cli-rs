@@ -201,15 +201,22 @@ async fn create(
 
     let name = match name {
         Some(name) => name,
-        None => Input::new().with_prompt("Label name").interact_text()?,
+        None => {
+            crate::cancel::input(|| Input::new().with_prompt("Label name").interact_text()).await?
+        }
     };
 
     validate_label_name(&name)?;
     let raw_color = match color {
         Some(color) => color,
-        None => Input::new()
-            .with_prompt("Label color (6-digit hex)")
-            .interact_text()?,
+        None => {
+            crate::cancel::input(|| {
+                Input::new()
+                    .with_prompt("Label color (6-digit hex)")
+                    .interact_text()
+            })
+            .await?
+        }
     };
     let color = normalize_label_color(&raw_color)?;
 
@@ -385,13 +392,14 @@ async fn delete(
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
     if !yes {
-        let confirmed = Confirm::new()
-            .with_prompt(format!(
-                "Are you sure you want to delete label '{}' from {}/{}?",
-                name, ctx.owner, ctx.repo
-            ))
-            .default(false)
-            .interact()?;
+        let prompt = format!(
+            "Are you sure you want to delete label '{}' from {}/{}?",
+            name, ctx.owner, ctx.repo
+        );
+        let confirmed = crate::cancel::input(move || {
+            Confirm::new().with_prompt(prompt).default(false).interact()
+        })
+        .await?;
         if !confirmed {
             println!("Aborted.");
             return Ok(());

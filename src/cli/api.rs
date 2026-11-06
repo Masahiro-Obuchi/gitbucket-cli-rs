@@ -12,7 +12,7 @@ use crate::output;
 
 #[derive(Args)]
 #[command(
-    after_help = "Endpoints must remain within the selected API base after URL normalization. Credentials, fragments, and paths escaping that base are rejected. Authenticated API requests do not follow redirects; use the direct GitBucket base URL."
+    after_help = "Endpoints must remain within the selected API base after URL normalization. Credentials, fragments, and paths escaping that base are rejected. Authenticated API requests do not follow redirects; use the direct GitBucket base URL. JSON strings and status/body objects are preserved; empty success responses print null. HTTP failures include request context; unverified writes are not retried."
 )]
 pub struct ApiArgs {
     /// API endpoint path relative to /api/v3, or a full URL under the configured GitBucket API base
@@ -37,7 +37,7 @@ pub async fn run(
     let method = resolve_method(args.method.as_deref(), args.input.is_some())?;
     let endpoint = normalize_endpoint(&args.endpoint, ctx.client.base_url())?;
     let body = match args.input {
-        Some(input) => Some(read_json_input(&input)?),
+        Some(input) => Some(crate::cancel::input(move || read_json_input(&input)).await?),
         None => None,
     };
 

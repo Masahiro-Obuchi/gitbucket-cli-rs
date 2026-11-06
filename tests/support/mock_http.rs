@@ -91,7 +91,7 @@ pub fn without_identity_probes(requests: Vec<CapturedRequest>) -> Vec<CapturedRe
         .collect()
 }
 
-fn accept_with_timeout(listener: &TcpListener) -> TcpStream {
+pub fn accept_with_timeout(listener: &TcpListener) -> TcpStream {
     listener.set_nonblocking(true).unwrap();
     let deadline = Instant::now() + CONNECT_TIMEOUT;
 
@@ -116,7 +116,7 @@ fn accept_with_timeout(listener: &TcpListener) -> TcpStream {
     }
 }
 
-fn read_request(stream: &mut TcpStream) -> CapturedRequest {
+pub fn read_request(stream: &mut TcpStream) -> CapturedRequest {
     let mut buffer = Vec::new();
     let mut chunk = [0_u8; 1024];
     let header_end;
@@ -187,7 +187,7 @@ fn read_request(stream: &mut TcpStream) -> CapturedRequest {
     }
 }
 
-fn write_response(
+pub fn write_response(
     stream: &mut TcpStream,
     status_line: &str,
     headers: &[(String, String)],

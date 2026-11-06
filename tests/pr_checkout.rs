@@ -18,6 +18,71 @@ struct Fixture {
     local: PathBuf,
 }
 
+#[cfg(unix)]
+#[test]
+fn cancellation_after_checkout_keeps_the_mutating_error_and_provenance() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+    let f = Fixture::new();
+    let hook = f.local.join(".git/hooks/post-checkout");
+    fs::write(
+        &hook,
+        "#!/bin/sh\nprintf ready > .git/checkout-ready\nsleep 60\n",
+    )
+    .unwrap();
+    fs::set_permissions(&hook, fs::Permissions::from_mode(0o700)).unwrap();
+    let (port, server) = spawn_scripted_server(vec![f.response("", "alice/demo", "feature")]);
+    let mut child = f
+        .env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/demo")
+        .current_dir(&f.local)
+        .args(["--json-errors", "pr", "checkout", "7"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let started = Instant::now();
+    while !f.local.join(".git/checkout-ready").exists()
+        && started.elapsed() < Duration::from_secs(8)
+    {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    if !f.local.join(".git/checkout-ready").exists() {
+        child.kill().unwrap();
+        child.wait().unwrap();
+        panic!("checkout hook did not start");
+    }
+    unsafe {
+        assert_eq!(libc::kill(child.id() as i32, libc::SIGTERM), 0);
+    }
+    let cancelled = Instant::now();
+    while child.try_wait().unwrap().is_none() && cancelled.elapsed() < Duration::from_secs(5) {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    if child.try_wait().unwrap().is_none() {
+        child.kill().unwrap();
+        child.wait().unwrap();
+        panic!("checkout did not cancel");
+    }
+    let output = child.wait_with_output().unwrap();
+    assert_failure(&output);
+    let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["code"], "cancelled");
+    assert_eq!(error["error"]["outcome"], "unverified", "{error}");
+    assert!(error["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("git checkout cancelled"));
+    assert_eq!(git_output(&f.local, &["branch", "--show-current"]), "pr-7");
+    assert!(!git_output(
+        &f.local,
+        &["config", "--local", "--get", "branch.pr-7.gb-pr-target"]
+    )
+    .is_empty());
+    server.join().unwrap();
+}
+
 impl Fixture {
     fn new() -> Self {
         let env = GbTestEnv::new();

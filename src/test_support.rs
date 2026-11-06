@@ -13,6 +13,10 @@ const CONFIG_ENV: &[&str] = &[
     "GB_PROTOCOL",
     "GB_USER",
     "GB_WEB_USER",
+    "GB_HTTP_CONNECT_TIMEOUT",
+    "GB_HTTP_READ_TIMEOUT",
+    "GB_HTTP_TIMEOUT",
+    "GB_GIT_TIMEOUT",
     "GB_REPO",
 ];
 

@@ -21,7 +21,10 @@ pub(in crate::cli::pr) async fn comment(
 
     let body_text = match body {
         Some(b) => b,
-        None => Input::new().with_prompt("Comment body").interact_text()?,
+        None => {
+            crate::cancel::input(|| Input::new().with_prompt("Comment body").interact_text())
+                .await?
+        }
     };
 
     let comment_body = CreateComment { body: body_text };

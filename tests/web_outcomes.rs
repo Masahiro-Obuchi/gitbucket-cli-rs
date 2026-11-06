@@ -193,6 +193,7 @@ fn state_form_http_200_or_failed_readback_never_reports_success() {
             assert!(output.stdout.is_empty());
             let error: Value = serde_json::from_slice(&output.stderr).unwrap();
             assert_eq!(error["error"]["operations"][0]["status"], "unverified");
+            assert_eq!(error["error"]["outcome"], "unverified");
             if status.starts_with('5') {
                 assert_eq!(error["error"]["code"], "api_error");
                 assert_eq!(error["error"]["status"], 500);

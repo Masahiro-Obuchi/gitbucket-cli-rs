@@ -75,18 +75,17 @@ impl ApiClient {
         repo: &str,
         number: u64,
     ) -> Result<PullRequest> {
-        match self
-            .get(&format!("/repos/{}/{}/pulls/{}", owner, repo, number))
-            .await
-        {
-            Ok(pr) => Ok(pr),
-            Err(GbError::Json(_)) => {
-                let prs = self.list_pull_requests(owner, repo, "all").await?;
-                prs.into_iter()
-                    .find(|pr| pr.number == number)
-                    .ok_or_else(|| GbError::Other(format!("Pull request #{} not found", number)))
-            }
-            Err(err) => Err(err),
+        let pr: Option<PullRequest> = self
+            .get(&format!("/repos/{owner}/{repo}/pulls/{number}"))
+            .await?;
+        match pr {
+            Some(pr) => Ok(pr),
+            None => self
+                .list_pull_requests(owner, repo, "all")
+                .await?
+                .into_iter()
+                .find(|pr| pr.number == number)
+                .ok_or_else(|| GbError::Other(format!("Pull request #{number} not found"))),
         }
     }
 
@@ -97,8 +96,13 @@ impl ApiClient {
         repo: &str,
         body: &CreatePullRequest,
     ) -> Result<PullRequest> {
-        self.post(&format!("/repos/{}/{}/pulls", owner, repo), body)
-            .await
+        self.request_json(
+            reqwest::Method::POST,
+            &format!("/repos/{owner}/{repo}/pulls"),
+            Some(body),
+            super::client::JsonContract::PullRequestCreate,
+        )
+        .await
     }
 
     /// Edit implemented PR fields; assignees are a separate operation.
@@ -121,9 +125,11 @@ impl ApiClient {
         number: u64,
         body: &MergePullRequest,
     ) -> Result<MergeResult> {
-        self.put(
-            &format!("/repos/{}/{}/pulls/{}/merge", owner, repo, number),
-            body,
+        self.request_json(
+            reqwest::Method::PUT,
+            &format!("/repos/{owner}/{repo}/pulls/{number}/merge"),
+            Some(body),
+            super::client::JsonContract::PullRequestMerge,
         )
         .await
     }

@@ -28,7 +28,7 @@ pub(in crate::cli::pr) async fn create(
 
     let head_branch = match request.head {
         Some(h) => h,
-        None => current_branch_name().ok_or_else(|| {
+        None => current_branch_name()?.ok_or_else(|| {
             GbError::Other(
                 "Could not determine current branch. Specify --head when running from a detached HEAD state.".into(),
             )
@@ -38,10 +38,15 @@ pub(in crate::cli::pr) async fn create(
 
     let base = match request.base {
         Some(b) => b,
-        None => Input::new()
-            .with_prompt("Base branch")
-            .default("main".to_string())
-            .interact_text()?,
+        None => {
+            crate::cancel::input(|| {
+                Input::new()
+                    .with_prompt("Base branch")
+                    .default("main".to_string())
+                    .interact_text()
+            })
+            .await?
+        }
     };
 
     if request.detect_existing {
@@ -63,16 +68,19 @@ pub(in crate::cli::pr) async fn create(
 
     let title = match request.title {
         Some(t) => t,
-        None => Input::new().with_prompt("Title").interact_text()?,
+        None => crate::cancel::input(|| Input::new().with_prompt("Title").interact_text()).await?,
     };
 
     let body_text = match request.body {
         Some(b) => Some(b),
         None => {
-            let b: String = Input::new()
-                .with_prompt("Body (optional)")
-                .allow_empty(true)
-                .interact_text()?;
+            let b: String = crate::cancel::input(|| {
+                Input::new()
+                    .with_prompt("Body (optional)")
+                    .allow_empty(true)
+                    .interact_text()
+            })
+            .await?;
             if b.is_empty() {
                 None
             } else {

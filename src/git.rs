@@ -1,4 +1,6 @@
 //! Git authentication scoped to one configured instance and one requested URL.
+mod process;
+pub(crate) use process::GitCommandExt;
 
 use std::io::{self, Read, Write};
 use std::process::{Command, Output};
@@ -32,7 +34,7 @@ fn rewritten_http_url(source: &str) -> Result<Option<Url>> {
     // Resolve before adding credentials to the child environment.
     let output = git_command()
         .args(["ls-remote", "--get-url", "--", source])
-        .output()?;
+        .bounded_output()?;
     if !output.status.success() {
         return Err(GbError::Other("Unable to resolve Git URL rewriting".into()));
     }

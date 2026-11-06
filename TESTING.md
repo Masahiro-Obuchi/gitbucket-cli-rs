@@ -421,3 +421,42 @@ an already-satisfied state or attempting another mutation.
 ```bash
 cargo test --locked --test web_outcomes --test repo_mutation_flows
 ```
+
+## Transport Deadlines and Response Contracts
+
+`tests/transport_failures.rs` exercises stalled headers, a stalled body, TLS
+handshake stalls, a trickling body that exceeds total time, and abrupt truncation.
+It checks causes/statuses, write uncertainty, request counts (no retries), bounded
+credential-safe diagnostics, ordinary JSON strings/status-body objects, empty/raw
+versus typed contracts, malformed merge envelopes, Web identity/body failures,
+and invalid timeout configuration before mutation. Existing create/merge tests
+retain positive compatibility cases; direct 4.44 E2E captures the actual PR-create
+string wrapper and three-field merge ActionResult using an isolated base branch.
+
+`tests/git_timeouts.rs` runs a real Git clone with a fake SSH command that launches
+another process. It checks termination of both helpers and descendants; Unix also
+sends Ctrl+C to the CLI and checks cleanup before return. A blocked read-only
+Git configuration FIFO preserves its timeout without claiming a write. Windows uses native
+process liveness checks for the timeout case. A unit regression covers a leader
+that exits while its descendant still holds stdout/stderr pipes. No real SSH
+server is contacted. Tests isolate the timeout environment variables.
+
+`tests/cancellation.rs` uses a Unix pseudo-terminal to cancel hostname/token
+prompts with SIGTERM and an actual Ctrl+C key, and checks a blocked
+`gb api --input -` pipe. PR checkout tests cancel a running post-checkout hook
+after HEAD has changed and verify that
+the mutation's cancelled/unverified error and provenance survive failed readback.
+The macOS/Windows CI jobs also run the Git deadline suite and applicable input
+cancellation cases.
+Saved-diff failures check that callers do not reintroduce secret URL queries
+into sanitized transport diagnostics.
+
+```bash
+cargo test --locked --test transport_failures --test git_timeouts
+cargo test --locked --bin gb api::client::tests
+cargo test --locked --bin gb git::process::tests
+```
+
+The Git supervisor uses process-wrap's Unix process groups / Windows Job Objects.
+Its nix dependency requires libc >=0.2.186; the lockfile's libc update accompanies
+that requirement. TLS continues to use rustls with native trusted roots.

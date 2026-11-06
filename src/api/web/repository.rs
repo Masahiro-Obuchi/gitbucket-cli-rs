@@ -6,13 +6,23 @@ use crate::error::{GbError, Result};
 impl GitBucketWebSession {
     pub async fn verify_fork_parent(&self, target: &str, source: &str) -> Result<()> {
         let expected = url::Url::parse(&format!("{}/{target}", self.base_url))?;
-        let response = self.client.get(expected.clone()).send().await?;
-        if !response.status().is_success() || response.url() != &expected {
+        let (response, context) =
+            crate::api::transport::send(self.client.get(expected.clone()), false, &self.secrets)
+                .await?;
+        let status = response.status();
+        let final_url = response.url().clone();
+        let body = crate::api::transport::read(response, &context, &self.secrets).await?;
+        if !status.is_success() || final_url != expected {
             return Err(GbError::Other(
                 "Cannot verify the fork's Web metadata on the expected repository page.".into(),
             ));
         }
-        verify_parent_html(&response.text().await?, &self.base_url, target, source)
+        verify_parent_html(
+            &String::from_utf8_lossy(&body),
+            &self.base_url,
+            target,
+            source,
+        )
     }
 }
 

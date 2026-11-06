@@ -386,6 +386,40 @@ Full-URL `gb repo clone` uses Git's own credentials. HTTP URLs containing passwo
 are rejected; use a credential helper or `OWNER/REPO` with `gb auth login` instead.
 Existing HTTP remote userinfo is removed from the command URL used by PR fetches.
 
+## Network and Git deadlines
+
+REST and Web requests use a 10-second connection deadline, a 30-second read
+inactivity deadline, and a 120-second total request deadline including its body.
+Each Git subprocess has a 300-second deadline, including output collection.
+Configure them with `GB_HTTP_CONNECT_TIMEOUT`, `GB_HTTP_READ_TIMEOUT`,
+`GB_HTTP_TIMEOUT`, and `GB_GIT_TIMEOUT` (seconds, fractional values accepted;
+minimum 0.001, maximum 86400). Zero does not disable deadlines.
+
+```bash
+GB_HTTP_TIMEOUT=180 GB_HTTP_READ_TIMEOUT=45 gb pr view 7
+GB_GIT_TIMEOUT=600 gb repo clone alice/large-repository
+```
+
+HTTP failures retain the method/path, failure phase, cause and known response
+status. Query strings and credentials are excluded from request diagnostics;
+error bodies are bounded and sensitive details are omitted/redacted. With
+`--json-errors`, a write whose response cannot be confirmed adds
+`error.outcome: "unverified"`. `error.cause` distinguishes `timeout`,
+`connect_failed`, `body_read_failed`, and `invalid_json`. Inspect the target
+before retrying: comments, merges, forks and other writes are never automatically
+resent, including after timeouts or an incomplete response body.
+
+Git timeout/Ctrl+C terminates its process group (Unix) or job (Windows), waits
+for its child, and closes inherited pipes. Git stdin is closed and Git terminal
+credential prompts are disabled (`GIT_TERMINAL_PROMPT=0`). SSH or external helpers
+can have their own prompts, within the process deadline. No automatic stash/reset/clean is performed;
+clone directories, refs or worktrees may already have changed. Uncatchable process
+termination and a deliberately detached Unix helper are outside this cleanup.
+Interactive prompts and `gb api --input -` also respond to cancellation and exit
+with code 1 (`cancelled` with `--json-errors`). Cancelling input does not submit
+the pending operation. If PR checkout is interrupted and its state cannot be
+read back, the original mutation error and checkout provenance are retained.
+
 ## Environment variables
 
 | Variable        | Description                                               |
@@ -394,6 +428,10 @@ Existing HTTP remote userinfo is removed from the command URL used by PR fetches
 | `GB_HOST`       | Default GitBucket host or base URL                        |
 | `GB_REPO`       | Default repository (`OWNER/REPO`)                         |
 | `GB_PROFILE`    | Default configuration profile                             |
+| `GB_HTTP_CONNECT_TIMEOUT` | Connection deadline in seconds (default 10) |
+| `GB_HTTP_READ_TIMEOUT` | Read inactivity deadline in seconds (default 30) |
+| `GB_HTTP_TIMEOUT` | Total HTTP request deadline in seconds (default 120) |
+| `GB_GIT_TIMEOUT` | Deadline per Git subprocess in seconds (default 300) |
 | `GB_CONFIG_DIR` | Config directory path (default: `~/.config/gb/`)          |
 | `GB_PROTOCOL`   | Protocol override when using `GB_TOKEN` with a plain host |
 | `GB_USER`       | Username for GitBucket web sessions and token-authenticated Git transfers |
@@ -546,7 +584,12 @@ credentials, and fragments are rejected before the request. Authenticated API
 requests do not follow redirects; configure the direct GitBucket base URL.
 Base URLs must use HTTP(S), without credentials, query strings, or fragments.
 When `--input` is given and `-X/--method` is omitted, `gb api` defaults to `POST`.
-JSON responses are pretty-printed, and empty success responses print `null`.
+JSON responses are pretty-printed, and zero-byte success responses (including
+204) print `null`. Top-level strings and objects containing `status`/`body` are
+preserved as returned. `gb api` does not apply PR-command wrapper compatibility
+or treat non-JSON text as JSON. Internal diff/HTML reads use a separate text
+contract; typed JSON endpoints reject missing or invalid JSON instead of silently
+switching to another endpoint. PR detail fallback is limited to a JSON `null`.
 
 ## Completion command
 

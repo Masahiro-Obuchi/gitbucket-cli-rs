@@ -1,4 +1,5 @@
 //! Conservative local PR checkout: never reset an existing user branch.
+use crate::git::GitCommandExt;
 
 use std::fs::{File, OpenOptions};
 use std::path::PathBuf;
@@ -41,7 +42,7 @@ pub(super) async fn checkout(
     }
     ensure_available(&branch)?;
 
-    let source = resolve_git_fetch_source(&pr_head_fetch_source(&pr, &ctx.git_auth))?;
+    let source = resolve_git_fetch_source(&pr_head_fetch_source(&pr, &ctx.git_auth)?)?;
     let head_ref = format!("{}/head", fetch_namespace(&identity));
     let fetched = git_fetch_ref(
         &ctx.git_auth,
@@ -90,9 +91,23 @@ pub(super) async fn checkout(
     } else {
         command.arg(&branch);
     }
-    let result = command.arg("--").output();
-    let completed = matches!(&result, Ok(output) if output.status.success())
-        || checkout_completed(&branch, &commit)?;
+    let result = command.arg("--").bounded_output();
+    let completed = if matches!(&result, Ok(output) if output.status.success()) {
+        true
+    } else {
+        match checkout_completed(&branch, &commit) {
+            Ok(completed) => completed,
+            // Cancellation/deadline failures may have changed HEAD and files.
+            // A failed readback must not replace that mutation's error or
+            // authorize removing its provenance record.
+            Err(_) if result.is_err() => return result.map(|_| ()),
+            Err(error) => {
+                return Err(GbError::Unverified {
+                    source: Box::new(error),
+                })
+            }
+        }
+    };
     if !completed && existing.is_none() {
         // Only metadata is restored; never reset/clean/stash user work to recover.
         let restored = match previous_marker {
@@ -126,7 +141,7 @@ pub(super) async fn checkout(
 fn checkout_completed(branch: &str, commit: &str) -> Result<bool> {
     let head = Command::new("git")
         .args(["symbolic-ref", "-q", "HEAD"])
-        .output()?;
+        .bounded_output()?;
     if !head.status.success() {
         return Ok(false);
     }
@@ -137,7 +152,7 @@ fn checkout_completed(branch: &str, commit: &str) -> Result<bool> {
 }
 
 fn checked_git(args: &[&str]) -> Result<Output> {
-    let output = Command::new("git").args(args).output()?;
+    let output = Command::new("git").args(args).bounded_output()?;
     if !output.status.success() {
         return Err(GbError::Other(format!(
             "git {} failed. {}",
@@ -151,7 +166,7 @@ fn checked_git(args: &[&str]) -> Result<Output> {
 fn config_value(key: &str) -> Result<Option<String>> {
     let output = Command::new("git")
         .args(["config", "--local", "--get", key])
-        .output()?;
+        .bounded_output()?;
     match output.status.code() {
         Some(0) => Ok(Some(
             String::from_utf8_lossy(&output.stdout).trim_end().into(),
