@@ -31,6 +31,7 @@ impl GbTestEnv {
             "GB_HTTP_READ_TIMEOUT",
             "GB_HTTP_TIMEOUT",
             "GB_GIT_TIMEOUT",
+            "GB_PAGINATION_MAX_PAGES",
         ] {
             command.env_remove(name);
         }

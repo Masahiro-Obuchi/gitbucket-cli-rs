@@ -77,7 +77,7 @@ pub(super) async fn list_comments(
     super::target::require_pull_request(&ctx, number).await?;
     let comments = ctx
         .client
-        .list_all_pr_comments(&ctx.owner, &ctx.repo, number)
+        .list_pr_comments(&ctx.owner, &ctx.repo, number)
         .await?;
 
     if json {

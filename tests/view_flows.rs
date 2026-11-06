@@ -104,7 +104,7 @@ fn issue_view_with_comments_renders_details_and_comments() {
             r#"{"number":7,"title":"Bug report","body":"Body text","state":"open","user":{"login":"alice"},"labels":[{"name":"bug"},{"name":"urgent"}],"assignees":[{"login":"bob"},{"login":"carol"}],"milestone":{"number":3,"title":"v1.0","state":"open"},"created_at":"2026-03-24T00:00:00Z"}"#,
         ),
         ScriptedResponse::json(
-            "GET /api/v3/repos/alice/project/issues/7/comments HTTP/1.1",
+            "GET /api/v3/repos/alice/project/issues/7/comments?per_page=100 HTTP/1.1",
             "200 OK",
             r#"[{"id":1,"body":"First comment","user":{"login":"bob"},"created_at":"2026-03-25T00:00:00Z"}]"#,
         ),
@@ -154,7 +154,7 @@ fn pr_view_with_comments_renders_details_and_comments() {
             r#"{"number":5,"title":"Add feature","body":"PR body","state":"closed","merged":true,"user":{"login":"alice"},"head":{"ref":"feature/demo"},"base":{"ref":"main"},"created_at":"2026-03-24T00:00:00Z"}"#,
         ),
         ScriptedResponse::json(
-            "GET /api/v3/repos/alice/project/issues/5/comments HTTP/1.1",
+            "GET /api/v3/repos/alice/project/issues/5/comments?per_page=100 HTTP/1.1",
             "200 OK",
             r#"[{"id":1,"body":"Please rebase","user":{"login":"carol"},"created_at":"2026-03-25T00:00:00Z"}]"#,
         ),
@@ -232,7 +232,7 @@ fn pr_view_json_with_comments_includes_comments_array() {
             r#"{"number":5,"title":"Add feature","body":"PR body","state":"open","head":{"ref":"feature/demo"},"base":{"ref":"main"}}"#,
         ),
         ScriptedResponse::json(
-            "GET /api/v3/repos/alice/project/issues/5/comments HTTP/1.1",
+            "GET /api/v3/repos/alice/project/issues/5/comments?per_page=100 HTTP/1.1",
             "200 OK",
             r#"[{"id":11,"body":"Please rebase","user":{"login":"carol"},"created_at":"2026-03-25T00:00:00Z"}]"#,
         ),

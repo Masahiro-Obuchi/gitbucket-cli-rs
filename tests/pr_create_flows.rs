@@ -141,14 +141,19 @@ fn pr_create_json_prints_created_pull_request() {
 #[test]
 fn pr_create_detect_existing_returns_matching_open_pull_request() {
     let env = GbTestEnv::new();
-    let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
-        "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
-        "200 OK",
-        r#"[
-            {"number":7,"title":"Existing PR","state":"open","head":{"ref":"feature/branch","label":"alice:feature/branch","repo":{"name":"project","full_name":"alice/project"}},"base":{"ref":"main","repo":{"name":"project","full_name":"alice/project"}}}
-        ]"#,
-    )]);
-
+    let pr = serde_json::json!({"number":7,"title":"Existing PR","state":"open","head":{"ref":"feature/branch","repo":{"name":"project","full_name":"alice/project"}},"base":{"ref":"main","repo":{"name":"project","full_name":"alice/project"}}});
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
+            "200 OK",
+            &serde_json::json!([pr.clone()]).to_string(),
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls/7 HTTP/1.1",
+            "200 OK",
+            &pr.to_string(),
+        ),
+    ]);
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
@@ -162,20 +167,14 @@ fn pr_create_detect_existing_returns_matching_open_pull_request() {
         ])
         .output()
         .unwrap();
-
-    let requests = server.join().unwrap();
-
     assert!(
         output.status.success(),
-        "stderr: {}",
+        "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(requests.len(), 1);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("Found existing pull request #7: Existing PR"),
-        "stdout: {stdout}"
-    );
+    assert!(String::from_utf8_lossy(&output.stdout)
+        .contains("Found existing pull request #7: Existing PR"));
+    assert_eq!(server.join().unwrap().len(), 2);
 }
 
 #[test]
@@ -190,9 +189,9 @@ fn pr_create_detect_existing_ignores_qualified_head_from_different_repo() {
             ]"#,
         ),
         ScriptedResponse::json(
-            "GET /api/v3/repos/alice/project/issues?state=open HTTP/1.1",
+            "GET /api/v3/repos/alice/project/pulls/7 HTTP/1.1",
             "200 OK",
-            "[]",
+            r#"{"number":7,"title":"Different repo PR","state":"open","head":{"ref":"feature/branch","repo":{"name":"other-project","full_name":"bob/other-project"}},"base":{"ref":"main","repo":{"name":"project","full_name":"alice/project"}}}"#,
         ),
         ScriptedResponse::json(
             "POST /api/v3/repos/alice/project/pulls HTTP/1.1",
@@ -240,7 +239,7 @@ fn pr_create_detect_existing_ignores_qualified_head_from_different_repo() {
 }
 
 #[test]
-fn pr_create_detect_existing_continues_when_issue_fallback_fails() {
+fn pr_create_detect_existing_does_not_consult_the_issue_collection() {
     let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
@@ -249,17 +248,11 @@ fn pr_create_detect_existing_continues_when_issue_fallback_fails() {
             "[]",
         ),
         ScriptedResponse::json(
-            "GET /api/v3/repos/alice/project/issues?state=open HTTP/1.1",
-            "500 Internal Server Error",
-            r#"{"message":"temporary issue list failure"}"#,
-        ),
-        ScriptedResponse::json(
             "POST /api/v3/repos/alice/project/pulls HTTP/1.1",
             "200 OK",
-            r#"{"number":8,"title":"Add feature","state":"open","head":{"ref":"feature/branch"},"base":{"ref":"main"}}"#,
+            r#"{"number":8,"title":"Add feature","state":"open"}"#,
         ),
     ]);
-
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
@@ -268,7 +261,7 @@ fn pr_create_detect_existing_continues_when_issue_fallback_fails() {
             "-t",
             "Add feature",
             "-b",
-            "PR body",
+            "Body",
             "--head",
             "feature/branch",
             "--base",
@@ -277,26 +270,14 @@ fn pr_create_detect_existing_continues_when_issue_fallback_fails() {
         ])
         .output()
         .unwrap();
-
-    let requests = server.join().unwrap();
-
     assert!(
         output.status.success(),
-        "stderr: {}",
+        "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(requests.len(), 3);
-    assert_eq!(requests[2].method, "POST");
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("skipping issue-list fallback"),
-        "stderr: {stderr}"
-    );
-    assert!(
-        String::from_utf8_lossy(&output.stdout).contains("Created pull request #8: Add feature"),
-        "stdout: {}",
-        String::from_utf8_lossy(&output.stdout)
-    );
+    let requests = server.join().unwrap();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[1].method, "POST");
 }
 
 #[test]
@@ -305,11 +286,6 @@ fn pr_create_detect_existing_preserves_create_error_when_recheck_fails() {
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
-            "200 OK",
-            "[]",
-        ),
-        ScriptedResponse::json(
-            "GET /api/v3/repos/alice/project/issues?state=open HTTP/1.1",
             "200 OK",
             "[]",
         ),
@@ -346,39 +322,36 @@ fn pr_create_detect_existing_preserves_create_error_when_recheck_fails() {
     let requests = server.join().unwrap();
 
     assert!(!output.status.success());
-    assert_eq!(requests.len(), 4);
+    assert_eq!(requests.len(), 3);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("Validation failed: pull request already exists"),
         "stderr: {stderr}"
     );
     assert!(
-        !stderr.contains("temporary list failure"),
+        stderr.contains("temporary list failure"),
         "stderr: {stderr}"
     );
 }
 
 #[test]
-fn pr_create_detect_existing_finds_pull_request_from_issue_listing_gap() {
+fn pr_create_detect_existing_verifies_plausible_but_wrong_summary_ownership() {
     let env = GbTestEnv::new();
+    let summary = serde_json::json!({"number":7,"title":"Existing PR","state":"open","head":{"ref":"feature/branch","repo":{"name":"project","full_name":"alice/project"}},"base":{"ref":"main","repo":{"name":"project","full_name":"alice/project"}}});
+    let mut actual = summary.clone();
+    actual["head"]["repo"]["full_name"] = serde_json::json!("bob/project");
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
             "200 OK",
-            "[]",
-        ),
-        ScriptedResponse::json(
-            "GET /api/v3/repos/alice/project/issues?state=open HTTP/1.1",
-            "200 OK",
-            r#"[{"number":7,"title":"Existing PR","state":"open","pull_request":{}}]"#,
+            &serde_json::json!([summary]).to_string(),
         ),
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls/7 HTTP/1.1",
             "200 OK",
-            r#"{"number":7,"title":"Existing PR","state":"open","head":{"ref":"feature/branch","label":"alice:feature/branch","repo":{"name":"project","full_name":"alice/project"}},"base":{"ref":"main","repo":{"name":"project","full_name":"alice/project"}}}"#,
+            &actual.to_string(),
         ),
     ]);
-
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
@@ -386,27 +359,21 @@ fn pr_create_detect_existing_finds_pull_request_from_issue_listing_gap() {
             "create",
             "--head",
             "feature/branch",
+            "--head-owner",
+            "bob",
             "--base",
             "main",
             "--detect-existing",
         ])
         .output()
         .unwrap();
-
-    let requests = server.join().unwrap();
-
     assert!(
         output.status.success(),
-        "stderr: {}",
+        "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(requests.len(), 3);
-    assert!(
-        String::from_utf8_lossy(&output.stdout)
-            .contains("Found existing pull request #7: Existing PR"),
-        "stdout: {}",
-        String::from_utf8_lossy(&output.stdout)
-    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Found existing pull request #7"));
+    assert_eq!(server.join().unwrap().len(), 2);
 }
 
 #[test]
@@ -459,42 +426,30 @@ fn pr_create_detect_existing_fetches_details_when_list_item_lacks_head_identity(
 }
 
 #[test]
-fn pr_create_detect_existing_continues_when_pr_detail_fetch_fails() {
+fn pr_create_detect_existing_stops_when_pr_detail_fetch_fails() {
     let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
             "200 OK",
-            r#"[
-                {"number":7,"title":"Incomplete PR","state":"open","head":{"ref":"feature/branch"},"base":{"ref":"main"}}
-            ]"#,
+            r#"[{"number":7,"title":"Incomplete PR","state":"open","head":{"ref":"feature/branch"},"base":{"ref":"main"}}]"#,
         ),
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls/7 HTTP/1.1",
             "500 Internal Server Error",
             r#"{"message":"temporary PR detail failure"}"#,
         ),
-        ScriptedResponse::json(
-            "GET /api/v3/repos/alice/project/issues?state=open HTTP/1.1",
-            "200 OK",
-            "[]",
-        ),
-        ScriptedResponse::json(
-            "POST /api/v3/repos/alice/project/pulls HTTP/1.1",
-            "200 OK",
-            r#"{"number":8,"title":"Add feature","state":"open","head":{"ref":"feature/branch"},"base":{"ref":"main"}}"#,
-        ),
     ]);
-
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args([
+            "--json-errors",
             "pr",
             "create",
             "-t",
             "Add feature",
             "-b",
-            "PR body",
+            "Body",
             "--head",
             "feature/branch",
             "--base",
@@ -503,26 +458,11 @@ fn pr_create_detect_existing_continues_when_pr_detail_fetch_fails() {
         ])
         .output()
         .unwrap();
-
-    let requests = server.join().unwrap();
-
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(requests.len(), 4);
-    assert_eq!(requests[3].method, "POST");
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("skipping pull request #7"),
-        "stderr: {stderr}"
-    );
-    assert!(
-        String::from_utf8_lossy(&output.stdout).contains("Created pull request #8: Add feature"),
-        "stdout: {}",
-        String::from_utf8_lossy(&output.stdout)
-    );
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["status"], 500);
+    assert!(server.join().unwrap().iter().all(|r| r.method == "GET"));
 }
 
 #[test]

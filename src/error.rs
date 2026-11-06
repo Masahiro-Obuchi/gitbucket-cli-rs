@@ -2,6 +2,16 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum GbError {
+    #[error("Cannot confirm a complete collection: {message} No partial results were returned.")]
+    Pagination {
+        cause: &'static str,
+        message: String,
+    },
+    #[error("{context}: {source}")]
+    Context {
+        source: Box<GbError>,
+        context: String,
+    },
     #[error("git {operation} {reason}{}{}", .source.as_ref().map(|error| format!(": {error}")).unwrap_or_default(), if *.mutating { ". Inspect local Git state before retrying; local changes may already be applied." } else { "" })]
     Git {
         operation: &'static str,
@@ -77,6 +87,8 @@ pub enum GbError {
 impl GbError {
     pub fn code(&self) -> &'static str {
         match self {
+            GbError::Pagination { .. } => "pagination_incomplete",
+            GbError::Context { source, .. } => source.code(),
             GbError::Git {
                 reason: "timed out",
                 ..
@@ -108,6 +120,8 @@ impl GbError {
 
     pub fn cause_code(&self) -> Option<&'static str> {
         match self {
+            GbError::Pagination { cause, .. } => Some(cause),
+            GbError::Context { source, .. } => source.cause_code(),
             GbError::Cancelled => Some("cancelled"),
             GbError::Git {
                 reason: "timed out",
@@ -135,6 +149,7 @@ impl GbError {
 
     pub fn status(&self) -> Option<u16> {
         match self {
+            GbError::Context { source, .. } => source.status(),
             GbError::Request { status, .. } => *status,
             GbError::Operation { source, .. } | GbError::Unverified { source } => source.status(),
             GbError::Api { status, .. } => Some(*status),
@@ -144,6 +159,7 @@ impl GbError {
 
     pub fn operations(&self) -> Option<&[crate::operation::Operation]> {
         match self {
+            Self::Context { source, .. } => source.operations(),
             Self::Operation { operations, .. } => Some(operations),
             _ => None,
         }
@@ -151,6 +167,7 @@ impl GbError {
 
     pub fn outcome(&self) -> Option<&'static str> {
         match self {
+            Self::Context { source, .. } => source.outcome(),
             Self::Request { mutating: true, .. } | Self::Unverified { .. } => Some("unverified"),
             Self::Git {
                 mutating: true,

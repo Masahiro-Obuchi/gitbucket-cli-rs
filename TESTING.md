@@ -460,3 +460,29 @@ cargo test --locked --bin gb git::process::tests
 The Git supervisor uses process-wrap's Unix process groups / Windows Job Objects.
 Its nix dependency requires libc >=0.2.186; the lockfile's libc update accompanies
 that requirement. TLS continues to use rustls with native trusted roots.
+
+
+## Complete Collections and Existing PR Detection
+
+`tests/pagination_flows.rs` covers fixed Issue/PR pages at 0/1/25/26/50/51,
+all-return comments through 101 rows, relative/absolute/multiple Link fields,
+filter preservation, exact terminal pages, deduplication, cycles, ignored pages,
+unsafe URLs and configuration/cap failures. Later-page failures never return a
+partial array or allow PR creation. Null detail searches and failed-create
+rechecks traverse all pages, preserve errors and never retry the POST.
+View/list/edit-last share linked comment retrieval. PR list/create regressions
+also verify canonical fork identities and failure before creation when detail
+cannot establish identity; no Issue-listing recovery is assumed.
+
+```bash
+cargo test --locked --test pagination_flows --test pr_create_flows --test pr_list_state_comment_flows
+```
+
+The ignored live contract `contract_fixed_pages_all_comments_and_canonical_fork_identity`
+creates an isolated repository with 51 Issues, 51 PRs and 51 comments. It checks
+all boundary counts directly over REST and through the CLI, open/closed/all,
+the oldest PR beyond page two, latest-comment editing and a real root-owned fork.
+It reproduces the 4.44.0 collection's wrong fork ownership and verifies canonical
+JSON hydration and existing-PR lookup. Run it with the other E2E tests at root
+and `/gitbucket` using the dedicated Docker fixture. Fixture records remain in
+the test volume for inspection. See [pagination design](docs/PAGINATION.md).

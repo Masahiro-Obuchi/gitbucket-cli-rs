@@ -109,7 +109,11 @@ pub(in crate::cli::pr) async fn create(
             request.json,
             "Created",
         ),
-        Err(err) if request.detect_existing => {
+        Err(err)
+            if request.detect_existing
+                && err.code() != "cancelled"
+                && !crate::cancel::requested() =>
+        {
             match find_existing_open_pull_request(&ctx.client, &ctx.owner, &ctx.repo, &head, &base)
                 .await
             {
@@ -124,7 +128,9 @@ pub(in crate::cli::pr) async fn create(
                         "Found existing",
                     )
                 }
-                Ok(None) | Err(_) => Err(err),
+                Ok(None) => Err(err),
+                Err(check) if check.code() == "cancelled" || crate::cancel::requested() => Err(check),
+                Err(check) => Err(GbError::Context { source: Box::new(err), context: format!("PR creation failed and a complete existing-PR recheck also failed ({check}). Inspect the repository before retrying") }),
             }
         }
         Err(err) => Err(err),

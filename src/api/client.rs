@@ -62,11 +62,12 @@ impl ApiClient {
     pub(crate) async fn get_with_headers<T: DeserializeOwned>(
         &self,
         path_or_url: &str,
-    ) -> Result<(T, HeaderMap)> {
+    ) -> Result<(T, HeaderMap, url::Url)> {
         let url = normalize_path_or_url(path_or_url, &self.base_url)?;
         let (response, context) =
             transport::send(self.client.get(url), false, &self.secrets).await?;
         let headers = response.headers().clone();
+        let response_url = response.url().clone();
         let body = transport::read(response, &context, &self.secrets).await?;
         if !context.status.is_some_and(|s| (200..300).contains(&s)) {
             return Err(transport::status_error(&context, &body, &self.secrets));
@@ -77,7 +78,7 @@ impl ApiClient {
             context.status.unwrap_or_default(),
         )
         .map_err(|err| context.error(err, "decode", &self.secrets))?;
-        Ok((value, headers))
+        Ok((value, headers, response_url))
     }
 
     pub async fn post<T: DeserializeOwned, B: serde::Serialize>(

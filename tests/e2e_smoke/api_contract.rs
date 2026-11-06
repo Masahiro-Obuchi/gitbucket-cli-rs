@@ -495,3 +495,299 @@ async fn contract_pr_content_patch_requires_a_title_body_pair() {
     assert_eq!(fixed["body"], "paired-body");
     assert_eq!(stored(&client, &path).await["body"], "paired-body");
 }
+
+fn collection_cli(temp: &std::path::Path, repo: &str, kind: &str, state: &str) -> Value {
+    serde_json::from_str(&gb_output_with_env(
+        temp,
+        temp,
+        &[kind, "list", "--repo", repo, "--state", state, "--json"],
+    ))
+    .unwrap()
+}
+
+fn numbers(value: &Value) -> Vec<u64> {
+    value
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["number"].as_u64().unwrap())
+        .collect()
+}
+
+async fn assert_fixed_collection(client: &Client, repo: &str, route: &str, expected: &[u64]) {
+    let mut actual = Vec::new();
+    for page in 1..=expected.len() / 25 + 1 {
+        // 4.44.0 ignores per_page=1; it uses fixed pages of 25 and no Link.
+        let response = request(
+            client,
+            Method::GET,
+            &format!("repos/{repo}/{route}?state=all&page={page}&per_page=1"),
+            None,
+        )
+        .await;
+        assert!(!response.headers().contains_key("link"));
+        let rows = success(response).await;
+        assert_eq!(
+            rows.as_array().unwrap().len(),
+            expected.len().saturating_sub((page - 1) * 25).min(25)
+        );
+        actual.extend(numbers(&rows));
+    }
+    actual.sort_unstable();
+    assert_eq!(actual, expected);
+}
+
+#[tokio::test]
+#[ignore = "requires the pinned Docker GitBucket fixture"]
+async fn contract_fixed_pages_all_comments_and_canonical_fork_identity() {
+    let temp = tempdir().unwrap();
+    login(temp.path());
+    let client = client();
+    let name = format!("pagination-{}", unique_suffix());
+    let owner = required_env("GB_E2E_USER");
+    let repo = format!("{owner}/{name}");
+    let created = success(
+        request(
+            &client,
+            Method::POST,
+            "user/repos",
+            Some(json!({"name":name,"auto_init":true,"private":false})),
+        )
+        .await,
+    )
+    .await;
+    let base = created["default_branch"].as_str().unwrap();
+    let work = temp.path().join("work");
+    clone_repo_to(temp.path(), &repo, &work);
+    configure_git_identity(&work);
+    std::fs::write(work.join("pages.txt"), "pagination\n").unwrap();
+    run_git(&work, &["add", "pages.txt"]);
+    run_git(&work, &["commit", "-m", "Add pagination fixture"]);
+    let refs: Vec<_> = (1..=51)
+        .map(|n| format!("HEAD:refs/heads/pages-topic-{n}"))
+        .collect();
+    let mut push = vec!["push", "origin"];
+    push.extend(refs.iter().map(String::as_str));
+    run_git(&work, &push);
+
+    let mut issues = Vec::new();
+    let mut prs = Vec::new();
+    for count in [0, 1, 25, 26, 50, 51] {
+        while issues.len() < count {
+            let n = issues.len() + 1;
+            let issue = success(
+                request(
+                    &client,
+                    Method::POST,
+                    &format!("repos/{repo}/issues"),
+                    Some(json!({"title":format!("Issue {n}")})),
+                )
+                .await,
+            )
+            .await;
+            issues.push(issue["number"].as_u64().unwrap());
+            let pr = success(request(&client, Method::POST, &format!("repos/{repo}/pulls"), Some(json!({"title":format!("PR {n}"),"head":format!("pages-topic-{n}"),"base":base}))).await).await;
+            let pr: Value = serde_json::from_str(pr.as_str().unwrap()).unwrap();
+            prs.push(pr["number"].as_u64().unwrap());
+        }
+        for (kind, route, expected) in [("issue", "issues", &issues), ("pr", "pulls", &prs)] {
+            assert_fixed_collection(&client, &repo, route, expected).await;
+            let mut descending = expected.clone();
+            descending.reverse();
+            assert_eq!(
+                numbers(&collection_cli(temp.path(), &repo, kind, "all")),
+                descending
+            );
+        }
+    }
+    // The oldest open PR is beyond the first two pages.
+    let existing = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &[
+            "pr",
+            "create",
+            "--repo",
+            &repo,
+            "--head",
+            "pages-topic-1",
+            "--base",
+            base,
+            "--detect-existing",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        serde_json::from_str::<Value>(&existing).unwrap()["number"],
+        prs[0]
+    );
+    let number = prs[0].to_string();
+    let comments_path = format!("repos/{repo}/issues/{number}/comments");
+    let mut comment_ids = Vec::new();
+    for count in [0, 1, 25, 26, 50, 51] {
+        while comment_ids.len() < count {
+            let comment = success(
+                request(
+                    &client,
+                    Method::POST,
+                    &comments_path,
+                    Some(json!({"body":format!("comment {}", comment_ids.len())})),
+                )
+                .await,
+            )
+            .await;
+            comment_ids.push(comment["id"].as_u64().unwrap());
+        }
+        let response = request(
+            &client,
+            Method::GET,
+            &format!("{comments_path}?page=2&per_page=1"),
+            None,
+        )
+        .await;
+        assert!(!response.headers().contains_key("link"));
+        assert_eq!(success(response).await.as_array().unwrap().len(), count);
+        let listed = gb_output_with_env(
+            temp.path(),
+            temp.path(),
+            &["pr", "comment", "list", &number, "--repo", &repo, "--json"],
+        );
+        let rows: Value = serde_json::from_str(&listed).unwrap();
+        assert_eq!(
+            rows.as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v["id"].as_u64().unwrap())
+                .collect::<Vec<_>>(),
+            comment_ids
+        );
+    }
+    let viewed = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &[
+            "pr",
+            "view",
+            &number,
+            "--repo",
+            &repo,
+            "--comments",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        serde_json::from_str::<Value>(&viewed).unwrap()["comments"]
+            .as_array()
+            .unwrap()
+            .len(),
+        51
+    );
+    gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &[
+            "pr",
+            "comment",
+            &number,
+            "--repo",
+            &repo,
+            "--edit-last",
+            "--body",
+            "latest edited",
+        ],
+    );
+    assert_eq!(
+        stored(
+            &client,
+            &format!(
+                "repos/{repo}/issues/comments/{}",
+                comment_ids.last().unwrap()
+            )
+        )
+        .await["body"],
+        "latest edited"
+    );
+
+    for (kind, number) in [("issue", issues[0]), ("pr", prs[0])] {
+        gb_output_with_env(
+            temp.path(),
+            temp.path(),
+            &[kind, "close", &number.to_string(), "--repo", &repo],
+        );
+        for (state, count) in [("open", 50), ("closed", 1), ("all", 51)] {
+            assert_eq!(
+                collection_cli(temp.path(), &repo, kind, state)
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                count
+            );
+        }
+    }
+
+    // Fork as the fixture's root actor. The source is public, and all branch
+    // refs already exist in the fork; no root Git credentials are needed.
+    let mut command = gb_command();
+    for (key, value) in e2e_env(temp.path()) {
+        command.env(key, value);
+    }
+    command
+        .current_dir(temp.path())
+        .env("GB_WEB_USER", "root")
+        .env("GB_PASSWORD", "root")
+        .args(["repo", "fork", &repo, "--group", "root"]);
+    run_and_assert_success(&mut command);
+    let fork_pr = success(
+        request(
+            &client,
+            Method::POST,
+            &format!("repos/{repo}/pulls"),
+            Some(json!({"title":"Fork pagination","head":"root:pages-topic-1","base":base})),
+        )
+        .await,
+    )
+    .await;
+    let fork_pr: Value = serde_json::from_str(fork_pr.as_str().unwrap()).unwrap();
+    let fork_number = fork_pr["number"].as_u64().unwrap();
+    let expected_head = format!("root/{name}");
+    assert_eq!(
+        stored(&client, &format!("repos/{repo}/pulls/{fork_number}")).await["head"]["repo"]
+            ["full_name"],
+        expected_head
+    );
+    let summary = stored(&client, &format!("repos/{repo}/pulls?state=all")).await;
+    let summary = summary
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|pr| pr["number"] == fork_number)
+        .unwrap();
+    assert_eq!(
+        summary["head"]["repo"]["full_name"], repo,
+        "4.44 collection misidentifies a fork as base-owned"
+    );
+    let listed = collection_cli(temp.path(), &repo, "pr", "all");
+    assert_eq!(listed[0]["head"]["repo"]["full_name"], expected_head);
+    let existing = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &[
+            "pr",
+            "create",
+            "--repo",
+            &repo,
+            "--head",
+            "pages-topic-1",
+            "--head-owner",
+            "root",
+            "--base",
+            base,
+            "--detect-existing",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        serde_json::from_str::<Value>(&existing).unwrap()["number"],
+        fork_number
+    );
+}

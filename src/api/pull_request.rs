@@ -1,5 +1,5 @@
+use super::pagination::Collection;
 use crate::api::client::ApiClient;
-use std::collections::HashSet;
 
 use crate::error::{GbError, Result};
 use crate::models::comment::{Comment, CreateComment};
@@ -15,14 +15,15 @@ impl ApiClient {
         repo: &str,
         state: &str,
     ) -> Result<Vec<PullRequest>> {
-        self.get(&format!("/repos/{owner}/{repo}/pulls?state={state}"))
-            .await
+        self.collection(
+            &format!("/repos/{owner}/{repo}/pulls?state={state}"),
+            Collection::IssuesOrPulls,
+        )
+        .await
     }
 
-    /// List pull requests and fill known gaps in GitBucket's repository PR listing.
-    ///
-    /// Some GitBucket versions can omit repository-visible open PRs from the
-    /// pulls collection while still exposing them through the issues collection.
+    /// The pinned collection misidentifies fork head repositories. The table
+    /// uses summary fields; JSON needs canonical detail for every listed PR.
     pub async fn list_repository_pull_requests(
         &self,
         owner: &str,
@@ -31,41 +32,28 @@ impl ApiClient {
         hydrate: bool,
     ) -> Result<Vec<PullRequest>> {
         let mut prs = self.list_pull_requests(owner, repo, state).await?;
-
-        if state != "open" {
-            return Ok(prs);
-        }
-
         if hydrate {
             for pr in &mut prs {
-                match self.get_pull_request(owner, repo, pr.number).await {
-                    Ok(hydrated) => *pr = hydrated,
-                    Err(GbError::Api { status, .. }) if status == 404 || status == 501 => {}
-                    Err(err) => return Err(err),
+                let actual = self.pull_request_details(owner, repo, pr.number).await?.ok_or_else(|| GbError::Other(format!("PR #{} is listed but its canonical details are unavailable; cannot verify fork identity.", pr.number)))?;
+                if actual.number != pr.number {
+                    return Err(GbError::Other(
+                        "PR detail returned another number; no partial list was returned.".into(),
+                    ));
                 }
+                *pr = actual;
             }
         }
-
-        let issues = match self.list_issues(owner, repo, state).await {
-            Ok(issues) => issues,
-            Err(GbError::Api { status, .. }) if status == 404 || status == 501 => return Ok(prs),
-            Err(err) => return Err(err),
-        };
-        let mut seen: HashSet<u64> = prs.iter().map(|pr| pr.number).collect();
-
-        for issue in issues {
-            if issue.pull_request.is_none() || !seen.insert(issue.number) {
-                continue;
-            }
-
-            match self.get_pull_request(owner, repo, issue.number).await {
-                Ok(pr) => prs.push(pr),
-                Err(GbError::Api { status, .. }) if status == 404 || status == 501 => continue,
-                Err(err) => return Err(err),
-            }
-        }
-
         Ok(prs)
+    }
+
+    pub(crate) async fn pull_request_details(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Option<PullRequest>> {
+        self.get(&format!("/repos/{owner}/{repo}/pulls/{number}"))
+            .await
     }
 
     /// Get a single pull request
@@ -75,9 +63,7 @@ impl ApiClient {
         repo: &str,
         number: u64,
     ) -> Result<PullRequest> {
-        let pr: Option<PullRequest> = self
-            .get(&format!("/repos/{owner}/{repo}/pulls/{number}"))
-            .await?;
+        let pr = self.pull_request_details(owner, repo, number).await?;
         match pr {
             Some(pr) => Ok(pr),
             None => self
@@ -85,6 +71,14 @@ impl ApiClient {
                 .await?
                 .into_iter()
                 .find(|pr| pr.number == number)
+                .map(|mut pr| {
+                    // Enumeration can establish that this number is a PR, but
+                    // cannot establish its fork head when the detail is null.
+                    // Withhold the head rather than fetch a branch from a
+                    // potentially unrelated base repository.
+                    pr.head = None;
+                    pr
+                })
                 .ok_or_else(|| GbError::Other(format!("Pull request #{number} not found"))),
         }
     }
@@ -142,16 +136,6 @@ impl ApiClient {
         number: u64,
     ) -> Result<Vec<Comment>> {
         self.list_issue_comments(owner, repo, number).await
-    }
-
-    /// List all comments on a pull request across paginated API responses.
-    pub async fn list_all_pr_comments(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-    ) -> Result<Vec<Comment>> {
-        self.list_all_issue_comments(owner, repo, number).await
     }
 
     /// Add a comment to a pull request (uses issues API)

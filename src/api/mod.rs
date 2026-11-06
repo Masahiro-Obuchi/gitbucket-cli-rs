@@ -2,6 +2,7 @@ pub mod client;
 pub mod issue;
 pub mod label;
 pub mod milestone;
+pub(crate) mod pagination;
 pub mod pull_request;
 pub mod repository;
 pub(crate) mod transport;

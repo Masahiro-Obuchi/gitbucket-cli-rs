@@ -18,6 +18,9 @@ pub struct PrArgs {
 #[derive(Subcommand)]
 pub enum PrCommand {
     /// List pull requests
+    #[command(
+        after_help = "Fetches all PR pages and sorts by number descending. JSON verifies each PR with canonical detail, including fork ownership. Incomplete traversal or detail verification fails without a partial list. GB_PAGINATION_MAX_PAGES sets the traversal safety cap (default 1000)."
+    )]
     List {
         /// Filter by state (open, closed, all)
         #[arg(

@@ -13,55 +13,44 @@ fn pr(number: u64) -> ScriptedResponse {
 }
 
 #[test]
-fn pr_list_includes_open_prs_visible_through_repo_issues() {
+fn pr_list_json_hydrates_pr_metadata_without_issue_collection_recovery() {
     let env = GbTestEnv::new();
+    let first = serde_json::json!({"number":1,"title":"Listed PR","state":"open","head":{"ref":"feature/list","repo":{"name":"project","full_name":"alice/project"}},"base":{"ref":"main","repo":{"name":"project","full_name":"alice/project"}}});
+    let mut second = first.clone();
+    second["number"] = serde_json::json!(2);
+    second["head"]["repo"]["full_name"] = serde_json::json!("bob/fork");
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls?state=open HTTP/1.1",
             "200 OK",
-            r#"[{"number":1,"title":"Listed PR","state":"open","head":{"ref":"list-head"}}]"#,
-        ),
-        ScriptedResponse::json(
-            "GET /api/v3/repos/alice/project/pulls/1 HTTP/1.1",
-            "200 OK",
-            r#"{"number":1,"title":"Listed PR","state":"open","head":{"ref":"feature/list","repo":{"name":"fork","full_name":"bob/fork","private":false}},"base":{"ref":"main","repo":{"name":"project","full_name":"alice/project","private":false}}}"#,
-        ),
-        ScriptedResponse::json(
-            "GET /api/v3/repos/alice/project/issues?state=open HTTP/1.1",
-            "200 OK",
-            r#"[
-                {"number":1,"title":"Listed PR","state":"open","pull_request":{}},
-                {"number":2,"title":"Visible PR","state":"open","pull_request":{}},
-                {"number":3,"title":"Plain issue","state":"open"}
-            ]"#,
+            &serde_json::json!([first.clone(), second.clone()]).to_string(),
         ),
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls/2 HTTP/1.1",
             "200 OK",
-            r#"{"number":2,"title":"Visible PR","state":"open"}"#,
+            &second.to_string(),
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls/1 HTTP/1.1",
+            "200 OK",
+            &first.to_string(),
         ),
     ]);
-
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["pr", "list", "--json"])
         .output()
         .unwrap();
-
-    let requests = server.join().unwrap();
-
     assert!(
         output.status.success(),
-        "stderr: {}",
+        "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let stdout: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(stdout.as_array().unwrap().len(), 2);
-    assert_eq!(stdout[0]["number"], 1);
-    assert_eq!(stdout[0]["head"]["ref"], "feature/list");
-    assert_eq!(stdout[0]["head"]["repo"]["full_name"], "bob/fork");
-    assert_eq!(stdout[1]["number"], 2);
-    assert_eq!(requests.len(), 4);
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value.as_array().unwrap().len(), 2);
+    assert_eq!(value[0]["number"], 2);
+    assert_eq!(value[0]["head"]["repo"]["full_name"], "bob/fork");
+    assert_eq!(server.join().unwrap().len(), 3);
 }
 
 #[test]
