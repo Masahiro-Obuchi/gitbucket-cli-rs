@@ -1027,6 +1027,8 @@ Execution flow:
 5. Stream the complete patch through shared output/paging only after Git succeeds.
    Terminal output uses PAGER, `--no-pager`/redirected stdout bypass it. A verified
    empty diff succeeds, including for closed/merged PRs.
+   Cancellation during a pager write or wait stops and reaps the pager and
+   returns `cancelled`, without claiming an unverified mutation.
 
 Open PRs use the saved pair in the initial response, which the server may update
 on a later head push. Closed and merged PRs use the retained comparison/head,

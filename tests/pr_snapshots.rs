@@ -247,9 +247,110 @@ fn pager_fixture() {
     let Some(path) = std::env::var_os("GB_SNAPSHOT_PAGER_FILE") else {
         return;
     };
+    if std::env::var_os("GB_SNAPSHOT_PAGER_BLOCK").is_some() {
+        fs::write(path, std::process::id().to_string()).unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(60));
+        return;
+    }
     let mut patch = Vec::new();
     std::io::stdin().read_to_end(&mut patch).unwrap();
     fs::write(path, patch).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn cancelling_a_diff_stops_a_pager_while_writing_or_waiting() {
+    use std::fs::File;
+    use std::os::fd::FromRawFd;
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+
+    for large in [false, true] {
+        let mut f = Fixture::new(false);
+        if large {
+            commit_tracked_readme(
+                &f.source,
+                &"large patch line\n".repeat(32_768),
+                "large patch",
+            );
+            f.head = git_output(&f.source, &["rev-parse", "HEAD"]);
+            run_git(&f.source, &["push", "origin", "feature"]);
+            run_git(&f.remote, &["update-ref", "refs/pull/7/head", &f.head]);
+        }
+        let ready = f.env.path().join("pager.pid");
+        let (_master, slave) = unsafe {
+            let (mut master, mut slave) = (-1, -1);
+            assert_eq!(
+                libc::openpty(
+                    &mut master,
+                    &mut slave,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null()
+                ),
+                0
+            );
+            (File::from_raw_fd(master), File::from_raw_fd(slave))
+        };
+        let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls/7 HTTP/1.1",
+            "200 OK",
+            &f.payload("open").to_string(),
+        )]);
+        let mut child = f
+            .env
+            .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
+            .current_dir(&f.local)
+            .args(["--json-errors", "pr", "diff", "7"])
+            .env(
+                "PAGER",
+                format!(
+                    "{} --exact pager_fixture --nocapture",
+                    std::env::current_exe().unwrap().display()
+                ),
+            )
+            .env("GB_SNAPSHOT_PAGER_FILE", &ready)
+            .env("GB_SNAPSHOT_PAGER_BLOCK", "1")
+            .stdout(slave)
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let started = Instant::now();
+        while !ready.exists() && started.elapsed() < Duration::from_secs(8) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        if !ready.exists() {
+            child.kill().unwrap();
+            child.wait().unwrap();
+            panic!("pager did not start");
+        }
+        let pager: i32 = fs::read_to_string(&ready).unwrap().parse().unwrap();
+        unsafe {
+            assert_eq!(libc::kill(child.id() as i32, libc::SIGTERM), 0);
+        }
+        let cancelled = Instant::now();
+        while child.try_wait().unwrap().is_none() && cancelled.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        if child.try_wait().unwrap().is_none() {
+            child.kill().unwrap();
+            child.wait().unwrap();
+            unsafe {
+                libc::kill(pager, libc::SIGKILL);
+            }
+            panic!("diff did not cancel while large={large}");
+        }
+        let output = child.wait_with_output().unwrap();
+        assert_failure(&output);
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"]["code"], "cancelled", "{error}");
+        assert!(error["error"].get("outcome").is_none(), "{error}");
+        unsafe {
+            assert_eq!(libc::kill(pager, 0), -1, "pager was not reaped");
+        }
+        assert_eq!(git_output(&f.local, &["branch", "--show-current"]), "main");
+        server.join().unwrap();
+    }
 }
 
 #[cfg(unix)]

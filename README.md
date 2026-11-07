@@ -369,7 +369,8 @@ See [saved-commit design and limits](docs/PR_SNAPSHOTS.md).
 Diff includes binary patches and renames, streams large validated patches from a
 temporary file and uses the shared pager for terminal output. `--no-pager` and
 redirected stdout bypass the pager. No partial patch is printed after a Git
-failure.
+failure. Cancelling while the pager is writing or waiting stops and reaps the
+pager and reports `cancelled`.
 
 `gb pr checkout` requires a clean index and working tree, including untracked
 files, with no merge/rebase/cherry-pick/revert/bisect in progress. Ignored files

@@ -133,7 +133,7 @@ pub enum PrCommand {
     },
     /// View the diff of a pull request
     #[command(
-        after_help = "Requires a local Git repository. Compares the exact saved base/head SHAs, including for closed/merged PRs; current branch tips and text diff URLs cannot substitute for unavailable saved objects. A verified empty diff succeeds. Terminal output uses PAGER unless --no-pager is passed.\n\nHTTP(S) fetches reuse the configured user/token only within the selected GitBucket origin and base path. Authenticated transfers do not follow redirects; configure the direct clone URL."
+        after_help = "Requires a local Git repository. Compares the exact saved base/head SHAs, including for closed/merged PRs; current branch tips and text diff URLs cannot substitute for unavailable saved objects. A verified empty diff succeeds. Terminal output uses PAGER unless --no-pager is passed. Cancellation stops the pager and returns a cancelled error.\n\nHTTP(S) fetches reuse the configured user/token only within the selected GitBucket origin and base path. Authenticated transfers do not follow redirects; configure the direct clone URL."
     )]
     Diff {
         /// PR number

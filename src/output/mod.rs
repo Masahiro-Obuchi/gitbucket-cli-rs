@@ -76,20 +76,23 @@ pub fn truncate(s: &str, max: usize) -> String {
     }
 }
 
-pub fn page_or_print(content: &str, no_pager: bool) -> std::io::Result<()> {
+pub fn page_or_print(content: &str, no_pager: bool) -> Result<()> {
     page_reader(&mut content.as_bytes(), no_pager)
 }
 
 /// Stream validated output, closing stdin and reaping even an early-exit pager.
-pub fn page_reader(content: &mut impl Read, no_pager: bool) -> std::io::Result<()> {
+pub fn page_reader(content: &mut impl Read, no_pager: bool) -> Result<()> {
+    if crate::cancel::requested() {
+        return Err(GbError::Cancelled);
+    }
     if no_pager || !std::io::stdout().is_terminal() {
-        return copy_output(content, &mut std::io::stdout().lock());
+        return Ok(copy_output(content, &mut std::io::stdout().lock())?);
     }
 
     let pager = std::env::var("PAGER").unwrap_or_else(|_| "less -R".to_string());
     let mut parts = pager.split_whitespace();
     let Some(program) = parts.next() else {
-        return copy_output(content, &mut std::io::stdout().lock());
+        return Ok(copy_output(content, &mut std::io::stdout().lock())?);
     };
     let args: Vec<&str> = parts.collect();
 
@@ -100,17 +103,41 @@ pub fn page_reader(content: &mut impl Read, no_pager: bool) -> std::io::Result<(
     let mut child = match child {
         Ok(child) => child,
         Err(_) => {
-            return copy_output(content, &mut std::io::stdout().lock());
+            return Ok(copy_output(content, &mut std::io::stdout().lock())?);
         }
     };
 
-    let result = match child.stdin.take() {
-        Some(mut stdin) => copy_output(content, &mut stdin),
-        None => Ok(()),
-    };
-    let waited = child.wait();
-    result?;
-    waited.map(|_| ())
+    let stdin = child.stdin.take();
+    // Keep the pager in the foreground process group so interactive terminal
+    // reads still work. Monitor it while either copy or wait can be blocked.
+    std::thread::scope(|scope| {
+        let monitor = scope.spawn(move || wait_pager(child));
+        let written = match stdin {
+            Some(mut stdin) => copy_output(content, &mut stdin),
+            None => Ok(()),
+        };
+        monitor
+            .join()
+            .map_err(|_| GbError::Other("Pager monitor panicked".into()))??;
+        Ok(written?)
+    })
+}
+
+fn wait_pager(mut child: std::process::Child) -> Result<()> {
+    let result = (|| loop {
+        if crate::cancel::requested() {
+            break Err(GbError::Cancelled);
+        }
+        if child.try_wait()?.is_some() {
+            break Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    })();
+    if result.is_err() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    result
 }
 
 fn copy_output(content: &mut impl Read, output: &mut impl Write) -> std::io::Result<()> {

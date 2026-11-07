@@ -77,6 +77,9 @@ the file streamed to the shared pager/output path. A failed Git command prints n
 partial patch. Equal saved trees legitimately produce an empty successful diff.
 TTY output uses PAGER (default less -R), while `--no-pager` and redirected stdout
 bypass it. Pager stdin is closed and the child is reaped, including early exit.
+Cancellation also stops and reaps the pager during a blocked write or wait,
+returning `cancelled`. The pager stays in the foreground process group so it can
+read terminal input normally.
 
 `diff_unavailable` causes include `missing_snapshot`,
 `git_repository_unavailable`, `head_object_unavailable`,

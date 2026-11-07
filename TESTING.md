@@ -500,6 +500,8 @@ after deletion/force-push, shallow clones, missing/invalid objects, null or full
 read 200/empty detail recovery, transport/decode failures without recovery,
 replacement-object suppression, offline cached objects, empty trees,
 rename/binary/large patches, subdirectory invocation and a real TTY pager.
+Pager cancellation covers both waiting for exit and a blocked large-patch write,
+requiring a `cancelled` error and a reaped child.
 Existing checkout and Git credential regressions still verify non-destructive
 branch behavior, cancellation outcomes, authentication scopes and redirect rules.
 
