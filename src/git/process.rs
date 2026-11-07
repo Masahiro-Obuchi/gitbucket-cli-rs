@@ -11,6 +11,7 @@ use crate::error::{GbError, Result};
 pub(crate) trait GitCommandExt {
     /// Consumes this command's configuration, like a one-shot invocation.
     fn bounded_output(&mut self) -> Result<Output>;
+    fn bounded_output_to_file(&mut self, stdout: std::fs::File) -> Result<Output>;
 }
 
 impl GitCommandExt for Command {
@@ -18,7 +19,14 @@ impl GitCommandExt for Command {
         let timeout = crate::limits::duration("GB_GIT_TIMEOUT", 300)?;
         let program = self.get_program().to_os_string();
         let command = std::mem::replace(self, Command::new(program));
-        run(command, timeout)
+        run(command, timeout, None)
+    }
+
+    fn bounded_output_to_file(&mut self, stdout: std::fs::File) -> Result<Output> {
+        let timeout = crate::limits::duration("GB_GIT_TIMEOUT", 300)?;
+        let program = self.get_program().to_os_string();
+        let command = std::mem::replace(self, Command::new(program));
+        run(command, timeout, Some(stdout))
     }
 }
 
@@ -58,7 +66,11 @@ fn reader(pipe: impl Read + Send + 'static) -> io::Result<JoinHandle<io::Result<
         })
 }
 
-fn run(mut command: Command, timeout: Duration) -> Result<Output> {
+fn run(
+    mut command: Command,
+    timeout: Duration,
+    stdout_file: Option<std::fs::File>,
+) -> Result<Output> {
     let operation = [
         "clone",
         "fetch",
@@ -73,12 +85,13 @@ fn run(mut command: Command, timeout: Duration) -> Result<Output> {
         "for-each-ref",
         "check-ref-format",
         "rev-parse",
+        "update-ref",
     ]
     .into_iter()
     .find(|name| command.get_args().any(|arg| arg == *name))
     .unwrap_or("command");
     let mutating = match operation {
-        "clone" | "fetch" | "checkout" => true,
+        "clone" | "fetch" | "checkout" | "update-ref" => true,
         "config" => !command.get_args().any(|arg| {
             matches!(
                 arg.to_str(),
@@ -100,9 +113,12 @@ fn run(mut command: Command, timeout: Duration) -> Result<Output> {
     }
     command
         .stdin(Stdio::null())
-        .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .env("GIT_TERMINAL_PROMPT", "0");
+    command.stdout(match stdout_file {
+        Some(file) => Stdio::from(file),
+        None => Stdio::piped(),
+    });
     let mut command = CommandWrap::from(command);
     #[cfg(unix)]
     command.wrap(process_wrap::std::ProcessGroup::leader());
@@ -115,8 +131,11 @@ fn run(mut command: Command, timeout: Duration) -> Result<Output> {
             .map_err(|error| failure("spawn failed", Some(error)))?,
         true,
     );
-    let stdout = reader(child.0.stdout().take().expect("piped stdout"))
-        .map_err(|error| failure("output reader failed", Some(error)))?;
+    let stdout = match child.0.stdout().take() {
+        Some(pipe) => reader(pipe),
+        None => reader(io::empty()),
+    }
+    .map_err(|error| failure("output reader failed", Some(error)))?;
     let stderr = reader(child.0.stderr().take().expect("piped stderr"))
         .map_err(|error| failure("output reader failed", Some(error)))?;
     let status = loop {
@@ -204,7 +223,7 @@ mod tests {
             ])
             .env("GB_PIPE_FIXTURE", &path);
         let started = Instant::now();
-        let result = run(command, Duration::from_secs(2));
+        let result = run(command, Duration::from_secs(2), None);
         assert!(
             matches!(
                 result,

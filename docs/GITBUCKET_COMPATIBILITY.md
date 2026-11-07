@@ -19,6 +19,8 @@ All REST paths below are relative to `/api/v3/repos/{owner}/{repo}`.
 | Issue and PR list pagination | Fixed 25-row pages, ignores per_page, no Link; Issues excludes PRs | Traverse the PR and Issue collections separately; no Issue-list recovery for PRs |
 | Discussion comment collection | Returns all comments even with page=2 and per_page=1 | Do not apply fixed-page probing to comment counts |
 | Fork PR ownership | Collection reports the base repository as the fork head; canonical detail reports the actual fork | Verify candidates and JSON metadata with canonical detail |
+| Saved PR comparisons | Closed/merged PRs retain base/head SHAs after branch reuse; refs/pull/N/head preserves the saved head | Diff/checkout must use saved object IDs, not current branch tips |
+| Deleted fork detail | Detail returns 200 with zero bytes; collection still exposes saved SHAs and base repository retains PR head ref | Snapshot-specific absent-detail recovery can restore verified Git objects without trusting collection head ownership |
 | PR title/body/state | `PATCH /pulls/{number}` updates title/body/state; a subsequent state-only PATCH preserves title/body | Use the PR endpoint, without requiring Web authentication for these fields |
 | Issue-style edit of a PR | `PATCH /issues/{number}` returns 404 and leaves the title unchanged | Do not interpret this as proof that PR REST editing is unavailable |
 | Inline comments | A Web post to `/{owner}/{repo}/commit/{sha}/comment/new` with file, new line, PR ID and content appears on the PR page | Inline comments require a distinct model and supported retrieval/posting path |
@@ -51,6 +53,10 @@ repository, including all-return comments, open/closed/all, an oldest PR beyond
 two pages, edit-last and a real root-owned fork. The CLI checks accompany direct
 REST assertions so summary metadata cannot conceal the fork mismatch.
 See [collection contracts and limits](PAGINATION.md).
+
+PR-10 adds live closed/merged branch-reuse and deleted-fork contracts. Snapshot
+recovery is scoped to exact saved SHAs and retained objects; the 200/empty detail
+exception does not relax ordinary typed JSON reads. See [PR snapshots](PR_SNAPSHOTS.md).
 
 ## Fixture strategy
 

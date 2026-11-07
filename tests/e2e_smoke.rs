@@ -12,3 +12,6 @@ mod repo_label_milestone;
 
 #[path = "e2e_smoke/api_contract.rs"]
 mod api_contract;
+
+#[path = "e2e_smoke/pr_snapshot.rs"]
+mod pr_snapshot;

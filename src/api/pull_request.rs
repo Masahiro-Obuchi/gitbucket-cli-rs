@@ -56,6 +56,23 @@ impl ApiClient {
             .await
     }
 
+    /// Snapshot loading can recover a verified 200/empty deleted-fork response.
+    /// Ordinary PR details retain their stricter typed JSON contract.
+    pub(crate) async fn pull_request_snapshot_details(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: u64,
+    ) -> Result<Option<PullRequest>> {
+        self.request_json(
+            reqwest::Method::GET,
+            &format!("/repos/{owner}/{repo}/pulls/{number}"),
+            None::<&()>,
+            super::client::JsonContract::PullRequestSnapshot,
+        )
+        .await
+    }
+
     /// Get a single pull request
     pub async fn get_pull_request(
         &self,

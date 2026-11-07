@@ -34,6 +34,17 @@ pub fn serve_json_once(
 
 pub struct PrRemoteFixture {
     pub local_repo: PathBuf,
+    pub base_sha: String,
+    pub head_sha: String,
+}
+
+impl PrRemoteFixture {
+    pub fn saved_pr_body(&self, body: &str) -> String {
+        let mut body: serde_json::Value = serde_json::from_str(body).unwrap();
+        body["base"]["sha"] = self.base_sha.clone().into();
+        body["head"]["sha"] = self.head_sha.clone().into();
+        body.to_string()
+    }
 }
 
 pub fn setup_pr_remote_fixture(
@@ -97,5 +108,9 @@ pub fn setup_pr_remote_fixture(
         ],
     );
 
-    PrRemoteFixture { local_repo }
+    PrRemoteFixture {
+        local_repo,
+        base_sha: crate::support::git_repo::git_output(&base_work, &["rev-parse", "HEAD"]),
+        head_sha: crate::support::git_repo::git_output(&head_work, &["rev-parse", "HEAD"]),
+    }
 }

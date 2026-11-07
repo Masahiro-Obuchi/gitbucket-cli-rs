@@ -350,22 +350,34 @@ follow-up work.
 ## Pull Request Checkout And Diff
 
 `gb pr checkout` and `gb pr diff` work with same-repository PRs and fork-based PRs.
-When a closed PR's diff cannot be reconstructed from fetched refs, `gb pr diff` tries the saved PR diff URL before failing. If no saved diff can be fetched, it exits non-zero and reports whether the live diff was unavailable because a ref was missing, a base/head fetch failed, or the fetched refs had no diff.
-When the PR head repository is available from the API response, `gb` resolves that
-repository's clone URL or a matching remote. Internal fetch refs under
-`refs/gb/pr-targets/` use a fixed-length SHA-256 identifier of the configured
-GitBucket base URL, repository, and PR number. This keeps internal ref paths short
-for long deployment URLs on Windows. Remotes are matched by server and
-repository path, not just `OWNER/REPO`. Fetches leave remote-tracking refs, tags,
-and `FETCH_HEAD` alone.
-Fetches do not recurse into submodules.
+Both require a local Git repository and use the saved `head.sha` / `base.sha`
+from the PR response. Open PRs use the saved pair read at invocation; closed and
+merged PRs keep their stored comparison even after branches advance, disappear,
+or are reused. Checkout uses the saved head and prints its full commit ID; diff compares the
+exact saved trees. An empty verified diff is successful. Missing identities/objects fail with
+`diff_unavailable`; branch tips and guessed `.diff` URLs do not replace them.
+
+Missing objects can be recovered from the selected repository's retained
+`refs/pull/N/head`, full SHA fetches, or validated repository/branch hints. A
+successful fetch must actually supply the requested commit. Verified objects are
+cached under private `refs/gb/pr-targets/` refs scoped to the GitBucket base URL,
+repository, PR and commit. Fetches preserve tracking refs, tags and `FETCH_HEAD`
+and do not recurse into submodules. Fork deletion can be recovered when the
+collection retains saved SHAs and the selected base retains the PR objects/ref.
+See [saved-commit design and limits](docs/PR_SNAPSHOTS.md).
+
+Diff includes binary patches and renames, streams large validated patches from a
+temporary file and uses the shared pager for terminal output. `--no-pager` and
+redirected stdout bypass the pager. No partial patch is printed after a Git
+failure. Cancelling while the pager is writing or waiting stops and reaps the
+pager and reports `cancelled`.
 
 `gb pr checkout` requires a clean index and working tree, including untracked
 files, with no merge/rebase/cherry-pick/revert/bisect in progress. Ignored files
 that would be overwritten also cause checkout to stop. The first checkout creates
 `pr-<NUMBER>` and records its target in local Git configuration. An existing
 branch is reused only when that record matches this target and its commit equals
-the fetched PR head. Local commits, an advanced or force-pushed PR head, another
+the saved PR head. Local commits, an advanced or force-pushed PR head, another
 PR's branch, and a branch checked out in another worktree cause an error.
 There is no automatic reset, fast-forward, stash, rename, or deletion.
 Submodule changes are checked even when Git configuration normally hides them.
@@ -609,7 +621,9 @@ JSON responses are pretty-printed, and zero-byte success responses (including
 preserved as returned. `gb api` does not apply PR-command wrapper compatibility
 or treat non-JSON text as JSON. Internal diff/HTML reads use a separate text
 contract; typed JSON endpoints reject missing or invalid JSON instead of silently
-switching to another endpoint. PR detail fallback is limited to a JSON `null`.
+switching to another endpoint. Ordinary PR detail fallback is limited to a JSON `null`;
+the [saved-snapshot reader](docs/PR_SNAPSHOTS.md) also handles the verified
+200/zero-byte detail response after fork deletion.
 
 ## Completion command
 

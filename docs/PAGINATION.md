@@ -66,12 +66,15 @@ running recheck retains the original POST error/status/outcome and adds context
 that the recheck was cancelled. Lookup diagnostics never assert that an earlier
 create could not have succeeded. The POST is never retried.
 
-Only an explicit JSON null single-PR detail activates the existing compatibility
+For ordinary PR reads, only an explicit JSON null single-PR detail activates the existing compatibility
 lookup. It searches the complete PR collection and withholds `head`, whose fork
 identity cannot be verified from that collection. Basic viewing/comment operations
 can establish the PR number; Git operations requiring the head may fail rather
 than fetching from a potentially unrelated repository. HTTP failures, malformed
-JSON and interrupted responses do not activate this fallback.
+JSON and interrupted responses do not activate this fallback. The separate
+[saved-snapshot reader](PR_SNAPSHOTS.md) for diff/checkout can also recover the
+verified 200/empty deleted-fork detail response using saved SHAs and retained
+Git objects; it does not use collection fork ownership.
 
 Traversal is not a snapshot: concurrent creation/deletion/state changes can move
 rows between pages. Deduplication removes repeated observations but cannot recover

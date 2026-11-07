@@ -14,6 +14,108 @@ fn client() -> Client {
         .unwrap()
 }
 
+#[tokio::test]
+#[ignore = "requires the pinned Docker GitBucket fixture"]
+async fn contract_deleted_fork_keeps_saved_shas_and_fetchable_pr_ref() {
+    let temp = tempdir().unwrap();
+    login(temp.path());
+    let client = client();
+    let name = format!("snapshot-fork-{}", unique_suffix());
+    success(
+        request(
+            &client,
+            Method::POST,
+            "user/repos",
+            Some(json!({"name":name,"private":false})),
+        )
+        .await,
+    )
+    .await;
+    let repo = format!("{}/{name}", required_env("GB_E2E_USER"));
+    let work = temp.path().join("source");
+    clone_repo_to(temp.path(), &repo, &work);
+    ensure_remote_main(&work);
+    run_git(&work, &["checkout", "-b", "saved-topic"]);
+    std::fs::write(work.join("saved.txt"), "saved fork PR\n").unwrap();
+    run_git(&work, &["add", "saved.txt"]);
+    run_git(&work, &["commit", "-m", "saved fork PR"]);
+    run_git(&work, &["push", "origin", "saved-topic"]);
+    let saved_head = git_output(&work, &["rev-parse", "HEAD"]);
+    let mut fork = gb_command();
+    for (key, value) in e2e_env(temp.path()) {
+        fork.env(key, value);
+    }
+    fork.current_dir(temp.path())
+        .env("GB_WEB_USER", "root")
+        .env("GB_PASSWORD", "root")
+        .args(["repo", "fork", &repo, "--group", "root"]);
+    run_and_assert_success(&mut fork);
+    let created = success(
+        request(
+            &client,
+            Method::POST,
+            &format!("repos/{repo}/pulls"),
+            Some(json!({"head":"root:saved-topic","base":"main","title":"deleted fork snapshot"})),
+        )
+        .await,
+    )
+    .await;
+    let created: Value = serde_json::from_str(created.as_str().unwrap()).unwrap();
+    let number = created["number"].as_u64().unwrap();
+    let number_arg = number.to_string();
+    gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &["pr", "close", &number_arg, "--repo", &repo],
+    );
+    run_git(&work, &["push", "origin", "--delete", "saved-topic"]);
+    let mut delete = gb_command();
+    for (key, value) in e2e_env(temp.path()) {
+        delete.env(key, value);
+    }
+    delete
+        .current_dir(temp.path())
+        .env("GB_WEB_USER", "root")
+        .env("GB_PASSWORD", "root")
+        .args(["repo", "delete", &format!("root/{name}"), "--yes"]);
+    run_and_assert_success(&mut delete);
+    let missing = request(
+        &client,
+        Method::GET,
+        &format!("repos/{repo}/pulls/{number}"),
+        None,
+    )
+    .await;
+    assert_eq!(missing.status(), StatusCode::OK);
+    assert!(missing.bytes().await.unwrap().is_empty());
+    let listed = stored(&client, &format!("repos/{repo}/pulls?state=all")).await;
+    assert_eq!(listed[0]["head"]["sha"], saved_head);
+    let local = temp.path().join("local");
+    clone_repo_to(temp.path(), &repo, &local);
+    ensure_remote_main(&local);
+    assert_eq!(
+        git_output(
+            &local,
+            &["ls-remote", "origin", &format!("refs/pull/{number}/head")]
+        )
+        .split_whitespace()
+        .next(),
+        Some(saved_head.as_str())
+    );
+    let diff = gb_output_with_env(
+        temp.path(),
+        &local,
+        &["pr", "diff", &number_arg, "--repo", &repo, "--no-pager"],
+    );
+    assert!(diff.contains("+saved fork PR"), "{diff}");
+    gb_output_with_env(
+        temp.path(),
+        &local,
+        &["pr", "checkout", &number_arg, "--repo", &repo],
+    );
+    assert_eq!(git_output(&local, &["rev-parse", "HEAD"]), saved_head);
+}
+
 async fn request(client: &Client, method: Method, path: &str, body: Option<Value>) -> Response {
     let mut request = client
         .request(
