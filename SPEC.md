@@ -673,7 +673,8 @@ Behavior:
 
 #### `gb issue list`
 
-List issues in the target repository.
+List all issues in the target repository, sorted by number descending.
+See [collection contracts](docs/PAGINATION.md); incomplete traversal returns an error without a partial list.
 
 ```text
 gb issue list [OPTIONS]
@@ -709,7 +710,9 @@ gb issue view <NUMBER> [OPTIONS]
 | `--no-pager` | — | Do not use a pager |
 
 Shows title, state, author, created date, labels, assignees, milestone when present, body, and optional comments.
-Comments are hidden by default; pass `--comments` to include them in the CLI output.
+Ordinary discussion comments are retrieved completely and sorted by ID ascending.
+Comments are hidden by default; pass `--comments` to include them in text output.
+Issue JSON currently ignores `--comments`; JSON comment inclusion remains pending.
 
 #### `gb issue create`
 
@@ -797,7 +800,7 @@ gb issue comment <NUMBER> [OPTIONS]
 
 #### `gb pr list`
 
-List pull requests.
+List all pull requests, sorted by number descending.
 
 ```text
 gb pr list [OPTIONS]
@@ -809,7 +812,11 @@ gb pr list [OPTIONS]
 | `--json` | — | `false` | Print JSON |
 | `--no-pager` | — | `false` | Do not use a pager |
 
-With `--state open --json`, `gb` fetches each listed pull request detail before printing JSON so fork `head`/`base` repository information is as reliable as `gb pr view --json`. The issue-listing recovery for GitBucket versions that omit repository-visible open PRs from `/pulls` still applies.
+With `--json`, for every state filter, `gb` fetches each listed PR detail to
+verify fork metadata that the 4.44.0 collection can misidentify. Missing, failed
+or wrong-number details fail without returning a partial list. Table output uses
+summary fields. The 4.44.0 Issue collection excludes PRs and is not used for
+recovery. See [collection contracts](docs/PAGINATION.md).
 
 Table output columns:
 
@@ -832,7 +839,7 @@ gb pr view <NUMBER> [OPTIONS]
 | `--json` | — | Print JSON |
 | `--no-pager` | — | Do not use a pager |
 
-With `--json`, `gb` prints the pull request API payload. When `--comments` is also passed, the JSON object includes a top-level `comments` array fetched from the PR comments endpoint.
+With `--json`, `gb` prints the pull request API payload. When `--comments` is also passed, the JSON object includes the complete ordinary discussion `comments` array, sorted by ID ascending. Comment view/list/edit-last use the same collection reader.
 
 #### `gb pr create`
 
@@ -853,12 +860,21 @@ gb pr create [OPTIONS]
 | `--detect-existing` | — | Return an existing open PR for the same head/base instead of creating a duplicate |
 
 On normal text output, `gb pr create` prints the created PR number/title, resolved `Head:` and `Base:` repository refs when the API returns them, and a canonical browser URL using `/pull/{number}`.
-With `--detect-existing`, `gb` checks open pull requests for a matching head/base before prompting for title/body or creating a new PR. If the pull request listing is incomplete or lacks comparable refs, `gb` also checks PRs exposed through the issue listing and fetches PR details before deciding no match exists. If create fails after that check, `gb` checks again and returns the matching open PR when one exists.
+With `--detect-existing`, `gb` checks open pull requests for a matching head/base before prompting for title/body or creating a new PR. The search completes all open PR pages and verifies possible branch/base candidates
+with canonical detail; collection ownership alone cannot exclude a fork candidate.
+Incomplete traversal or incomparable canonical identity fails before creation.
+Issue-list recovery is not used. If create fails, a complete recheck can return a
+matching open PR; failed rechecks retain the original error/status/outcome with
+added context. Cancellation before recheck does not start it; cancellation during
+recheck retains the original POST error/status/outcome. Lookup diagnostics do not
+claim that a prior creation was not applied. The POST is not retried.
+Detection and creation are not atomic under concurrent writers.
 
 Numbered PR operations validate the target through `GET /repos/{owner}/{repo}/pulls/{number}`
 first and reject returned-number mismatches. The compatibility lookup for null
-single-PR responses searches only the PR collection, not ordinary issues. This
-check also precedes comment list/post/edit, merge, checkout/diff and browser view;
+single-PR responses searches the complete PR collection, not ordinary issues,
+and withholds head metadata that cannot prove fork identity. Git operations
+requiring it may fail. This check also precedes comment list/post/edit, merge, checkout/diff and browser view;
 comment subresources still use the Issue comments API after validation.
 
 #### `gb pr edit`
@@ -1360,6 +1376,7 @@ not network deadlines. Unrelated background work is not cancelled.
 | `GB_PASSWORD` | Password for GitBucket web-session fallbacks |
 | `GB_HTTP_CONNECT_TIMEOUT` | HTTP connect deadline in seconds (default 10) |
 | `GB_HTTP_READ_TIMEOUT` | HTTP read inactivity deadline in seconds (default 30) |
+| `GB_PAGINATION_MAX_PAGES` | Maximum pages per collection traversal (default 1000, range 1–100000); pending next page at the cap is an error |
 | `GB_HTTP_TIMEOUT` | HTTP total deadline including body in seconds (default 120) |
 | `GB_GIT_TIMEOUT` | Deadline per Git subprocess including output (default 300) |
 | `GB_CONFIG_DIR` | Custom config directory |

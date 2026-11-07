@@ -327,8 +327,7 @@ fn issue_comment_edit_last_rejects_external_pagination_link() {
         "/api/v3/repos/alice/project/issues/7/comments?per_page=100"
     );
     assert!(
-        String::from_utf8_lossy(&output.stderr)
-            .contains("Refusing request outside configured GitBucket API base"),
+        String::from_utf8_lossy(&output.stderr).contains("configured GitBucket API base"),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );

@@ -16,6 +16,9 @@ All REST paths below are relative to `/api/v3/repos/{owner}/{repo}`.
 
 | Operation | Observed server contract | Consequence for the CLI |
 | --- | --- | --- |
+| Issue and PR list pagination | Fixed 25-row pages, ignores per_page, no Link; Issues excludes PRs | Traverse the PR and Issue collections separately; no Issue-list recovery for PRs |
+| Discussion comment collection | Returns all comments even with page=2 and per_page=1 | Do not apply fixed-page probing to comment counts |
+| Fork PR ownership | Collection reports the base repository as the fork head; canonical detail reports the actual fork | Verify candidates and JSON metadata with canonical detail |
 | PR title/body/state | `PATCH /pulls/{number}` updates title/body/state; a subsequent state-only PATCH preserves title/body | Use the PR endpoint, without requiring Web authentication for these fields |
 | Issue-style edit of a PR | `PATCH /issues/{number}` returns 404 and leaves the title unchanged | Do not interpret this as proof that PR REST editing is unavailable |
 | Inline comments | A Web post to `/{owner}/{repo}/commit/{sha}/comment/new` with file, new line, PR ID and content appears on the PR page | Inline comments require a distinct model and supported retrieval/posting path |
@@ -42,6 +45,12 @@ The tests create disposable PRs and an inline comment, and create/delete their
 own milestones and labels. Run them only against the bootstrapped test instance,
 never against a production repository. Credentials and session cookies are not
 written into committed fixtures or assertion messages intentionally.
+
+PR-09 verifies the collection contracts at 0/1/25/26/50/51 rows with an isolated
+repository, including all-return comments, open/closed/all, an oldest PR beyond
+two pages, edit-last and a real root-owned fork. The CLI checks accompany direct
+REST assertions so summary metadata cannot conceal the fork mismatch.
+See [collection contracts and limits](PAGINATION.md).
 
 ## Fixture strategy
 

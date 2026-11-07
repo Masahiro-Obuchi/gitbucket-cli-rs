@@ -259,6 +259,25 @@ The skill keeps agent-facing workflow guidance separate from the full user docum
 `gb issue list`, `gb pr list`, and `gb milestone list` support `--state open`, `--state closed`, and `--state all`.
 Invalid values are rejected before the API call is made.
 
+## Complete Issue, PR and Comment Lists
+
+Issue and PR lists fetch all pages and sort by number descending. Ordinary
+comment reads (view, list and edit-last) share complete retrieval, sorted by
+comment ID ascending. `issue view --comments` currently includes comments only
+in text output; JSON comment inclusion remains a follow-up. GitBucket 4.44.0 uses 25-row Issue/PR pages without Link
+headers and returns all discussion comments in one response; these routes have
+separate policies. Link-based servers are also supported with API-boundary and
+cycle checks. Unrelated Link relations do not end fixed-page traversal, and a
+nonempty page without any new IDs fails even when it is terminal. An incomplete
+traversal fails without printing a partial list.
+
+`GB_PAGINATION_MAX_PAGES` bounds each traversal (default 1000, range 1–100000).
+Reaching the bound with another page pending is an error, not successful
+truncation. `pr list --json` also verifies each PR with the detail API; table
+output uses summary fields. This can increase request counts for large lists.
+See [pagination and existing-PR detection](docs/PAGINATION.md) for contracts,
+null-detail compatibility, and limitations under concurrent changes.
+
 ## GitBucket Web Fallbacks
 
 Some GitBucket actions are only exposed through the web UI, not the REST API.
@@ -300,7 +319,7 @@ gb issue edit 1 --add-label needs-review --remove-assignee bob
 gb pr edit 5 --add-assignee alice,bob --remove-assignee carol --web
 ```
 
-`gb pr create --head` accepts a branch name for same-repository PRs. For cross-repository PRs, pass `OWNER:BRANCH` or use `--head-owner OWNER --head BRANCH`; after creation, the CLI prints the resolved `Head:` and `Base:` repositories and refs. Use `gb pr create --detect-existing` to return an existing open PR for the same head/base instead of creating a duplicate, including PRs that need to be recovered from GitBucket's issue listing. `gb pr create --json` and `gb pr view --json` print the API payload for automation; `gb pr view --comments --json` also includes a top-level `comments` array. `gb pr list --state open --json` fetches each open PR detail before printing JSON so fork head/base repository information matches `gb pr view --json` more closely.
+`gb pr create --head` accepts a branch name for same-repository PRs. For cross-repository PRs, pass `OWNER:BRANCH` or use `--head-owner OWNER --head BRANCH`; after creation, the CLI prints the resolved `Head:` and `Base:` repositories and refs. Use `gb pr create --detect-existing` to return an existing open PR for the same head/base instead of creating a duplicate, including candidates on later pages. Candidates require canonical PR details because the GitBucket 4.44.0 PR collection can misidentify fork ownership; an incomplete search fails before creating a PR. `gb pr create --json` and `gb pr view --json` print the API payload for automation; `gb pr view --comments --json` also includes a top-level `comments` array. `gb pr list --json` fetches each listed PR detail for all state filters before printing JSON so fork head/base repository information matches `gb pr view --json` more closely.
 `gb pr comment --json` prints the created or edited comment object; normal text output includes the comment ID and URL when GitBucket returns one. Use `gb pr comment list <NUMBER> --json` to inspect existing PR comments before retrying a comment mutation. `gb issue list`, `gb issue view`, `gb pr list`, `gb pr view`, and `gb pr comment list` accept `--no-pager` to force direct stdout output.
 
 ## Pull Request Edits and Target Validation
@@ -430,6 +449,7 @@ read back, the original mutation error and checkout provenance are retained.
 | `GB_PROFILE`    | Default configuration profile                             |
 | `GB_HTTP_CONNECT_TIMEOUT` | Connection deadline in seconds (default 10) |
 | `GB_HTTP_READ_TIMEOUT` | Read inactivity deadline in seconds (default 30) |
+| `GB_PAGINATION_MAX_PAGES` | Maximum collection pages before failing (default 1000, range 1–100000) |
 | `GB_HTTP_TIMEOUT` | Total HTTP request deadline in seconds (default 120) |
 | `GB_GIT_TIMEOUT` | Deadline per Git subprocess in seconds (default 300) |
 | `GB_CONFIG_DIR` | Config directory path (default: `~/.config/gb/`)          |

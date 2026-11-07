@@ -17,6 +17,7 @@ const CONFIG_ENV: &[&str] = &[
     "GB_HTTP_READ_TIMEOUT",
     "GB_HTTP_TIMEOUT",
     "GB_GIT_TIMEOUT",
+    "GB_PAGINATION_MAX_PAGES",
     "GB_REPO",
 ];
 

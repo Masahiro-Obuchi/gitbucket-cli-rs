@@ -5,7 +5,9 @@ use url::Url;
 
 pub(super) fn gb_command() -> std::process::Command {
     let mut command = std::process::Command::cargo_bin("gb").unwrap();
-    command.env_remove("GB_WEB_USER");
+    command
+        .env_remove("GB_WEB_USER")
+        .env_remove("GB_PAGINATION_MAX_PAGES");
     command
 }
 

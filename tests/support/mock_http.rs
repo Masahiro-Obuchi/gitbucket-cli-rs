@@ -235,8 +235,15 @@ pub fn spawn_server(status_line: &str, body: &str) -> (u16, thread::JoinHandle<C
 pub fn spawn_scripted_server(
     responses: Vec<ScriptedResponse>,
 ) -> (u16, thread::JoinHandle<Vec<CapturedRequest>>) {
+    spawn_scripted_server_with(|_| responses)
+}
+
+pub fn spawn_scripted_server_with(
+    responses: impl FnOnce(u16) -> Vec<ScriptedResponse>,
+) -> (u16, thread::JoinHandle<Vec<CapturedRequest>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
+    let responses = responses(port);
 
     let handle = thread::spawn(move || {
         let mut captured = Vec::new();

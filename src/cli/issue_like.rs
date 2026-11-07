@@ -176,7 +176,7 @@ pub(crate) async fn latest_comment_by_current_user(
     item_label: &str,
 ) -> Result<Comment> {
     let user = client.current_user().await?;
-    let comments = client.list_all_issue_comments(owner, repo, number).await?;
+    let comments = client.list_issue_comments(owner, repo, number).await?;
     comments
         .into_iter()
         .filter(|comment| {

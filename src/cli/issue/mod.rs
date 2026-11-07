@@ -14,6 +14,9 @@ pub struct IssueArgs {
 #[derive(Subcommand)]
 pub enum IssueCommand {
     /// List issues
+    #[command(
+        after_help = "Fetches all Issue pages and sorts by number descending. Incomplete traversal fails without a partial list. GB_PAGINATION_MAX_PAGES sets the traversal safety cap (default 1000)."
+    )]
     List {
         /// Filter by state (open, closed, all)
         #[arg(
