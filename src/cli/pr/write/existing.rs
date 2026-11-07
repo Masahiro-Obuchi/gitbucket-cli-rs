@@ -32,18 +32,26 @@ pub(super) async fn find_existing_open_pull_request(
             .await
             .map_err(|source| GbError::Context {
                 source: Box::new(source),
-                context: format!("Could not verify PR #{} before creating a PR", pr.number),
+                context: format!(
+                    "Could not verify PR #{} during the existing-PR lookup",
+                    pr.number
+                ),
             })?;
-        let actual = actual.ok_or_else(|| GbError::Other(format!("PR #{} has no canonical details. Cannot rule out an existing PR; no PR was created.", pr.number)))?;
+        let actual = actual.ok_or_else(|| {
+            GbError::Other(format!(
+                "PR #{} has no canonical details. Cannot rule out an existing PR.",
+                pr.number
+            ))
+        })?;
         if actual.number != pr.number {
             return Err(GbError::Other(
-                "Existing-PR lookup returned another number. No PR was created.".into(),
+                "Existing-PR lookup returned another number.".into(),
             ));
         }
         match compare(&actual, owner, repo, head, base) {
             Comparison::Match => return Ok(Some(actual)),
             Comparison::Different => {},
-            Comparison::Unknown => return Err(GbError::Other(format!("PR #{} still lacks trustworthy head/base identity. Cannot rule out an existing open PR; no PR was created.", pr.number))),
+            Comparison::Unknown => return Err(GbError::Other(format!("PR #{} still lacks trustworthy head/base identity. Cannot rule out an existing open PR.", pr.number))),
         }
     }
     Ok(None)

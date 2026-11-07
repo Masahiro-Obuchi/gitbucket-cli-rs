@@ -129,7 +129,10 @@ pub(in crate::cli::pr) async fn create(
                     )
                 }
                 Ok(None) => Err(err),
-                Err(check) if check.code() == "cancelled" || crate::cancel::requested() => Err(check),
+                Err(check) if check.code() == "cancelled" || crate::cancel::requested() => Err(GbError::Context {
+                    source: Box::new(err),
+                    context: "The existing-PR recheck was cancelled after PR creation failed. Inspect the repository before retrying".into(),
+                }),
                 Err(check) => Err(GbError::Context { source: Box::new(err), context: format!("PR creation failed and a complete existing-PR recheck also failed ({check}). Inspect the repository before retrying") }),
             }
         }

@@ -61,7 +61,10 @@ Possible candidates always require canonical detail before comparing repository
 identity and refs. Missing or conflicting identities fail before creating a PR.
 If create fails, the same complete check can recover a matching open PR; a failed
 recheck preserves the original create error/status/outcome with added context.
-Cancellation exits without starting a recheck, and the POST is never retried.
+Cancellation before recheck exits without starting it. Cancellation during a
+running recheck retains the original POST error/status/outcome and adds context
+that the recheck was cancelled. Lookup diagnostics never assert that an earlier
+create could not have succeeded. The POST is never retried.
 
 Only an explicit JSON null single-PR detail activates the existing compatibility
 lookup. It searches the complete PR collection and withholds `head`, whose fork

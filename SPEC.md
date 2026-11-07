@@ -865,7 +865,9 @@ with canonical detail; collection ownership alone cannot exclude a fork candidat
 Incomplete traversal or incomparable canonical identity fails before creation.
 Issue-list recovery is not used. If create fails, a complete recheck can return a
 matching open PR; failed rechecks retain the original error/status/outcome with
-added context. Cancellation does not start a recheck, and the POST is not retried.
+added context. Cancellation before recheck does not start it; cancellation during
+recheck retains the original POST error/status/outcome. Lookup diagnostics do not
+claim that a prior creation was not applied. The POST is not retried.
 Detection and creation are not atomic under concurrent writers.
 
 Numbered PR operations validate the target through `GET /repos/{owner}/{repo}/pulls/{number}`

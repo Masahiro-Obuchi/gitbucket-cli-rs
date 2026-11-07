@@ -470,6 +470,10 @@ filter preservation, exact terminal pages, deduplication, cycles, ignored pages,
 unsafe URLs and configuration/cap failures. Later-page failures never return a
 partial array or allow PR creation. Null detail searches and failed-create
 rechecks traverse all pages, preserve errors and never retry the POST.
+Regressions cover unrelated canonical/self/schema Link relations, terminal pages
+with no new IDs, and SIGTERM during a failed-create recheck. Both text and JSON
+errors retain the uncertain POST result; failed identity checks never claim that
+an earlier create was not applied.
 View/list/edit-last share linked comment retrieval. PR list/create regressions
 also verify canonical fork identities and failure before creation when detail
 cannot establish identity; no Issue-listing recovery is assumed.

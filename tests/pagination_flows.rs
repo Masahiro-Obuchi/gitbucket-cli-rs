@@ -248,6 +248,112 @@ fn a_terminal_page_without_any_new_ids_is_not_a_complete_result() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn cancelling_a_recheck_preserves_the_uncertain_create_response() {
+    use std::io::Write;
+    use std::net::TcpListener;
+    use std::process::Stdio;
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::{Duration, Instant};
+    use support::mock_http::{accept_with_timeout, read_request, write_response};
+
+    for json_errors in [false, true] {
+        let env = GbTestEnv::new();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        let server = thread::spawn(move || {
+            let mut requests = Vec::new();
+            let mut first = accept_with_timeout(&listener);
+            requests.push(read_request(&mut first));
+            assert_eq!(requests[0].target, format!("{PULLS}?state=open"));
+            write_response(
+                &mut first,
+                "200 OK",
+                &[("content-type".into(), "application/json".into())],
+                "[]",
+            );
+            drop(first);
+            let mut post = accept_with_timeout(&listener);
+            requests.push(read_request(&mut post));
+            assert_eq!(requests[1].method, "POST");
+            // The server may already have created the PR. Its response body is
+            // incomplete, so the source error must remain unverified.
+            post.write_all(b"HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nContent-Length: 100\r\nConnection: close\r\n\r\n{").unwrap();
+            drop(post);
+            let mut recheck = accept_with_timeout(&listener);
+            requests.push(read_request(&mut recheck));
+            assert_eq!(requests[2].method, "GET");
+            ready_tx.send(()).unwrap();
+            let _ = done_rx.recv_timeout(Duration::from_secs(8));
+            drop(recheck);
+            requests
+        });
+        let mut command = env.repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project");
+        if json_errors {
+            command.arg("--json-errors");
+        }
+        let mut child = command
+            .args([
+                "pr",
+                "create",
+                "--head",
+                "topic",
+                "--base",
+                "main",
+                "--title",
+                "New",
+                "--body",
+                "Body",
+                "--detect-existing",
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        if ready_rx.recv_timeout(Duration::from_secs(8)).is_err() {
+            child.kill().unwrap();
+            child.wait().unwrap();
+            panic!("existing-PR recheck did not start");
+        }
+        unsafe {
+            assert_eq!(libc::kill(child.id() as i32, libc::SIGTERM), 0);
+        }
+        let started = Instant::now();
+        while child.try_wait().unwrap().is_none() && started.elapsed() < Duration::from_secs(5) {
+            thread::sleep(Duration::from_millis(10));
+        }
+        if child.try_wait().unwrap().is_none() {
+            child.kill().unwrap();
+            child.wait().unwrap();
+            panic!("recheck did not cancel");
+        }
+        let output = child.wait_with_output().unwrap();
+        let _ = done_tx.send(());
+        let requests = server.join().unwrap();
+        assert_eq!(requests.len(), 3);
+        assert_failure(&output);
+        assert!(output.stdout.is_empty());
+        if json_errors {
+            let e = error(&output);
+            assert_eq!(e["code"], "http_error");
+            assert_eq!(e["cause"], "body_read_failed");
+            assert_eq!(e["status"], 201);
+            assert_eq!(e["outcome"], "unverified");
+        } else {
+            assert!(
+                stderr(&output).contains("Outcome is unverified"),
+                "{}",
+                stderr(&output)
+            );
+        }
+        assert!(stderr(&output).contains("cancelled"));
+    }
+}
+
 #[test]
 fn cyclic_or_reordered_equivalent_links_fail_before_another_request() {
     let env = GbTestEnv::new();
@@ -663,6 +769,68 @@ fn failed_create_rechecks_all_pages_without_retrying_the_post() {
                 1
             );
         }
+        assert_eq!(
+            server
+                .join()
+                .unwrap()
+                .iter()
+                .filter(|r| r.method == "POST")
+                .count(),
+            1
+        );
+    }
+}
+
+#[test]
+fn an_unverifiable_recheck_never_claims_the_prior_create_did_not_happen() {
+    for missing_detail in [false, true] {
+        let env = GbTestEnv::new();
+        let detail = if missing_detail {
+            Value::Null
+        } else {
+            let mut detail = pr(7, "topic");
+            detail["head"]["label"] = json!("other-owner:topic");
+            detail
+        };
+        let (port, server) = spawn_scripted_server(vec![
+            response(&format!("{PULLS}?state=open"), json!([])),
+            ScriptedResponse::json(
+                &format!("POST {PULLS} HTTP/1.1"),
+                "500 Internal Server Error",
+                r#"{"message":"create outcome unknown"}"#,
+            ),
+            response(&format!("{PULLS}?state=open"), json!([pr(7, "topic")])),
+            response(&format!("{PULLS}/7"), detail),
+        ]);
+        let output = env
+            .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
+            .args([
+                "--json-errors",
+                "pr",
+                "create",
+                "--title",
+                "New",
+                "--body",
+                "Body",
+                "--head",
+                "topic",
+                "--base",
+                "main",
+                "--detect-existing",
+            ])
+            .output()
+            .unwrap();
+        let e = error(&output);
+        assert_eq!(e["status"], 500);
+        assert_eq!(e["outcome"], "unverified");
+        assert!(
+            !e["message"]
+                .as_str()
+                .unwrap()
+                .to_ascii_lowercase()
+                .contains("no pr was created"),
+            "{e}"
+        );
         assert_eq!(
             server
                 .join()
