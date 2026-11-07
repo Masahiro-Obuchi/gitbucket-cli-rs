@@ -102,10 +102,18 @@ impl Fixture {
     }
 
     fn response(&self, prefix: &str, repo: &str, head: &str) -> ScriptedResponse {
+        let head_sha = if head == "missing-head" {
+            "1".repeat(40)
+        } else {
+            git_output(&self.source, &["rev-parse", "feature"])
+        };
+        let base_sha = git_output(&self.source, &["rev-parse", "main"]);
+        let clone_url = url::Url::from_directory_path(self.env.path().join("remote.git")).unwrap();
+        let repository = json!({"name":repo.rsplit('/').next().unwrap(),"full_name":repo,"clone_url":clone_url.as_str()});
         ScriptedResponse::json(
             &format!("GET {prefix}/api/v3/repos/{repo}/pulls/7 HTTP/1.1"),
             "200 OK",
-            &json!({"number":7,"title":"checkout test","state":"open","head":{"ref":head},"base":{"ref":"main"}})
+            &json!({"number":7,"title":"checkout test","state":"open","head":{"ref":head,"sha":head_sha,"repo":repository},"base":{"ref":"main","sha":base_sha,"repo":repository}})
                 .to_string(),
         )
     }
@@ -293,16 +301,15 @@ fn refuses_branch_in_another_worktree_and_allows_checkout_from_linked_worktree()
 fn advancing_or_force_pushing_pr_never_moves_existing_local_branch() {
     for force in [false, true] {
         let f = Fixture::new();
-        let (port, server) = spawn_scripted_server(vec![
-            f.response("", "alice/demo", "feature"),
-            f.response("", "alice/demo", "feature"),
-        ]);
-        assert_success(&f.checkout(port, "", "alice/demo", &f.local));
+        let original = f.response("", "alice/demo", "feature");
         if force {
             run_git(&f.source, &["reset", "--hard", "main"]);
         }
         commit_tracked_readme(&f.source, "new PR head\n", "remote update");
         run_git(&f.source, &["push", "--force", "origin", "feature"]);
+        let (port, server) =
+            spawn_scripted_server(vec![original, f.response("", "alice/demo", "feature")]);
+        assert_success(&f.checkout(port, "", "alice/demo", &f.local));
         f.refuse_unchanged(port, "", "alice/demo", "Refusing to reset");
         // Force updates are allowed only on the isolated internal fetch ref.
         let internal = git_output(
@@ -313,7 +320,9 @@ fn advancing_or_force_pushing_pr_never_moves_existing_local_branch() {
                 "refs/gb/pr-targets",
             ],
         );
-        assert_eq!(internal, git_output(&f.source, &["rev-parse", "feature"]));
+        assert!(internal
+            .lines()
+            .any(|sha| sha == git_output(&f.source, &["rev-parse", "feature"])));
         server.join().unwrap();
     }
 }
@@ -322,7 +331,7 @@ fn advancing_or_force_pushing_pr_never_moves_existing_local_branch() {
 fn fetch_failure_preserves_head_branches_index_and_files() {
     let f = Fixture::new();
     let (port, server) = spawn_scripted_server(vec![f.response("", "alice/demo", "missing-head")]);
-    f.refuse_unchanged(port, "", "alice/demo", "git fetch failed");
+    f.refuse_unchanged(port, "", "alice/demo", "Cannot obtain saved head commit");
     server.join().unwrap();
 }
 
@@ -432,6 +441,12 @@ fn refuses_submodule_changes_even_when_git_config_hides_them() {
 #[test]
 fn fetch_does_not_update_remote_tracking_refs_tags_or_fetch_head() {
     let f = Fixture::new();
+    commit_tracked_readme(
+        &f.source,
+        "new uncached PR head\n",
+        "advance before fetching",
+    );
+    run_git(&f.source, &["push", "origin", "feature"]);
     run_git(
         &f.local,
         &[
@@ -509,7 +524,7 @@ fn rejects_invalid_api_head_ref_before_fetching() {
         "alice/demo",
         "feature:refs/heads/main",
     )]);
-    f.refuse_unchanged(port, "", "alice/demo", "check-ref-format failed");
+    f.refuse_unchanged(port, "", "alice/demo", "invalid PR branch ref");
     server.join().unwrap();
 }
 

@@ -125,7 +125,7 @@ pub enum PrCommand {
     },
     /// Checkout a pull request branch locally
     #[command(
-        after_help = "Requires a clean working tree/index, including untracked files. Creates pr-N or reuses it only for the recorded target at the same commit. Existing branches are never reset; rename legacy/conflicting branches yourself before retrying. Submodule changes must be committed or moved; submodules are not automatically fetched or checked out.\n\nHTTP(S) fetches reuse the configured user/token only within the selected GitBucket origin and base path. Authenticated transfers do not follow redirects; configure the direct clone URL."
+        after_help = "Checks out the saved PR head SHA, including for closed/merged PRs. Requires complete saved SHAs and a clean working tree/index, including untracked files. Creates pr-N or reuses it only for the recorded target at the same commit. Existing branches are never reset; rename legacy/conflicting branches yourself before retrying. Submodule changes must be committed or moved; submodules are not automatically fetched or checked out.\n\nHTTP(S) fetches reuse the configured user/token only within the selected GitBucket origin and base path. Authenticated transfers do not follow redirects; configure the direct clone URL."
     )]
     Checkout {
         /// PR number
@@ -133,7 +133,7 @@ pub enum PrCommand {
     },
     /// View the diff of a pull request
     #[command(
-        after_help = "HTTP(S) fetches reuse the configured user/token only within the selected GitBucket origin and base path. Authenticated transfers do not follow redirects; configure the direct clone URL."
+        after_help = "Requires a local Git repository. Compares the exact saved base/head SHAs, including for closed/merged PRs; current branch tips and text diff URLs cannot substitute for unavailable saved objects. A verified empty diff succeeds. Terminal output uses PAGER unless --no-pager is passed.\n\nHTTP(S) fetches reuse the configured user/token only within the selected GitBucket origin and base path. Authenticated transfers do not follow redirects; configure the direct clone URL."
     )]
     Diff {
         /// PR number

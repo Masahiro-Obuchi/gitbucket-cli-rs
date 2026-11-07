@@ -16,9 +16,11 @@ macro_rules! eprint {
 }
 
 mod api;
+mod application;
 mod cancel;
 mod cli;
 mod config;
+mod domain;
 mod error;
 mod git;
 mod limits;

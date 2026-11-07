@@ -12,7 +12,7 @@ fn pr_checkout_prefers_matching_remote_when_api_clone_url_is_unusable() {
         "feature",
         false,
     );
-    let local_repo = fixture.local_repo;
+    let local_repo = fixture.local_repo.clone();
 
     let body = concat!(
         "{",
@@ -24,14 +24,15 @@ fn pr_checkout_prefers_matching_remote_when_api_clone_url_is_unusable() {
         "}"
     )
     .to_string();
+    let body = fixture.saved_pr_body(&body);
     let (port, server) = serve_json_once(
-        "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
+        "GET /api/v3/repos/alice/base/pulls/5 HTTP/1.1",
         "authorization: token test-token",
         &body,
     );
 
     let output = env
-        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/base")
         .current_dir(&local_repo)
         .args(["pr", "checkout", "5"])
         .output()
@@ -57,7 +58,7 @@ fn pr_checkout_prefers_matching_remote_when_api_clone_url_is_unusable() {
 fn pr_checkout_does_not_overwrite_local_main_when_pr_branch_is_named_main() {
     let env = GbTestEnv::new();
     let fixture = setup_pr_remote_fixture(env.path(), "main", "base\npr-main\n", "pr main", true);
-    let local_repo = fixture.local_repo;
+    let local_repo = fixture.local_repo.clone();
     commit_readme(&local_repo, "local-main\n", "local main");
     run_git(&local_repo, &["branch", "-M", "main"]);
     let local_main_before = git_output(&local_repo, &["rev-parse", "main"]);
@@ -71,14 +72,15 @@ fn pr_checkout_does_not_overwrite_local_main_when_pr_branch_is_named_main() {
         "\"base\":{\"ref\":\"main\",\"repo\":{\"name\":\"base\",\"full_name\":\"alice/base\",\"private\":false,\"clone_url\":\"git@gitbucket.example.com:alice/base.git\"}}",
         "}"
     );
+    let body = fixture.saved_pr_body(body);
     let (port, server) = serve_json_once(
-        "GET /api/v3/repos/alice/project/pulls/7 HTTP/1.1",
+        "GET /api/v3/repos/alice/base/pulls/7 HTTP/1.1",
         "authorization: token test-token",
-        body,
+        &body,
     );
 
     let output = env
-        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/base")
         .current_dir(&local_repo)
         .args(["pr", "checkout", "7"])
         .output()
@@ -117,7 +119,7 @@ fn pr_diff_prefers_matching_remotes_when_api_clone_urls_are_unusable() {
         "feature",
         false,
     );
-    let local_repo = fixture.local_repo;
+    let local_repo = fixture.local_repo.clone();
 
     let body = concat!(
         "{",
@@ -128,14 +130,15 @@ fn pr_diff_prefers_matching_remotes_when_api_clone_urls_are_unusable() {
         "\"base\":{\"ref\":\"main\",\"repo\":{\"name\":\"base\",\"full_name\":\"alice/base\",\"private\":false,\"clone_url\":\"git@gitbucket.example.com:alice/base.git\"}}",
         "}"
     );
+    let body = fixture.saved_pr_body(body);
     let (port, server) = serve_json_once(
-        "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
+        "GET /api/v3/repos/alice/base/pulls/5 HTTP/1.1",
         "authorization: token test-token",
-        body,
+        &body,
     );
 
     let output = env
-        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/base")
         .current_dir(&local_repo)
         .args(["pr", "diff", "5"])
         .output()

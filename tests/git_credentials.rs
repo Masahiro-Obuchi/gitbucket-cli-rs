@@ -11,7 +11,7 @@ use support::mock_http::{spawn_scripted_server, ScriptedResponse};
 fn pr_response(clone_url: &str) -> ScriptedResponse {
     ScriptedResponse::json(
         "GET /api/v3/repos/alice/demo/pulls/7 HTTP/1.1", "200 OK",
-        &json!({"number":7,"title":"PR","state":"open","head":{"ref":"main","repo":{"name":"demo","full_name":"alice/demo","clone_url":if clone_url.is_empty() { None } else { Some(clone_url) }}}}).to_string(),
+        &json!({"number":7,"title":"PR","state":"open","head":{"ref":"main","sha":"1".repeat(40),"repo":{"name":"demo","full_name":"alice/demo","clone_url":if clone_url.is_empty() { None } else { Some(clone_url) }}},"base":{"ref":"main","sha":"2".repeat(40)}}).to_string(),
     )
 }
 

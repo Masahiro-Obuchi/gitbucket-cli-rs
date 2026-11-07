@@ -959,33 +959,28 @@ gb pr checkout <NUMBER>
 
 Execution flow:
 
-1. Fetch PR metadata from API.
-2. Resolve the head repository clone URL or a remote matching its server and repository path, otherwise use `origin` when repository metadata is absent.
-3. Validate the head branch as a full `refs/heads/` ref. Acquire an OS lock in the
-   Git common directory (`gb-pr-checkout.lock`), shared with linked worktrees.
-   Reject dirty index/worktree state (including untracked files and submodule
-   changes hidden by Git ignore settings), operations in
-   progress, branches owned by other PR targets, and use in another worktree.
-4. Fetch only the head branch into a target-specific internal ref under
-   `refs/gb/pr-targets/`, using the same scoped credential helper as
-   `repo clone OWNER/REPO`. The namespace is `refs/gb/pr-targets/v1/<SHA-256>`,
-   hashing the JSON tuple of canonical web base URL
-   (scheme/host/port/deployment path), owner, repository and PR number. The fixed
-   64-digit digest keeps ref paths short for long deployment URLs on Windows;
-   branch provenance retains the complete tuple for exact target comparison.
-   Checkout and diff use this namespace; legacy `refs/gb/pr/<NUMBER>` refs are
-   untouched. Fetch uses a fully qualified source ref, no tag following, no
-   `FETCH_HEAD` write, no submodule recursion, and an empty refmap to avoid
-   configured tracking updates.
-   Force is allowed only on the internal destination ref, including force-pushed PRs.
+1. Resolve the numbered PR and its complete saved base/head SHA pair. Reject
+   number/base repository mismatches and invalid/missing full commit IDs.
+2. Prepare object sources using the selected base's retained PR ref, SHA fetches
+   and validated repository/branch hints. Canonical head
+   ownership is required to contact a fork; collection ownership cannot prove it.
+3. Acquire the existing Git common-directory checkout lock and reject dirty
+   index/worktree state, operations in progress, unrelated recorded branches and
+   use in another worktree before fetching or switching.
+4. Fetch only to private target refs and verify the saved head object. Fetches
+   do not follow tags, write FETCH_HEAD, recurse submodules or update tracking
+   refs. Retain verified saved objects under bounded-length target/commit digests.
+   Full identity, source order, shallow/deleted-fork behavior and error causes
+   are specified in [PR snapshots](docs/PR_SNAPSHOTS.md).
 5. Recheck cleanliness, branch tip and worktree ownership after fetching. A
    preexisting `pr-<NUMBER>` must have the exact target recorded in the local
    `branch.pr-<NUMBER>.gb-pr-target` Git config value, and its tip must equal the
-   fetched head commit. Otherwise fail without resetting it. No fast-forward,
+   saved head commit. Otherwise fail without resetting it. No fast-forward,
    force/update option or automatic branch renaming is provided.
 6. For a new branch, record the target before switching (so a config write error
    leaves HEAD untouched), then run non-forcing `git checkout --no-track -b` from
-   the fetched commit. For a reusable branch, switch without resetting its tip.
+   the saved commit. For a reusable branch, switch without resetting its tip.
+   Successful text output includes the full saved head commit ID.
    Both use `--no-guess`, `--no-overwrite-ignore` and `--no-recurse-submodules`.
    Submodule working trees and HEADs remain untouched regardless of
    `submodule.recurse`; users inspect and update changed submodule commits
@@ -1021,14 +1016,34 @@ gb pr diff <NUMBER> [--no-pager]
 
 Execution flow:
 
-1. Fetch PR metadata from API.
-2. Resolve the base and head fetch sources from PR repository clone URLs when available, otherwise use matching local remotes or `origin`.
-3. Run `git fetch <base-fetch-source> <base>`.
-4. Run `git fetch <fetch-source> <head>`.
-5. Run `git diff <base-ref>...<head-ref>`.
-6. If the live branch diff is unavailable, fetch a saved PR diff from `diff_url`/`patch_url`, the issue PR metadata, or the GitBucket web diff URL.
+1. Load the saved comparison through the application snapshot loader, using
+   canonical details or a fully enumerated PR collection for absent details.
+2. Validate full base/head commit IDs and obtain precisely those Git objects in
+   the local repository. Branches are fetch hints, never alternative identities.
+3. Compare the saved trees directly; do not recompute a three-dot merge-base
+   against moving branches or substitute a guessed/advertised text-diff URL.
+4. Write a binary-capable, full-index, rename-aware diff to a temporary file with
+   external diff/textconv/color disabled and all paths included from subdirectories.
+5. Stream the complete patch through shared output/paging only after Git succeeds.
+   Terminal output uses PAGER, `--no-pager`/redirected stdout bypass it. A verified
+   empty diff succeeds, including for closed/merged PRs.
 
-If the API response lacks the PR head/base refs, a branch fetch fails, or a non-open PR produces an empty local diff and no saved PR diff can be fetched, `gb pr diff` exits non-zero and reports that the diff is unavailable on stderr. With `--json-errors`, the error includes `code: "diff_unavailable"` and a machine-readable `cause` such as `missing_head_ref`, `base_fetch_failed`, `head_fetch_failed`, or `empty_live_diff`.
+Open PRs use the saved pair in the initial response, which the server may update
+on a later head push. Closed and merged PRs use the retained comparison/head,
+regardless of branch reuse, deletion or base advancement. API and Git do not form
+an atomic snapshot; missing saved objects cause failure instead of using new tips.
+`--json-errors` reports `diff_unavailable` with `missing_snapshot`,
+`git_repository_unavailable`, `head_object_unavailable`,
+`base_object_unavailable` or `git_diff_failed`. Transport/decode and Git
+cancellation/deadline errors keep their original classifications.
+
+Only the saved-snapshot reader accepts the verified 4.44.0 fully read 200/empty
+PR detail response after fork deletion as absent detail, in addition to JSON
+null. Recovery requires a complete PR collection, the exact number/SHA pair and
+available selected-base objects/PR refs; collection fork ownership is not trusted.
+204, malformed JSON, whitespace, read failures and HTTP errors do not activate
+this compatibility path. Ordinary PR detail readers retain the strict JSON
+contract. See [snapshot design](docs/PR_SNAPSHOTS.md).
 
 #### `gb pr comment`
 
@@ -1323,12 +1338,14 @@ or an interactive prompt. Git child termination/reaping may add cleanup time.
 | Raw `gb api` JSON | Preserve ordinary strings, arrays and status/body objects. Zero-byte success prints JSON null; nonempty non-JSON/whitespace-only bodies fail. |
 | Text (diff/HTML) | Read text without JSON decoding; a successful empty/204 response is an empty string. |
 | Empty mutation (DELETE) | Accept HTTP success after reading the response to completion; do not swallow a broken transfer. |
+| Saved PR snapshot detail | Only this reader accepts a fully read HTTP 200/zero-byte detail as absent, verified after fork deletion; recovery still requires the complete collection and valid saved SHAs. |
 | PR create compatibility | Only this operation accepts one JSON string layer containing a PR object, as verified on 4.44.0. |
 | PR merge compatibility | Only this operation accepts the verified 4.44.0 ActionResult envelope: exactly status/body/headers, matching HTTP status, object headers, and a string body containing the merge object. A boolean merged field is required. |
 
 Wrapper inference is not global and does not depend on arbitrary status/body
-property names. PR details fall back to the PR collection only for the verified
-JSON null response, not for missing JSON, a broken transfer or malformed data.
+property names. Ordinary PR details fall back to the PR collection only for the verified
+JSON null response. The saved-snapshot reader additionally handles the verified
+200/zero-byte response above; neither path recovers a broken transfer or malformed data.
 
 HTTP transport/decode errors preserve the request method/path and phase. Known
 HTTP status is retained even when its body fails. Source codes remain
@@ -1416,7 +1433,7 @@ not network deadlines. Unrelated background work is not cancelled.
 Pass global `--json-errors` (or set `GB_JSON_ERRORS=true`) to print failures as a single JSON object on stderr:
 
 ```json
-{"error":{"code":"diff_unavailable","message":"Diff unavailable for pull request #9: ...","cause":"empty_live_diff","exit_code":1}}
+{"error":{"code":"diff_unavailable","message":"Diff unavailable for pull request #9: ...","cause":"head_object_unavailable","exit_code":1}}
 ```
 
 ---

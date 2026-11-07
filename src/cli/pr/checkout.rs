@@ -1,5 +1,6 @@
 //! Conservative local PR checkout: never reset an existing user branch.
-use crate::git::GitCommandExt;
+use crate::application::pull_request::load_saved_pull_request;
+use crate::git::{snapshot, GitCommandExt};
 
 use std::fs::{File, OpenOptions};
 use std::path::PathBuf;
@@ -8,10 +9,7 @@ use std::process::{Command, Output};
 use crate::cli::common::RepoContext;
 use crate::error::{GbError, Result};
 
-use super::git::{
-    command_stderr, fetch_namespace, git_fetch_ref, pr_head_fetch_source, print_command_output,
-    resolve_git_fetch_source, target_identity,
-};
+use super::git::{command_stderr, fetch_namespace, print_command_output, target_identity};
 
 pub(super) async fn checkout(
     hostname: &Option<String>,
@@ -20,13 +18,7 @@ pub(super) async fn checkout(
     number: u64,
 ) -> Result<()> {
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
-    let pr = super::target::require_pull_request(&ctx, number).await?;
-    let head = pr
-        .head
-        .as_ref()
-        .ok_or_else(|| GbError::Other("PR has no head branch".into()))?;
-    let full_head = format!("refs/heads/{}", head.ref_name);
-    checked_git(&["check-ref-format", &full_head])?;
+    let saved = load_saved_pull_request(&ctx.client, &ctx.owner, &ctx.repo, number).await?;
 
     let _lock = checkout_lock()?;
     ensure_clean_worktree()?;
@@ -42,24 +34,16 @@ pub(super) async fn checkout(
     }
     ensure_available(&branch)?;
 
-    let source = resolve_git_fetch_source(&pr_head_fetch_source(&pr, &ctx.git_auth)?)?;
-    let head_ref = format!("{}/head", fetch_namespace(&identity));
-    let fetched = git_fetch_ref(
+    snapshot::ensure_commits(
         &ctx.git_auth,
-        &source.command_source,
-        &head.ref_name,
-        &head_ref,
+        &saved.snapshot,
+        saved.base_repository.as_ref(),
+        saved.head_repository.as_ref(),
+        &format!("{}/{}", ctx.owner, ctx.repo),
+        &fetch_namespace(&identity),
+        false,
     )?;
-    if !fetched.status.success() {
-        return Err(GbError::Other(format!(
-            "git fetch failed for '{}' from {}. {}",
-            head.ref_name,
-            source.display_source,
-            command_stderr(&fetched)
-        )));
-    }
-    let commit = checked_git(&["rev-parse", "--verify", &format!("{head_ref}^{{commit}}")])?;
-    let commit = String::from_utf8_lossy(&commit.stdout).trim().to_string();
+    let commit = saved.snapshot.head.as_str().to_string();
     // Recheck after network I/O. Git's non-forcing checkout also checks for races.
     ensure_clean_worktree()?;
     ensure_available(&branch)?;
@@ -71,7 +55,7 @@ pub(super) async fn checkout(
     if let Some(tip) = existing.as_deref() {
         if tip != commit {
             return Err(GbError::Other(format!(
-                "Refusing to reset '{branch}': its commit differs from the fetched PR head (local {tip}, PR {commit}). Keep or rename the branch and reconcile the changes manually; no automatic update is performed."
+                "Refusing to reset '{branch}': its commit differs from the saved PR head (local {tip}, PR {commit}). Keep or rename the branch and reconcile the changes manually; no automatic update is performed."
             )));
         }
     } else {
@@ -79,7 +63,7 @@ pub(super) async fn checkout(
         // changing HEAD/files. Stale records alone never authorize resetting a tip.
         checked_git(&["config", "--local", &key, &identity])?;
     }
-    let mut command = Command::new("git");
+    let mut command = snapshot::command();
     command.args([
         "checkout",
         "--no-guess",
@@ -132,8 +116,12 @@ pub(super) async fn checkout(
     }
     print_command_output(&output);
     println!(
-        "✓ Checked out branch '{branch}' for PR #{number} (from '{}')",
-        head.ref_name
+        "✓ Checked out branch '{branch}' for PR #{number} at {commit} (saved head '{}')",
+        saved
+            .snapshot
+            .head_branch
+            .as_deref()
+            .unwrap_or("saved commit")
     );
     Ok(())
 }

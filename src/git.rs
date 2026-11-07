@@ -1,5 +1,6 @@
 //! Git authentication scoped to one configured instance and one requested URL.
 mod process;
+pub(crate) mod snapshot;
 pub(crate) use process::GitCommandExt;
 
 use std::io::{self, Read, Write};
@@ -141,12 +142,16 @@ impl GitAuth {
     }
 
     pub(crate) fn clone_url(&self, repo: &crate::models::repository::Repository) -> String {
+        self.repository_url(&repo.full_name, repo.clone_url.as_deref())
+    }
+
+    pub(crate) fn repository_url(&self, full_name: &str, clone_url: Option<&str>) -> String {
         let fallback = format!(
             "{}/{}.git",
             self.instance.as_str().trim_end_matches('/'),
-            repo.full_name
+            full_name
         );
-        accessible_clone_url(repo.clone_url.as_deref(), &fallback)
+        accessible_clone_url(clone_url, &fallback)
     }
 
     pub(crate) fn redact_output(&self, output: &mut Output) {

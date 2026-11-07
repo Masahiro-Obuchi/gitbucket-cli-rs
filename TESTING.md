@@ -448,8 +448,8 @@ after HEAD has changed and verify that
 the mutation's cancelled/unverified error and provenance survive failed readback.
 The macOS/Windows CI jobs also run the Git deadline suite and applicable input
 cancellation cases.
-Saved-diff failures check that callers do not reintroduce secret URL queries
-into sanitized transport diagnostics.
+Missing snapshot regressions ensure advertised signed diff URLs are neither
+fetched nor exposed in diagnostics.
 
 ```bash
 cargo test --locked --test transport_failures --test git_timeouts
@@ -490,3 +490,26 @@ It reproduces the 4.44.0 collection's wrong fork ownership and verifies canonica
 JSON hydration and existing-PR lookup. Run it with the other E2E tests at root
 and `/gitbucket` using the dedicated Docker fixture. Fixture records remain in
 the test volume for inspection. See [pagination design](docs/PAGINATION.md).
+
+
+## Saved PR Commits, Diff and Checkout
+
+`tests/pr_snapshots.rs` uses real repositories to verify exact saved SHA behavior
+for open/closed/merged PRs after branch reuse/base advancement, retained PR refs
+after deletion/force-push, shallow clones, missing/invalid objects, null or fully
+read 200/empty detail recovery, transport/decode failures without recovery,
+replacement-object suppression, offline cached objects, empty trees,
+rename/binary/large patches, subdirectory invocation and a real TTY pager.
+Existing checkout and Git credential regressions still verify non-destructive
+branch behavior, cancellation outcomes, authentication scopes and redirect rules.
+
+```bash
+cargo test --locked --test pr_snapshots --test pr_checkout --test git_credentials --test git_regressions --test transport_failures
+```
+
+The three new Docker cases in `pr_snapshot.rs` and `api_contract.rs` check closed
+PR reuse/deletion, merged PR branch advancement and fork deletion. The latter
+explicitly observes 200/zero-byte canonical detail, saved collection SHAs and the
+advertised refs/pull/N/head before checking CLI recovery. Run the whole E2E suite
+at root and /gitbucket. [Snapshot contracts](docs/PR_SNAPSHOTS.md) describe
+API/Git boundaries and unrecoverable object loss.

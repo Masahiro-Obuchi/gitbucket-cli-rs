@@ -13,6 +13,7 @@ pub(crate) enum JsonContract {
     Standard,
     PullRequestCreate,
     PullRequestMerge,
+    PullRequestSnapshot,
 }
 
 #[derive(Debug, Clone)]
@@ -174,10 +175,20 @@ fn parse_success_body<T: DeserializeOwned>(
     contract: JsonContract,
     status: u16,
 ) -> Result<T> {
-    let value: Value = serde_json::from_slice(body)?;
+    // Only the saved-snapshot reader accepts the verified 4.44 deleted-fork
+    // response. Transport::read has already completed successfully; 204,
+    // whitespace, invalid JSON and interrupted bodies remain errors.
+    let value: Value = if matches!(contract, JsonContract::PullRequestSnapshot)
+        && status == 200
+        && body.is_empty()
+    {
+        Value::Null
+    } else {
+        serde_json::from_slice(body)?
+    };
 
     let inner = match contract {
-        JsonContract::Standard => None,
+        JsonContract::Standard | JsonContract::PullRequestSnapshot => None,
         // Confirmed 4.44 PR create returns a JSON-encoded object string.
         JsonContract::PullRequestCreate => value
             .as_str()
