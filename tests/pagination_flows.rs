@@ -185,6 +185,70 @@ fn link_pages_deduplicate_ids_and_preserve_the_first_observation() {
 }
 
 #[test]
+fn unrelated_link_relations_do_not_end_fixed_page_traversal() {
+    for relation in ["canonical", "self", "describedby"] {
+        let env = GbTestEnv::new();
+        let (port, server) = spawn_scripted_server(vec![
+            response(
+                &format!("{ISSUES}?state=all"),
+                json!((2..=26).map(item).collect::<Vec<_>>()),
+            )
+            .with_header(
+                "link",
+                &format!("<https://docs.example.test/schema>; rel={relation}"),
+            ),
+            response(&format!("{ISSUES}?state=all&page=2"), json!([item(1)])),
+        ]);
+        let output = env
+            .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
+            .args(["issue", "list", "--state", "all", "--json"])
+            .output()
+            .unwrap();
+        assert_success(&output);
+        let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(
+            value.as_array().unwrap().len(),
+            26,
+            "unrelated rel={relation} truncated the collection"
+        );
+        assert_eq!(server.join().unwrap().len(), 2);
+    }
+}
+
+#[test]
+fn a_terminal_page_without_any_new_ids_is_not_a_complete_result() {
+    for linked in [false, true] {
+        let env = GbTestEnv::new();
+        let mut first = response(
+            &format!("{ISSUES}?state=open"),
+            json!((1..=25).map(item).collect::<Vec<_>>()),
+        );
+        let second = if linked {
+            first = first.with_header("link", "<?page=2>; rel=next");
+            response(
+                &format!("{ISSUES}?page=2&state=open"),
+                json!((1..=25).map(item).collect::<Vec<_>>()),
+            )
+            .with_header("link", "<?page=1>; rel=prev")
+        } else {
+            response(
+                &format!("{ISSUES}?state=open&page=2"),
+                json!((1..=10).map(item).collect::<Vec<_>>()),
+            )
+        };
+        let (port, server) = spawn_scripted_server(vec![first, second]);
+        let output = env
+            .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
+            .args(["--json-errors", "issue", "list", "--json"])
+            .output()
+            .unwrap();
+        let e = error(&output);
+        assert_eq!(e["cause"], "pagination_no_progress");
+        assert_eq!(server.join().unwrap().len(), 2);
+    }
+}
+
+#[test]
 fn cyclic_or_reordered_equivalent_links_fail_before_another_request() {
     let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![

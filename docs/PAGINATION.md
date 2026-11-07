@@ -17,8 +17,10 @@ fallback for PR lists or existing-PR detection. Other collections and raw `gb ap
 retain their endpoint behavior; this is not a global pagination heuristic.
 
 For servers that provide Link metadata, `rel=next` takes precedence. Multiple
-header fields and relation lists are accepted. Once Link metadata is present,
-absence of next ends the traversal, even if the terminal page has 25 rows.
+header fields and relation lists are accepted. Once pagination Link relations
+(`next`, `prev`, `first`, `last`) are present, absence of next ends traversal,
+even if the terminal page has 25 rows. Unrelated relations such as `canonical`,
+`self`, or `describedby` do not disable the fixed-page contract.
 Absolute, root-relative, path-relative and query-relative targets resolve against
 the actual response URL. Every next target must stay inside the configured API
 base and the same collection endpoint, without credentials or fragments. Omitted
@@ -27,7 +29,8 @@ initial filters such as `state=closed` are restored; conflicting filters fail.
 Rows are deduplicated by Issue/PR number (the API's dummy `id` is unsuitable), or
 comment ID, retaining the first observation. Final ordering is explicit because
 the server need not preserve the order within a page. Zero IDs, cyclic URLs,
-repeated pages without progress, malformed/ambiguous next Links, unexpected
+nonempty pages without any new IDs (including terminal pages),
+malformed/ambiguous next Links, unexpected
 no-Link Issue/PR pages larger than 25, and an exhausted safety cap are errors.
 HTTP and decode failures retain their transport error code, cause and status.
 The command returns no partial JSON array/table and does not decide that a PR is

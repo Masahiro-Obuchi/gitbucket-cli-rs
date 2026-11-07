@@ -90,8 +90,8 @@ impl ApiClient {
                     added += 1;
                 }
             }
-            let link = next_link(&headers)?;
-            linked |= headers.contains_key(LINK);
+            let (link, pagination_metadata) = next_link(&headers)?;
+            linked |= pagination_metadata;
             let following = if let Some(link) = link {
                 Some(resolve_next(
                     &link,
@@ -117,7 +117,7 @@ impl ApiClient {
             } else {
                 None
             };
-            if following.is_some() && count > 0 && added == 0 {
+            if count > 0 && added == 0 {
                 return Err(incomplete("pagination_no_progress", "The server repeated a page without adding any new IDs; pagination may be ignored."));
             }
             match following {
@@ -269,8 +269,9 @@ fn split_field(value: &str, delimiter: char) -> Result<Vec<&str>> {
     Ok(result)
 }
 
-fn next_link(headers: &HeaderMap) -> Result<Option<String>> {
+fn next_link(headers: &HeaderMap) -> Result<(Option<String>, bool)> {
     let mut next = BTreeSet::new();
+    let mut pagination_metadata = false;
     for header in headers.get_all(LINK) {
         let value = header
             .to_str()
@@ -324,12 +325,21 @@ fn next_link(headers: &HeaderMap) -> Result<Option<String>> {
                     });
                 }
             }
-            if relation.is_some_and(|value| {
-                value
-                    .split_ascii_whitespace()
-                    .any(|rel| rel.eq_ignore_ascii_case("next"))
-            }) {
-                next.insert(target.to_string());
+            if let Some(relation) = relation {
+                for rel in relation.split_ascii_whitespace() {
+                    // Link also describes schemas, canonical URLs and other
+                    // unrelated resources. Only pagination relations establish
+                    // that absence of next means this is the final page.
+                    if ["next", "prev", "first", "last"]
+                        .iter()
+                        .any(|known| rel.eq_ignore_ascii_case(known))
+                    {
+                        pagination_metadata = true;
+                    }
+                    if rel.eq_ignore_ascii_case("next") {
+                        next.insert(target.to_string());
+                    }
+                }
             }
         }
     }
@@ -339,7 +349,7 @@ fn next_link(headers: &HeaderMap) -> Result<Option<String>> {
             "Multiple different next Links were returned.",
         ));
     }
-    Ok(next.into_iter().next())
+    Ok((next.into_iter().next(), pagination_metadata))
 }
 
 #[cfg(test)]
@@ -353,12 +363,12 @@ mod tests {
         headers.append(LINK, HeaderValue::from_static("<?page=1>; rel=prev"));
         headers.append(LINK, HeaderValue::from_static("<?page=2&cursor=a,b;c>; title=\"escaped \\\"comma, semicolon;\"; ReL=\"prev NEXT\""));
         assert_eq!(
-            next_link(&headers).unwrap().as_deref(),
+            next_link(&headers).unwrap().0.as_deref(),
             Some("?page=2&cursor=a,b;c")
         );
         let mut terminal = HeaderMap::new();
         terminal.insert(LINK, HeaderValue::from_static("<?page=1>; rel=prev"));
-        assert_eq!(next_link(&terminal).unwrap(), None);
+        assert_eq!(next_link(&terminal).unwrap(), (None, true));
     }
 
     #[test]

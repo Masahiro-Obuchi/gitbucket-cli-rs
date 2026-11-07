@@ -267,7 +267,9 @@ comment ID ascending. `issue view --comments` currently includes comments only
 in text output; JSON comment inclusion remains a follow-up. GitBucket 4.44.0 uses 25-row Issue/PR pages without Link
 headers and returns all discussion comments in one response; these routes have
 separate policies. Link-based servers are also supported with API-boundary and
-cycle checks. An incomplete traversal fails without printing a partial list.
+cycle checks. Unrelated Link relations do not end fixed-page traversal, and a
+nonempty page without any new IDs fails even when it is terminal. An incomplete
+traversal fails without printing a partial list.
 
 `GB_PAGINATION_MAX_PAGES` bounds each traversal (default 1000, range 1–100000).
 Reaching the bound with another page pending is an error, not successful
