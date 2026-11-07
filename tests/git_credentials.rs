@@ -448,11 +448,8 @@ fn full_clone_url_password_is_rejected_without_disclosing_it() {
 
 #[test]
 fn authenticated_url_cannot_be_rewritten_to_an_external_transport() {
-    let (port, api) = spawn_scripted_server(vec![pr_response("")]);
     let env = GbTestEnv::new();
     init_work_repo(env.path());
-    let url = format!("http://127.0.0.1:{port}/git/alice/demo.git");
-    run_git(env.path(), &["remote", "add", "origin", &url]);
     // The rewritten transport is usable: without the protocol restriction,
     // checkout would succeed. Do not use a nonexistent target as the control.
     let transport_dir = tempfile::tempdir().unwrap();
@@ -460,6 +457,15 @@ fn authenticated_url_cannot_be_rewritten_to_an_external_transport() {
     init_work_repo(&remote);
     support::git_repo::commit_readme(&remote, "local transport\n", "Seed transport");
     run_git(&remote, &["branch", "-M", "main"]);
+    let sha = support::git_repo::git_output(&remote, &["rev-parse", "HEAD"]);
+    let mut response = pr_response("");
+    let mut payload: serde_json::Value = serde_json::from_str(&response.body).unwrap();
+    payload["head"]["sha"] = json!(sha);
+    payload["base"]["sha"] = json!(sha);
+    response.body = payload.to_string();
+    let (port, api) = spawn_scripted_server(vec![response]);
+    let url = format!("http://127.0.0.1:{port}/git/alice/demo.git");
+    run_git(env.path(), &["remote", "add", "origin", &url]);
     let file_url = url::Url::from_directory_path(&remote).unwrap();
     run_git(env.path(), &["config", "protocol.file.allow", "always"]);
     run_git(
@@ -475,4 +481,18 @@ fn authenticated_url_cannot_be_rewritten_to_an_external_transport() {
     api.join().unwrap();
     assert!(!output.status.success());
     assert!(!String::from_utf8_lossy(&output.stderr).contains("test-token"));
+    assert!(!std::process::Command::new("git")
+        .current_dir(env.path())
+        .args(["cat-file", "-e", &format!("{sha}^{{commit}}")])
+        .output()
+        .unwrap()
+        .status
+        .success());
+    // Positive control: the identical rewritten URL supplies the saved object
+    // without gb's credential-bearing protocol restriction.
+    run_git(env.path(), &["fetch", "--", &url, &sha]);
+    assert_eq!(
+        support::git_repo::git_output(env.path(), &["rev-parse", "FETCH_HEAD"]),
+        sha
+    );
 }
