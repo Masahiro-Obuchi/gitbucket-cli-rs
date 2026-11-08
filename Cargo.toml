@@ -38,7 +38,7 @@ reqwest = { version = "0.12", features = [
 ], default-features = false }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["arbitrary_precision"] }
 dirs = "6"
 thiserror = "2"
 colored = "3"

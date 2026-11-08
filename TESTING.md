@@ -526,6 +526,8 @@ api_comments, pagination failure without partial JSON, reserved-key conflicts,
 create wrappers and comment POST responses. Pinned augmented shapes are under
 `tests/fixtures/json/`. Existing mutation tests continue checking exact request
 DTOs, and PR metadata text tests distinguish known draft from missing draft.
+Raw HTTP-body cases verify precise unknown integers/decimals in view and
+canonical list composition, while invalid known IDs still fail validation.
 
 ```bash
 cargo test --locked --test json_contract

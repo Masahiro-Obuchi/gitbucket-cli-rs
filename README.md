@@ -245,7 +245,8 @@ gb issue view 1 --web
 ```
 
 API-backed `--json` retains unknown fields and the API's distinction between
-missing, null and false. Previously synthesized defaults are no longer inserted.
+missing, null and false. Unknown numbers retain their integer/decimal precision.
+Previously synthesized defaults are no longer inserted.
 `issue view --comments --json` adds `comment_details` while retaining `comments`
 as its original count/null/absence. PR view keeps its existing `comments` array;
 if the API also returns a `comments` value, that original is saved as

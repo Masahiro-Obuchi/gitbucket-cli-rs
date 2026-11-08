@@ -1280,8 +1280,9 @@ Available on list commands (`repo list`, `issue list`, `pr list`, `label list`, 
 
 API-backed JSON output retains the response JSON, including unknown nested
 fields and the distinction between missing, null, false and empty arrays. Typed
-projections used internally do not synthesize JSON output defaults. Explicit
-command compositions are:
+projections used internally do not synthesize JSON output defaults. Unknown
+numbers retain integer/decimal precision; known IDs still require unsigned
+64-bit integers. Explicit command compositions are:
 
 | Command | Ordinary discussion array | Original API metadata |
 | --- | --- | --- |

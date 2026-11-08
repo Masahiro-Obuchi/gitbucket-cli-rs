@@ -7,6 +7,9 @@ to Issue, PR, discussion-comment, repository, label, milestone and user response
 including nested objects. Formatting and object-key order are not preserved.
 Known field types and required identities still undergo validation; malformed or
 incompatible responses are not accepted merely because JSON output was requested.
+Unknown JSON numbers retain integer and decimal precision, including values
+outside the typed projection's integer range. Known IDs still require valid
+unsigned 64-bit integers.
 
 `models/response.rs` keeps immutable original JSON with a typed projection.
 Serialization uses that original JSON, while commands read the projection through

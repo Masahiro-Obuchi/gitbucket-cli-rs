@@ -373,3 +373,73 @@ fn paged_json_lists_keep_each_pages_metadata_and_known_type_validation() {
         "json_error"
     );
 }
+
+#[test]
+fn unknown_json_numbers_keep_large_integer_and_decimal_precision() {
+    // Construct the HTTP body directly: json! or Value would already round
+    // these numbers before the CLI receives them if precision is disabled.
+    let body = r#"{"number":7,"title":"precise metadata","state":"open","future":{"large_id":18446744073709551617,"decimal":0.12345678901234567890123456789}}"#;
+    for list in [false, true] {
+        let script = if list {
+            vec![
+                ScriptedResponse::json(
+                    &format!("GET {REPO}/pulls?state=open HTTP/1.1"),
+                    "200 OK",
+                    &format!("[{body}]"),
+                ),
+                response(&format!("{REPO}/pulls/7"), &pr()),
+            ]
+        } else {
+            vec![ScriptedResponse::json(
+                &format!("GET {REPO}/pulls/7 HTTP/1.1"),
+                "200 OK",
+                body,
+            )]
+        };
+        let args = if list {
+            vec!["pr", "list", "--json"]
+        } else {
+            vec!["pr", "view", "7", "--json"]
+        };
+        let actual = value(&run(script, &args));
+        let actual = if list { &actual[0] } else { &actual };
+        assert_eq!(
+            actual["future"]["large_id"].to_string(),
+            "18446744073709551617"
+        );
+        assert_eq!(
+            actual["future"]["decimal"].to_string(),
+            "0.12345678901234567890123456789"
+        );
+    }
+}
+
+#[test]
+fn preserving_unknown_numbers_does_not_relax_known_id_validation() {
+    let max = u64::MAX.to_string();
+    let output = run(
+        vec![response(
+            &format!("{REPO}/pulls/{max}"),
+            &json!({"number":u64::MAX,"title":"largest identity","state":"open"}),
+        )],
+        &["pr", "view", &max, "--json"],
+    );
+    assert_eq!(value(&output)["number"].as_u64(), Some(u64::MAX));
+    for number in ["18446744073709551616", "-1", "7.5"] {
+        let body = format!(r#"{{"number":{number},"title":"invalid identity","state":"open"}}"#);
+        let output = run(
+            vec![ScriptedResponse::json(
+                &format!("GET {REPO}/pulls/7 HTTP/1.1"),
+                "200 OK",
+                &body,
+            )],
+            &["--json-errors", "pr", "view", "7", "--json"],
+        );
+        assert_failure(&output);
+        assert!(output.stdout.is_empty());
+        assert_eq!(
+            serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"]["code"],
+            "json_error"
+        );
+    }
+}
