@@ -124,7 +124,7 @@ impl GitBucketWebSession {
             client,
             cookies,
             base_url,
-            principal: user.login,
+            principal: user.login.clone(),
             secrets,
         })
     }

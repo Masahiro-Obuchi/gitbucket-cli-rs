@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+pub type User = super::response::ApiResponse<UserFields>;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct User {
+pub struct UserFields {
     pub login: String,
     #[serde(default)]
     pub email: Option<String>,

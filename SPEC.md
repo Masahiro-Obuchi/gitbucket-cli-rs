@@ -711,8 +711,9 @@ gb issue view <NUMBER> [OPTIONS]
 
 Shows title, state, author, created date, labels, assignees, milestone when present, body, and optional comments.
 Ordinary discussion comments are retrieved completely and sorted by ID ascending.
-Comments are hidden by default; pass `--comments` to include them in text output.
-Issue JSON currently ignores `--comments`; JSON comment inclusion remains pending.
+Comments are hidden by default; pass `--comments` to include them. With `--json`,
+ordinary comments are added as `comment_details`; `comments` keeps its original
+API count, null or absence. No count is invented. See [JSON contracts](docs/JSON_OUTPUT.md).
 
 #### `gb issue create`
 
@@ -818,6 +819,9 @@ or wrong-number details fail without returning a partial list. Table output uses
 summary fields. The 4.44.0 Issue collection excludes PRs and is not used for
 recovery. See [collection contracts](docs/PAGINATION.md).
 
+Text view includes reported draft/labels/assignees/merged_by metadata. Open draft
+PRs display DRAFT in view/list; missing/null draft is not reported as false.
+
 Table output columns:
 
 - `#`
@@ -839,7 +843,8 @@ gb pr view <NUMBER> [OPTIONS]
 | `--json` | — | Print JSON |
 | `--no-pager` | — | Do not use a pager |
 
-With `--json`, `gb` prints the pull request API payload. When `--comments` is also passed, the JSON object includes the complete ordinary discussion `comments` array, sorted by ID ascending. Comment view/list/edit-last use the same collection reader.
+With `--json`, `gb` prints the pull request API payload. When `--comments` is also passed, the JSON object includes the complete ordinary discussion `comments` array, sorted by ID ascending. If the API response itself includes a `comments` value, its original is retained
+as `api_comments`. Comment view/list/edit-last use the same collection reader.
 
 #### `gb pr create`
 
@@ -1272,6 +1277,27 @@ origin targets fail with an explicit target-selection error.
 ### 6.2 JSON output
 
 Available on list commands (`repo list`, `issue list`, `pr list`, `label list`, `milestone list`, `config list`) using `--json`.
+
+API-backed JSON output retains the response JSON, including unknown nested
+fields and the distinction between missing, null, false and empty arrays. Typed
+projections used internally do not synthesize JSON output defaults. Explicit
+command compositions are:
+
+| Command | Ordinary discussion array | Original API metadata |
+| --- | --- | --- |
+| `issue view --comments --json` | `comment_details` | `comments` remains the API count, null or absent |
+| `pr view --comments --json` | `comments` (existing CLI contract) | If the response has `comments`, preserve its original value in `api_comments` |
+| `pr comment list --json` | Root array, unchanged | Each comment retains its unknown fields |
+
+The original response is not a snapshot of the separately fetched discussion
+array; a count may differ during concurrent updates. No inline/review array is
+invented before those comments can actually be fetched. Server collisions with
+`comment_details` or the required `api_comments` augmentation fail without
+partial output; use view without `--comments` or `gb api` to inspect that response.
+The fixtures in `tests/fixtures/json/` pin these augmented shapes.
+PR list JSON retains unknown top-level collection metadata where canonical detail
+does not provide the same key. Known fields and nested identities remain canonical,
+including their missing/null values; see [source and JSON rules](docs/JSON_OUTPUT.md).
 
 ### 6.3 Browser output
 

@@ -87,6 +87,16 @@ pub(super) async fn view(
         .await?;
 
     if options.json {
+        if options.show_comments {
+            let comments = ctx
+                .client
+                .list_issue_comments(&ctx.owner, &ctx.repo, options.number)
+                .await?;
+            return output::page_json(
+                &output::comments::issue(&issue, &comments)?,
+                options.no_pager,
+            );
+        }
         return output::page_json(&issue, options.no_pager);
     }
 

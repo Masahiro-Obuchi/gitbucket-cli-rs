@@ -35,6 +35,9 @@ pub enum IssueCommand {
         no_pager: bool,
     },
     /// View an issue (use --comments to include comments)
+    #[command(
+        after_help = "JSON preserves API fields. With --comments, ordinary discussion comments are added as comment_details; the API comments count remains unchanged or absent."
+    )]
     View {
         /// Issue number
         number: u64,

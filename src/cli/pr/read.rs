@@ -1,7 +1,7 @@
 use colored::Colorize;
 
 use crate::cli::common::RepoContext;
-use crate::error::{GbError, Result};
+use crate::error::Result;
 use crate::models::pull_request::PullRequest;
 use crate::output;
 use crate::output::table::format_table;
@@ -40,6 +40,8 @@ pub(super) async fn list(
         .map(|pr| {
             let state = if pr.merged == Some(true) {
                 "merged"
+            } else if pr.state == "open" && pr.draft == Some(true) {
+                "draft"
             } else {
                 &pr.state
             };
@@ -137,12 +139,10 @@ pub(super) async fn view(
                 .client
                 .list_pr_comments(&ctx.owner, &ctx.repo, options.number)
                 .await?;
-            let mut value = serde_json::to_value(&pr)?;
-            let object = value.as_object_mut().ok_or_else(|| {
-                GbError::Other("Failed to serialize pull request as JSON object".into())
-            })?;
-            object.insert("comments".into(), serde_json::to_value(comments)?);
-            output::page_json(&value, options.no_pager)?;
+            output::page_json(
+                &output::comments::pull_request(&pr, &comments)?,
+                options.no_pager,
+            )?;
         } else {
             output::page_json(&pr, options.no_pager)?;
         }
@@ -172,6 +172,8 @@ async fn format_pr_view(
 ) -> Result<String> {
     let state = if pr.merged == Some(true) {
         "merged"
+    } else if pr.state == "open" && pr.draft == Some(true) {
+        "draft"
     } else {
         &pr.state
     };
@@ -200,6 +202,35 @@ async fn format_pr_view(
         output.push_str(&format!("Created: {}", created));
     }
     output.push('\n');
+
+    if let Some(draft) = pr.draft {
+        output.push_str(&format!("Draft: {}\n", if draft { "yes" } else { "no" }));
+    }
+    if let Some(labels) = &pr.labels {
+        let names: Vec<_> = labels.iter().map(|label| label.name.as_str()).collect();
+        output.push_str(&format!(
+            "Labels: {}\n",
+            if names.is_empty() {
+                "(none)".into()
+            } else {
+                names.join(", ")
+            }
+        ));
+    }
+    if let Some(assignees) = &pr.assignees {
+        let names: Vec<_> = assignees.iter().map(|user| user.login.as_str()).collect();
+        output.push_str(&format!(
+            "Assignees: {}\n",
+            if names.is_empty() {
+                "(none)".into()
+            } else {
+                names.join(", ")
+            }
+        ));
+    }
+    if let Some(user) = &pr.merged_by {
+        output.push_str(&format!("Merged by: {}\n", user.login));
+    }
 
     if let Some(body) = &pr.body {
         if !body.is_empty() {

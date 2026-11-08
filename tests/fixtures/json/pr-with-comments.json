@@ -1,0 +1,10 @@
+{
+  "number": 7,
+  "title": "Draft PR",
+  "state": "open",
+  "draft": true,
+  "mergeable": null,
+  "comments": [{"id": 51, "body": "本文", "future_comment": true}],
+  "api_comments": 12,
+  "future_pr": {"enabled": false}
+}

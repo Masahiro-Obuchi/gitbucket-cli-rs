@@ -39,6 +39,9 @@ pub enum PrCommand {
         no_pager: bool,
     },
     /// View a pull request
+    #[command(
+        after_help = "JSON preserves API fields. With --comments, the established comments array contains ordinary discussion comments; an original API comments value is retained as api_comments. Inline review comments require a separate reader."
+    )]
     View {
         /// PR number
         number: u64,
