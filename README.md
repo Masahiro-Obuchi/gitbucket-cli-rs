@@ -244,6 +244,18 @@ gb issue list --json --no-pager
 gb issue view 1 --web
 ```
 
+API-backed `--json` retains unknown fields and the API's distinction between
+missing, null and false. Unknown numbers retain their integer/decimal precision.
+Previously synthesized defaults are no longer inserted.
+`issue view --comments --json` adds `comment_details` while retaining `comments`
+as its original count/null/absence. PR view keeps its existing `comments` array;
+if the API also returns a `comments` value, that original is saved as
+`api_comments`. These arrays currently contain ordinary discussion comments.
+See [JSON contracts and compatibility](docs/JSON_OUTPUT.md).
+
+PR text view also displays reported draft, labels, assignees and merged-by data;
+open draft PRs show DRAFT. Unknown draft is not displayed as an explicit no.
+
 ## Skill Sample
 
 This repository includes a sample Skill for AI agents that need to operate GitBucket with `gb`:
@@ -263,8 +275,9 @@ Invalid values are rejected before the API call is made.
 
 Issue and PR lists fetch all pages and sort by number descending. Ordinary
 comment reads (view, list and edit-last) share complete retrieval, sorted by
-comment ID ascending. `issue view --comments` currently includes comments only
-in text output; JSON comment inclusion remains a follow-up. GitBucket 4.44.0 uses 25-row Issue/PR pages without Link
+comment ID ascending. `issue view --comments --json` includes them in
+`comment_details`, preserving the API `comments` count when provided.
+GitBucket 4.44.0 uses 25-row Issue/PR pages without Link
 headers and returns all discussion comments in one response; these routes have
 separate policies. Link-based servers are also supported with API-boundary and
 cycle checks. Unrelated Link relations do not end fixed-page traversal, and a

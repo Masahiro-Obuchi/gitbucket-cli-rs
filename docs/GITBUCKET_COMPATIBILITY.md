@@ -21,6 +21,8 @@ All REST paths below are relative to `/api/v3/repos/{owner}/{repo}`.
 | Fork PR ownership | Collection reports the base repository as the fork head; canonical detail reports the actual fork | Verify candidates and JSON metadata with canonical detail |
 | Saved PR comparisons | Closed/merged PRs retain base/head SHAs after branch reuse; refs/pull/N/head preserves the saved head | Diff/checkout must use saved object IDs, not current branch tips |
 | Deleted fork detail | Detail returns 200 with zero bytes; collection still exposes saved SHAs and base repository retains PR head ref | Snapshot-specific absent-detail recovery can restore verified Git objects without trusting collection head ownership |
+| PR response metadata | draft/labels/assignees/merged_by, nullable mergeable, id and resource URLs are returned | Preserve original JSON; expose reported PR metadata without inventing absent values |
+| Issue JSON comment count | The 4.44 Issue response omits a count even when comments exist | Keep absence; add fetched discussions under comment_details without synthesizing comments |
 | PR title/body/state | `PATCH /pulls/{number}` updates title/body/state; a subsequent state-only PATCH preserves title/body | Use the PR endpoint, without requiring Web authentication for these fields |
 | Issue-style edit of a PR | `PATCH /issues/{number}` returns 404 and leaves the title unchanged | Do not interpret this as proof that PR REST editing is unavailable |
 | Inline comments | A Web post to `/{owner}/{repo}/commit/{sha}/comment/new` with file, new line, PR ID and content appears on the PR page | Inline comments require a distinct model and supported retrieval/posting path |
@@ -57,6 +59,11 @@ See [collection contracts and limits](PAGINATION.md).
 PR-10 adds live closed/merged branch-reuse and deleted-fork contracts. Snapshot
 recovery is scoped to exact saved SHAs and retained objects; the 200/empty detail
 exception does not relax ordinary typed JSON reads. See [PR snapshots](PR_SNAPSHOTS.md).
+
+PR-11 compares original REST resources with CLI JSON for an Issue and real draft
+PR, including comment-array augmentation, at both deployment paths. This fixes
+response-field loss without claiming that all advertised URLs work or that the
+ordinary discussion collection includes inline comments. See [JSON contracts](JSON_OUTPUT.md).
 
 ## Fixture strategy
 

@@ -4,8 +4,10 @@ use super::label::Label;
 use super::milestone::Milestone;
 use super::user::User;
 
+pub type IssuePullRequest = super::response::ApiResponse<IssuePullRequestFields>;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct IssuePullRequest {
+pub struct IssuePullRequestFields {
     #[serde(default)]
     pub url: Option<String>,
     #[serde(default)]
@@ -16,8 +18,10 @@ pub struct IssuePullRequest {
     pub patch_url: Option<String>,
 }
 
+pub type Issue = super::response::ApiResponse<IssueFields>;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Issue {
+pub struct IssueFields {
     pub number: u64,
     pub title: String,
     #[serde(default)]

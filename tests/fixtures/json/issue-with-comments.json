@@ -1,0 +1,8 @@
+{
+  "number": 7,
+  "title": "日本語 Issue",
+  "state": "open",
+  "comments": 12,
+  "future_issue": {"enabled": null},
+  "comment_details": [{"id": 51, "body": "本文", "future_comment": true}]
+}

@@ -58,7 +58,7 @@ impl LabelChanges {
             .list_issue_labels(&ctx.owner, &ctx.repo, number)
             .await?
             .into_iter()
-            .map(|label| label.name)
+            .map(|label| label.name.clone())
             .collect();
         let mut progress = crate::operation::Progress::default();
         let removals: Vec<_> = self.remove.intersection(&current).collect();
@@ -107,7 +107,7 @@ impl LabelChanges {
                             .list_issue_labels(&ctx.owner, &ctx.repo, number)
                             .await?;
                         let actual: BTreeSet<_> =
-                            actual.into_iter().map(|label| label.name).collect();
+                            actual.into_iter().map(|label| label.name.clone()).collect();
                         if !additions.iter().all(|name| actual.contains(name)) {
                             return Err(GbError::Other(
                                 "Stored Issue labels do not confirm the additions.".into(),

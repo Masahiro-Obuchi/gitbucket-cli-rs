@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+pub type Label = super::response::ApiResponse<LabelFields>;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Label {
+pub struct LabelFields {
     pub name: String,
     #[serde(default)]
     pub color: Option<String>,

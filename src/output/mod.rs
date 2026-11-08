@@ -1,3 +1,4 @@
+pub(crate) mod comments;
 pub mod table;
 
 use colored::Colorize;
@@ -59,6 +60,7 @@ pub fn format_state(state: &str) -> String {
     match state.to_lowercase().as_str() {
         "open" => "OPEN".green().bold().to_string(),
         "closed" => "CLOSED".red().bold().to_string(),
+        "draft" => "DRAFT".cyan().bold().to_string(),
         "merged" => "MERGED".magenta().bold().to_string(),
         _ => state.to_string(),
     }

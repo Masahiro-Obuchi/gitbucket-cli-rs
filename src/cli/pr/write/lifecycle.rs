@@ -61,9 +61,7 @@ pub(in crate::cli::pr) async fn merge(
         println!("✓ Merged pull request #{}", number);
         Ok(())
     } else {
-        let msg = result
-            .message
-            .unwrap_or_else(|| "Unknown error".to_string());
+        let msg = result.message.as_deref().unwrap_or("Unknown error");
         Err(GbError::Other(format!(
             "Failed to merge pull request #{}: {}",
             number, msg

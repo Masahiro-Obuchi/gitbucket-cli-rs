@@ -40,7 +40,7 @@ impl ApiClient {
                         "PR detail returned another number; no partial list was returned.".into(),
                     ));
                 }
-                *pr = actual;
+                *pr = actual.with_unknown_from(pr)?;
             }
         }
         Ok(prs)
@@ -83,20 +83,16 @@ impl ApiClient {
         let pr = self.pull_request_details(owner, repo, number).await?;
         match pr {
             Some(pr) => Ok(pr),
-            None => self
-                .list_pull_requests(owner, repo, "all")
-                .await?
-                .into_iter()
-                .find(|pr| pr.number == number)
-                .map(|mut pr| {
-                    // Enumeration can establish that this number is a PR, but
-                    // cannot establish its fork head when the detail is null.
-                    // Withhold the head rather than fetch a branch from a
-                    // potentially unrelated base repository.
-                    pr.head = None;
-                    pr
-                })
-                .ok_or_else(|| GbError::Other(format!("Pull request #{number} not found"))),
+            None => {
+                let pr = self
+                    .list_pull_requests(owner, repo, "all")
+                    .await?
+                    .into_iter()
+                    .find(|pr| pr.number == number)
+                    .ok_or_else(|| GbError::Other(format!("Pull request #{number} not found")))?;
+                // Summary ownership cannot prove which fork owns the head.
+                Ok(pr.with_field("head", serde_json::Value::Null)?)
+            }
         }
     }
 

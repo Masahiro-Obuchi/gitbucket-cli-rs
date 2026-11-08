@@ -2,8 +2,10 @@ use serde::{Deserialize, Serialize};
 
 use super::user::User;
 
+pub type Repository = super::response::ApiResponse<RepositoryFields>;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Repository {
+pub struct RepositoryFields {
     pub name: String,
     pub full_name: String,
     #[serde(default)]
@@ -32,8 +34,10 @@ pub struct Repository {
     pub open_issues_count: Option<u64>,
 }
 
+pub type RepositoryRef = super::response::ApiResponse<RepositoryRefFields>;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct RepositoryRef {
+pub struct RepositoryRefFields {
     pub full_name: String,
 }
 

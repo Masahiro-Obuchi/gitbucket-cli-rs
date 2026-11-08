@@ -2,8 +2,10 @@ use serde::{Deserialize, Serialize};
 
 use super::user::User;
 
+pub type Milestone = super::response::ApiResponse<MilestoneFields>;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Milestone {
+pub struct MilestoneFields {
     pub number: u64,
     pub title: String,
     pub state: String,

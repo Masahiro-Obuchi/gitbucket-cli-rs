@@ -1,10 +1,13 @@
 use serde::{Deserialize, Serialize};
 
+use super::label::Label;
 use super::repository::Repository;
 use super::user::User;
 
+pub type PullRequestHead = super::response::ApiResponse<PullRequestHeadFields>;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PullRequestHead {
+pub struct PullRequestHeadFields {
     #[serde(default)]
     pub label: Option<String>,
     #[serde(rename = "ref")]
@@ -15,8 +18,10 @@ pub struct PullRequestHead {
     pub repo: Option<Repository>,
 }
 
+pub type PullRequest = super::response::ApiResponse<PullRequestFields>;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PullRequest {
+pub struct PullRequestFields {
     pub number: u64,
     pub title: String,
     #[serde(default)]
@@ -46,6 +51,14 @@ pub struct PullRequest {
     pub closed_at: Option<String>,
     #[serde(default)]
     pub merged_at: Option<String>,
+    #[serde(default)]
+    pub draft: Option<bool>,
+    #[serde(default)]
+    pub labels: Option<Vec<Label>>,
+    #[serde(default)]
+    pub assignees: Option<Vec<User>>,
+    #[serde(default)]
+    pub merged_by: Option<User>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -84,8 +97,10 @@ pub struct MergePullRequest {
     pub merge_method: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MergeResult {
+pub type MergeResult = super::response::ApiResponse<MergeResultFields>;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MergeResultFields {
     #[serde(default)]
     pub sha: Option<String>,
     #[serde(default)]

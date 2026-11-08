@@ -893,3 +893,76 @@ async fn contract_fixed_pages_all_comments_and_canonical_fork_identity() {
         fork_number
     );
 }
+
+#[tokio::test]
+#[ignore = "requires the pinned Docker GitBucket fixture"]
+async fn contract_cli_json_preserves_api_fields_and_separates_issue_comment_details() {
+    let temp = tempdir().unwrap();
+    login(temp.path());
+    let client = client();
+    let repo = required_env("GB_E2E_REPO");
+    let (_, branch, _) = create_live_pr_fixture(temp.path(), "json-fields");
+    let work = temp.path().join(format!("work-{branch}"));
+    let base = format!("{branch}-base");
+    run_git(&work, &["branch", &base, "HEAD^"]);
+    run_git(&work, &["push", "origin", &base]);
+    let created = success(request(&client, Method::POST, &format!("repos/{repo}/pulls"), Some(json!({"title":"日本語 Draft 🌸","head":branch,"base":base,"body":"原本の本文","draft":true}))).await).await;
+    let created: Value = serde_json::from_str(created.as_str().unwrap()).unwrap();
+    let pr = created["number"].as_u64().unwrap();
+    add_pr_comment(temp.path(), pr, "PRの通常コメント");
+    let issue = create_live_issue(temp.path(), "JSON Issue 🌸", "原本のIssue本文");
+    add_issue_comment(temp.path(), issue, "Issueの通常コメント");
+
+    for (kind, route, number) in [("issue", "issues", issue), ("pr", "pulls", pr)] {
+        let number_arg = number.to_string();
+        let api = stored(&client, &format!("repos/{repo}/{route}/{number}")).await;
+        let plain = gb_output_with_env(
+            temp.path(),
+            temp.path(),
+            &[kind, "view", &number_arg, "--json"],
+        );
+        assert_eq!(serde_json::from_str::<Value>(&plain).unwrap(), api);
+        // These fields were previously dropped by typed serialization.
+        assert!(api.get("id").is_some());
+        assert!(api.get("comments_url").is_some());
+        let mut comments = stored(&client, &format!("repos/{repo}/issues/{number}/comments")).await;
+        comments
+            .as_array_mut()
+            .unwrap()
+            .sort_by_key(|row| row["id"].as_u64().unwrap());
+        let combined = gb_output_with_env(
+            temp.path(),
+            temp.path(),
+            &[kind, "view", &number_arg, "--comments", "--json"],
+        );
+        let mut expected = api.clone();
+        if kind == "issue" {
+            expected["comment_details"] = comments;
+            // 4.44.0 omits the count; the CLI must not invent one.
+            assert!(api.get("comments").is_none());
+        } else {
+            assert_eq!(api["draft"], true);
+            assert!(api["labels"].is_array() && api["assignees"].is_array());
+            assert!(api["mergeable"].is_null());
+            if let Some(original) = api.get("comments") {
+                expected["api_comments"] = original.clone();
+            }
+            expected["comments"] = comments.clone();
+            let listed = gb_output_with_env(
+                temp.path(),
+                temp.path(),
+                &["pr", "comment", "list", &number_arg, "--json"],
+            );
+            assert_eq!(serde_json::from_str::<Value>(&listed).unwrap(), comments);
+            let view = gb_output_with_env(
+                temp.path(),
+                temp.path(),
+                &["pr", "view", &number_arg, "--no-pager"],
+            );
+            for field in ["DRAFT", "Draft: yes", "Labels: (none)", "Assignees: (none)"] {
+                assert!(view.contains(field), "{view}");
+            }
+        }
+        assert_eq!(serde_json::from_str::<Value>(&combined).unwrap(), expected);
+    }
+}

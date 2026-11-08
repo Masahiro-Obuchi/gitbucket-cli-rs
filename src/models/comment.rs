@@ -1,9 +1,12 @@
+//! Ordinary Issue/PR discussion responses. Commit/inline reviews use a separate reader/model.
 use serde::{Deserialize, Serialize};
 
 use super::user::User;
 
+pub type Comment = super::response::ApiResponse<CommentFields>;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Comment {
+pub struct CommentFields {
     pub id: u64,
     #[serde(default)]
     pub body: Option<String>,
