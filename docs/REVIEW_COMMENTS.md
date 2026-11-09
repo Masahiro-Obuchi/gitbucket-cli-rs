@@ -111,6 +111,8 @@ hidden records by guessing IDs. These limits were reproduced in dedicated fixtur
 - `api/web/review.rs`: token and Cookie Web adapters plus a DOM parser for the
   pinned 4.44 conversation layout. Exact PR route, trusted structural containers,
   identities, paths, author links, timestamps and group membership are checked.
+  Every direct comment element in a group must be recognized; an unknown sibling
+  fails the whole read rather than silently reducing the reported collection.
   User-body markup cannot add records. Zero reviews still require recognizable
   PR identity and conversation structure. The adapter does not infer a binary
   server version from asset filenames; other layouts/releases are unverified.

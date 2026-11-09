@@ -55,11 +55,17 @@ fn script(mode: &str) -> Vec<ScriptedResponse> {
         "http" => "500 Internal Server Error",
         _ => "200 OK",
     };
+    let partial = PAGE.replace(
+        "class=\"commit-comment-box inline-comment\" id=\"discussion_r2\"",
+        "class=\"new-review-box\" id=\"discussion_r2\"",
+    );
     let mut page = ScriptedResponse::html(
         &format!("GET {WEB} HTTP/1.1"),
         status,
         if mode == "bad-layout" {
             "<html>unknown</html>"
+        } else if mode == "partial-layout" {
+            &partial
         } else {
             PAGE
         },
@@ -75,7 +81,10 @@ fn script(mode: &str) -> Vec<ScriptedResponse> {
             "<form>Sign in</form>",
         ));
     }
-    if !matches!(mode, "bad-layout" | "expired" | "http" | "redirect-login") {
+    if !matches!(
+        mode,
+        "bad-layout" | "partial-layout" | "expired" | "http" | "redirect-login"
+    ) {
         if mode != "review-only" {
             frames.push(get(
                 "/bucket/api/v3/repos/alice/project/issues/1/comments?per_page=100",
@@ -326,4 +335,19 @@ fn view_review_augmentation_does_not_overwrite_existing_server_metadata() {
     assert_failure(&output);
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("without losing server data"));
+}
+
+#[test]
+fn a_partially_recognized_review_group_fails_view_and_list_without_partial_json() {
+    for view in [false, true] {
+        let (output, requests) = run("partial-layout", view);
+        assert_failure(&output);
+        assert!(output.stdout.is_empty());
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"]["code"], "review_comments_unavailable");
+        assert_eq!(error["error"]["cause"], "unsupported_markup");
+        assert!(!requests
+            .iter()
+            .any(|r| r.target.contains("/issues/1/comments")));
+    }
 }

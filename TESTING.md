@@ -543,8 +543,9 @@ coverage are described below.
 
 ## Review Conversation Reader
 
-`tests/pr_review_comments.rs` and Web parser unit cases exercise qualified
-identities across ordinary/review stores, scope/unknown fields, shared view/list
+`tests/pr_review_comments.rs` and Web parser unit cases exercise whitespace-bearing
+paths, partially changed review groups, qualified identities across
+ordinary/review stores, scope/unknown fields, shared view/list
 ordering, kind filters, missing detail recovery, public password-free reads,
 Cookie-only private reads, unknown/mismatched markup, duplicates, auth expiry,
 HTTP errors, head changes and no partial output. The focused sanitized fixture is

@@ -205,6 +205,13 @@ pub(crate) fn parse_conversation(
                 return Err(markup());
             }
             let group = one(panel, ":scope > div[class^='fold-comments-']")?;
+            let body = one(group, ":scope > .panel-body")?;
+            // The pinned template emits one direct element per comment. A
+            // partially changed layout must not hide an unrecognized sibling
+            // while we claim complete coverage of the visible group.
+            if body.children().filter_map(ElementRef::wrap).count() != inline.len() {
+                return Err(markup());
+            }
             let classes: Vec<_> = group
                 .value()
                 .classes()
@@ -461,6 +468,20 @@ mod tests {
             assert_eq!(rows[1].position.path.as_deref(), Some(path));
             assert_eq!(rows.len(), 5);
         }
+    }
+    #[test]
+    fn unrecognized_sibling_review_cannot_be_silently_omitted() {
+        let page = PAGE.replace(
+            "class=\"commit-comment-box inline-comment\" id=\"discussion_r2\"",
+            "class=\"new-review-box\" id=\"discussion_r2\"",
+        );
+        assert!(matches!(
+            parse(&page, "https://example.test"),
+            Err(GbError::ReviewUnavailable {
+                cause: "unsupported_markup",
+                ..
+            })
+        ));
     }
     #[test]
     fn rejects_unknown_or_ambiguous_layouts_and_invalid_positions_without_partial_records() {
