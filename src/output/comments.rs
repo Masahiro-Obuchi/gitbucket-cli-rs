@@ -31,8 +31,28 @@ pub(crate) fn pull_request(pr: &PullRequest, comments: &[Comment]) -> Result<Val
     if let Some(original) = object.get("comments").cloned() {
         insert_details(object, "api_comments", original)?;
     }
-    // Preserve the PR CLI's established comments array. Inline/commit review
-    // comments will have a distinct type/array when their reader is implemented.
+    // Preserve the PR CLI's established ordinary comments array. Review records
+    // are added separately by add_reviews without changing this legacy shape.
     object.insert("comments".into(), serde_json::to_value(comments)?);
     Ok(value)
+}
+
+pub(crate) fn add_reviews(
+    value: &mut Value,
+    comments: &crate::application::pr_comments::PrComments,
+) -> Result<()> {
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| GbError::Other("Expected PR JSON object".into()))?;
+    insert_details(
+        object,
+        "review_comments",
+        serde_json::to_value(&comments.review_comments)?,
+    )?;
+    insert_details(
+        object,
+        "comment_coverage",
+        serde_json::to_value(&comments.comment_coverage)?,
+    )?;
+    Ok(())
 }

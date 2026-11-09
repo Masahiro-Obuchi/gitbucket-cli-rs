@@ -2,6 +2,11 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum GbError {
+    #[error("Review comments unavailable: {message}")]
+    ReviewUnavailable {
+        cause: &'static str,
+        message: String,
+    },
     #[error("Cannot confirm a complete collection: {message} No partial results were returned.")]
     Pagination {
         cause: &'static str,
@@ -87,6 +92,7 @@ pub enum GbError {
 impl GbError {
     pub fn code(&self) -> &'static str {
         match self {
+            GbError::ReviewUnavailable { .. } => "review_comments_unavailable",
             GbError::Pagination { .. } => "pagination_incomplete",
             GbError::Context { source, .. } => source.code(),
             GbError::Git {
@@ -120,6 +126,7 @@ impl GbError {
 
     pub fn cause_code(&self) -> Option<&'static str> {
         match self {
+            GbError::ReviewUnavailable { cause, .. } => Some(cause),
             GbError::Pagination { cause, .. } => Some(cause),
             GbError::Context { source, .. } => source.cause_code(),
             GbError::Cancelled => Some("cancelled"),

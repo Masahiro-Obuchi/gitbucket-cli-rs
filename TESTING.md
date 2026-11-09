@@ -538,4 +538,31 @@ The ignored live case
 compares CLI JSON with REST for a real draft PR and Issue, including ordinary
 comments. It verifies preserved id/URL metadata, nullable mergeability and the
 4.44 Issue's absent comment count at root and /gitbucket. See
-[JSON design](docs/JSON_OUTPUT.md). The review/inline reader remains the next unit.
+[JSON design](docs/JSON_OUTPUT.md). The review/inline reader and its expanded
+coverage are described below.
+
+## Review Conversation Reader
+
+`tests/pr_review_comments.rs` and Web parser unit cases exercise qualified
+identities across ordinary/review stores, scope/unknown fields, shared view/list
+ordering, kind filters, missing detail recovery, public password-free reads,
+Cookie-only private reads, unknown/mismatched markup, duplicates, auth expiry,
+HTTP errors, head changes and no partial output. The focused sanitized fixture is
+`tests/fixtures/gitbucket-4.44-review-conversation.html`; user-body markup cannot
+add trusted records. Missing/both line values remain displayed data, without
+inventing Git validation or a reply-parent relationship.
+
+```bash
+cargo test --locked --test pr_review_comments
+cargo test --locked --bin gb api::web::review
+```
+
+The live contracts `contract_review_comment_markup_and_visibility` and
+`contract_private_review_reads_require_cookie_session_after_token_denial` run at
+root and /gitbucket. They use real rename/deleted files, multiple authors,
+old/new lines, same-position additions, whole-commit reviews, updated/outdated
+positions and force-push; view/list/filter output is compared with visible markup.
+The discussion edit-last path remains isolated. Public reads explicitly remove
+password/user overrides; the private fixture checks token-only 401 before Cookie
+reading. [Scope and server limits](docs/REVIEW_COMMENTS.md) distinguish these
+successful reads from complete stored-history or original-Markdown guarantees.

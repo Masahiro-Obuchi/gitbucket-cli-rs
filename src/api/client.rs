@@ -60,6 +60,22 @@ impl ApiClient {
         }
     }
 
+    /// Read the selected Web representation with the existing token, without
+    /// redirects or cookies. Public pages need no additional credentials.
+    pub(crate) async fn review_html(&self, path: &str) -> Result<String> {
+        let url = normalize_origin_path_or_url(path, &self.base_url)?;
+        let (response, context) =
+            transport::send(self.client.get(url), false, &self.secrets).await?;
+        let body = transport::read(response, &context, &self.secrets).await?;
+        if !context.status.is_some_and(|s| (200..300).contains(&s)) {
+            return Err(transport::status_error(&context, &body, &self.secrets));
+        }
+        String::from_utf8(body).map_err(|_| GbError::ReviewUnavailable {
+            cause: "unsupported_encoding",
+            message: "The review page was not valid UTF-8.".into(),
+        })
+    }
+
     pub(crate) async fn get_with_headers<T: DeserializeOwned>(
         &self,
         path_or_url: &str,

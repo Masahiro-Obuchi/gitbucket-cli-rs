@@ -966,3 +966,411 @@ async fn contract_cli_json_preserves_api_fields_and_separates_issue_comment_deta
         assert_eq!(serde_json::from_str::<Value>(&combined).unwrap(), expected);
     }
 }
+
+#[tokio::test]
+#[ignore = "requires the pinned Docker GitBucket fixture"]
+async fn contract_review_comment_markup_and_visibility() {
+    use scraper::{Html, Selector};
+    let temp = tempdir().unwrap();
+    login(temp.path());
+    let repo = required_env("GB_E2E_REPO");
+    let client = client();
+    let suffix = unique_suffix();
+    let branch = format!("review-topic-{suffix}");
+    let base_branch = format!("review-base-{suffix}");
+    let work = temp.path().join("work");
+    clone_repo_to(temp.path(), &repo, &work);
+    ensure_remote_main(&work);
+    run_git(&work, &["checkout", "-b", &base_branch]);
+    std::fs::write(work.join("README.md"), "alpha\nbeta\ngamma\ndelta\n").unwrap();
+    std::fs::write(work.join("gone.txt"), "deleted file\n").unwrap();
+    run_git(&work, &["add", "."]);
+    run_git(&work, &["commit", "-m", "review base files"]);
+    run_git(&work, &["push", "origin", &base_branch]);
+    run_git(&work, &["checkout", "-b", &branch]);
+    run_git(&work, &["mv", "README.md", "renamed file.txt"]);
+    std::fs::write(
+        work.join("renamed file.txt"),
+        "alpha\nbeta\ngamma\ndelta\nnew\n",
+    )
+    .unwrap();
+    std::fs::write(work.join("new file.txt"), "new first\nnew second\n").unwrap();
+    run_git(&work, &["rm", "gone.txt"]);
+    run_git(&work, &["add", "."]);
+    run_git(&work, &["commit", "-m", "rename delete and add"]);
+    run_git(&work, &["push", "origin", &branch]);
+    let number = parse_pr_number(&gb_output_with_env(
+        temp.path(),
+        &work,
+        &[
+            "pr",
+            "create",
+            "--head",
+            &branch,
+            "--base",
+            &base_branch,
+            "--title",
+            "Review collection",
+            "--body",
+            "real rename/deleted-file fixture",
+        ],
+    ));
+    let number_arg = number.to_string();
+    add_pr_comment(temp.path(), number, "ordinary control");
+    let pr = stored(&client, &format!("repos/{repo}/pulls/{number}")).await;
+    let sha = pr["head"]["sha"].as_str().unwrap();
+    let base = required_env("GB_E2E_BASE_URL");
+    let web = Client::builder()
+        .cookie_store(true)
+        .timeout(Duration::from_secs(30))
+        .build()
+        .unwrap();
+    assert!(web
+        .post(format!("{base}/signin"))
+        .form(&[
+            ("userName", required_env("GB_E2E_USER")),
+            ("password", required_env("GB_E2E_PASSWORD")),
+            ("hash", String::new())
+        ])
+        .send()
+        .await
+        .unwrap()
+        .status()
+        .is_success());
+    for (side, path, line, marker) in [
+        ("newLineNumber", "new file.txt", "1", "新行 **review**"),
+        ("newLineNumber", "new file.txt", "1", "同じ位置への追加"),
+        ("oldLineNumber", "renamed file.txt", "1", "旧行の指摘"),
+        ("newLineNumber", "renamed file.txt", "5", "renameの新行"),
+        ("oldLineNumber", "gone.txt", "1", "削除ファイルの指摘"),
+    ] {
+        assert!(web
+            .post(format!("{base}/{repo}/commit/{sha}/comment/new"))
+            .form(&[
+                ("fileName", path.to_owned()),
+                (side, line.into()),
+                ("issueId", number.to_string()),
+                ("content", marker.into())
+            ])
+            .send()
+            .await
+            .unwrap()
+            .status()
+            .is_success());
+    }
+    // Exercise multiple whole-commit IDs independently of the IssueComment
+    // numeric-ID namespace; discussion data is read separately over REST.
+    for marker in ["コミット全体 A", "コミット全体 B"] {
+        assert!(web
+            .post(format!("{base}/{repo}/commit/{sha}/comment/new"))
+            .form(&[("issueId", number.to_string()), ("content", marker.into())])
+            .send()
+            .await
+            .unwrap()
+            .status()
+            .is_success());
+    }
+    let root = Client::builder()
+        .cookie_store(true)
+        .timeout(Duration::from_secs(30))
+        .build()
+        .unwrap();
+    assert!(root
+        .post(format!("{base}/signin"))
+        .form(&[("userName", "root"), ("password", "root"), ("hash", "")])
+        .send()
+        .await
+        .unwrap()
+        .status()
+        .is_success());
+    assert!(root
+        .post(format!("{base}/{repo}/commit/{sha}/comment/new"))
+        .form(&[
+            ("fileName", "new file.txt".into()),
+            ("newLineNumber", "2".into()),
+            ("issueId", number.to_string()),
+            ("content", "別作者の指摘".into())
+        ])
+        .send()
+        .await
+        .unwrap()
+        .status()
+        .is_success());
+    let page = web
+        .get(format!("{base}/{repo}/pull/{number}"))
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    let document = Html::parse_document(&page);
+    let visible = document
+        .select(&Selector::parse("#comment-list .commit-comment-box").unwrap())
+        .count();
+    assert!(visible >= 7);
+    let mut public_read = gb_command();
+    for (key, value) in e2e_env(temp.path()) {
+        public_read.env(key, value);
+    }
+    public_read
+        .current_dir(temp.path())
+        .env_remove("GB_PASSWORD")
+        .env_remove("GB_USER")
+        .args([
+            "pr",
+            "comment",
+            "list",
+            &number_arg,
+            "--kind",
+            "all",
+            "--json",
+        ]);
+    let list = run_and_assert_success(&mut public_read);
+    let listed: Value = serde_json::from_str(&list).unwrap();
+    assert_eq!(listed["comments"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        listed["comment_coverage"]["review_access"],
+        "token_or_public"
+    );
+    assert!(listed["comment_coverage"]["web_actor"].is_null());
+    let rows = listed["review_comments"].as_array().unwrap();
+    assert_eq!(rows.len(), visible);
+    assert!(rows.iter().any(|r| r["author"] == "root"));
+    assert!(rows
+        .iter()
+        .any(|r| r["position"]["path"] == "gone.txt" && r["position"]["old_line"] == 1));
+    assert!(rows
+        .iter()
+        .any(|r| r["position"]["path"] == "renamed file.txt" && r["position"]["new_line"] == 5));
+    assert!(rows.iter().any(|r| r["identity"]["kind"] == "commit"));
+    for row in rows {
+        assert!(row["body"]["markdown"].is_null() && row["pull_request"].is_null());
+        assert_eq!(row["visible_on_pull_request"], number);
+    }
+    let viewed = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &[
+            "pr",
+            "view",
+            &number_arg,
+            "--comments",
+            "--kind",
+            "all",
+            "--json",
+        ],
+    );
+    let viewed: Value = serde_json::from_str(&viewed).unwrap();
+    assert_eq!(viewed["comments"], listed["comments"]);
+    assert_eq!(viewed["review_comments"], listed["review_comments"]);
+    let only = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &[
+            "pr",
+            "comment",
+            "list",
+            &number_arg,
+            "--kind",
+            "review",
+            "--json",
+        ],
+    );
+    let only: Value = serde_json::from_str(&only).unwrap();
+    assert_eq!(only["comments"], json!([]));
+    assert_eq!(only["review_comments"], listed["review_comments"]);
+    gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &[
+            "pr",
+            "comment",
+            &number_arg,
+            "--edit-last",
+            "--body",
+            "edited ordinary only",
+        ],
+    );
+    assert_eq!(
+        stored(&client, &format!("repos/{repo}/issues/{number}/comments")).await[0]["body"],
+        "edited ordinary only"
+    );
+    if let Ok(dir) = std::env::var("GB_REVIEW_CAPTURE_DIR") {
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            std::path::Path::new(&dir).join("real-conversation.html"),
+            &page,
+        )
+        .unwrap();
+    }
+    std::fs::write(work.join("new file.txt"), "updated unrelated contents\n").unwrap();
+    run_git(&work, &["rm", "renamed file.txt"]);
+    run_git(&work, &["add", "."]);
+    run_git(&work, &["commit", "-m", "update review positions"]);
+    run_git(&work, &["push", "origin", &branch]);
+    let after = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &[
+            "pr",
+            "comment",
+            "list",
+            &number_arg,
+            "--kind",
+            "review",
+            "--json",
+        ],
+    );
+    let after: Value = serde_json::from_str(&after).unwrap();
+    assert!(after["review_comments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|r| r["position"]["outdated"] == true));
+    // Excluded commits illustrate why a successful Web-scope read cannot claim
+    // to enumerate every stored historical review.
+    run_git(&work, &["reset", "--hard", &base_branch]);
+    std::fs::write(work.join("force.txt"), "new history\n").unwrap();
+    run_git(&work, &["add", "."]);
+    run_git(&work, &["commit", "-m", "replace PR history"]);
+    run_git(&work, &["push", "--force", "origin", &branch]);
+    let hidden = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &[
+            "pr",
+            "comment",
+            "list",
+            &number_arg,
+            "--kind",
+            "all",
+            "--json",
+        ],
+    );
+    let hidden: Value = serde_json::from_str(&hidden).unwrap();
+    assert!(
+        hidden["review_comments"].as_array().unwrap().len() < rows.len(),
+        "The server should omit at least some reviews from the replaced history"
+    );
+    assert!(hidden["comment_coverage"]["historical_review_complete"].is_null());
+}
+
+#[tokio::test]
+#[ignore = "requires the pinned Docker GitBucket fixture"]
+async fn contract_private_review_reads_require_cookie_session_after_token_denial() {
+    let temp = tempdir().unwrap();
+    login(temp.path());
+    let client = client();
+    let name = format!("private-review-{}", unique_suffix());
+    let repo = format!("{}/{name}", required_env("GB_E2E_USER"));
+    success(
+        request(
+            &client,
+            Method::POST,
+            "user/repos",
+            Some(json!({"name":name,"private":true})),
+        )
+        .await,
+    )
+    .await;
+    let work = temp.path().join("work");
+    clone_repo_to(temp.path(), &repo, &work);
+    ensure_remote_main(&work);
+    run_git(&work, &["checkout", "-b", "review-head"]);
+    std::fs::write(work.join("README.md"), "private review change\n").unwrap();
+    run_git(&work, &["add", "README.md"]);
+    run_git(&work, &["commit", "-m", "private review head"]);
+    run_git(&work, &["push", "origin", "review-head"]);
+    let created = gb_output_with_env(
+        temp.path(),
+        &work,
+        &[
+            "pr",
+            "create",
+            "--repo",
+            &repo,
+            "--head",
+            "review-head",
+            "--base",
+            "main",
+            "--title",
+            "Private review",
+            "--body",
+            "cookie fallback",
+        ],
+    );
+    let number = parse_pr_number(&created);
+    let number_arg = number.to_string();
+    let sha = git_output(&work, &["rev-parse", "HEAD"]);
+    let base = required_env("GB_E2E_BASE_URL");
+    let denied = client
+        .get(format!("{base}/{repo}/pull/{number}"))
+        .header(
+            "Authorization",
+            format!("token {}", required_env("GB_E2E_TOKEN")),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+    let web = Client::builder()
+        .cookie_store(true)
+        .timeout(Duration::from_secs(30))
+        .build()
+        .unwrap();
+    assert!(web
+        .post(format!("{base}/signin"))
+        .form(&[
+            ("userName", required_env("GB_E2E_USER")),
+            ("password", required_env("GB_E2E_PASSWORD")),
+            ("hash", String::new())
+        ])
+        .send()
+        .await
+        .unwrap()
+        .status()
+        .is_success());
+    assert!(web
+        .post(format!("{base}/{repo}/commit/{sha}/comment/new"))
+        .form(&[
+            ("issueId", number_arg.clone()),
+            ("fileName", "README.md".into()),
+            ("newLineNumber", "1".into()),
+            ("content", "private inline review".into())
+        ])
+        .send()
+        .await
+        .unwrap()
+        .status()
+        .is_success());
+    let output = gb_output_with_env(
+        temp.path(),
+        temp.path(),
+        &[
+            "pr",
+            "comment",
+            "list",
+            &number_arg,
+            "--repo",
+            &repo,
+            "--kind",
+            "all",
+            "--json",
+        ],
+    );
+    let output: Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(output["review_comments"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        output["review_comments"][0]["body"]["text"],
+        "private inline review"
+    );
+    assert_eq!(
+        output["comment_coverage"]["review_access"],
+        "cookie_session"
+    );
+    assert_eq!(
+        output["comment_coverage"]["web_actor"],
+        required_env("GB_E2E_USER")
+    );
+}
