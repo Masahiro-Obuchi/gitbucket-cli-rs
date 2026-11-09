@@ -1,6 +1,7 @@
 use clap::{Args, Subcommand};
 
 use crate::cli::common::normalize_str_vec;
+use crate::domain::review_comment::CommentSelection;
 
 mod checkout;
 mod git;
@@ -40,7 +41,7 @@ pub enum PrCommand {
     },
     /// View a pull request
     #[command(
-        after_help = "JSON preserves API fields. With --comments, the established comments array contains ordinary discussion comments; an original API comments value is retained as api_comments. Inline review comments require a separate reader."
+        after_help = "JSON preserves API fields. --comments defaults to ordinary discussion. --comments --kind all adds review_comments and comment_coverage from the verified GitBucket 4.44 Web conversation. Public/token-readable pages need no password; only 401/403 starts Web sign-in. Visible reviews do not prove complete stored history or valid Git positions."
     )]
     View {
         /// PR number
@@ -48,6 +49,9 @@ pub enum PrCommand {
         /// Show comments
         #[arg(long, short)]
         comments: bool,
+        /// Comment sources: discussion (default), review, all; review uses Web HTML with sign-in only if needed
+        #[arg(long = "kind", requires = "comments")]
+        kind: Option<CommentSelection>,
         /// Open in browser
         #[arg(long, short)]
         web: bool,
@@ -159,7 +163,7 @@ pub struct PrCommentArgs {
     /// Comment body (prompts when omitted)
     #[arg(long, short)]
     pub body: Option<String>,
-    /// Edit your last comment instead of adding a new one
+    /// Edit your last ordinary discussion comment instead of adding a new one
     #[arg(long)]
     pub edit_last: bool,
     /// Output the comment as JSON
@@ -170,9 +174,15 @@ pub struct PrCommentArgs {
 #[derive(Subcommand)]
 pub enum PrCommentCommand {
     /// List comments on a pull request
+    #[command(
+        after_help = "discussion preserves the legacy JSON array. review/all return comments, review_comments and comment_coverage. Review HTML follows the verified GitBucket 4.44 layout; public reads need no Web password, while private reads may need GB_PASSWORD. Historical completeness, raw Markdown and original positions can be unknown."
+    )]
     List {
         /// PR number
         number: u64,
+        /// Comment sources: discussion (default), review, all; review uses Web HTML with sign-in only if needed
+        #[arg(long, default_value = "discussion")]
+        kind: CommentSelection,
         /// Output comments as JSON
         #[arg(long)]
         json: bool,
@@ -197,6 +207,7 @@ pub async fn run(
         PrCommand::View {
             number,
             comments,
+            kind,
             web,
             json,
             no_pager,
@@ -208,6 +219,7 @@ pub async fn run(
                 read::ViewOptions {
                     number,
                     show_comments: comments,
+                    selection: kind.unwrap_or_default(),
                     web,
                     json,
                     no_pager,
@@ -283,11 +295,20 @@ pub async fn run(
         PrCommand::Comment(args) => match args.command {
             Some(PrCommentCommand::List {
                 number,
+                kind,
                 json,
                 no_pager,
             }) => {
-                read::list_comments(cli_hostname, cli_repo, cli_profile, number, json, no_pager)
-                    .await
+                read::list_comments(
+                    cli_hostname,
+                    cli_repo,
+                    cli_profile,
+                    number,
+                    kind,
+                    json,
+                    no_pager,
+                )
+                .await
             }
             None => {
                 let number = args.number.ok_or_else(|| {

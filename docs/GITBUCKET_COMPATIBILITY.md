@@ -65,6 +65,14 @@ PR, including comment-array augmentation, at both deployment paths. This fixes
 response-field loss without claiming that all advertised URLs work or that the
 ordinary discussion collection includes inline comments. See [JSON contracts](JSON_OUTPUT.md).
 
+PR-12 adds a DOM reader for the verified conversation layout, with separate
+review records and explicit visible-scope coverage. Live cases cover rename,
+deleted files, old/new lines, grouped comments, multiple authors, outdated
+positions and history replacement. Public reads are password-free; private Web
+reads deny the REST token with 401 and require Cookie authentication. Persisted
+association/history and raw Markdown are not all exposed by this server; see
+[review contracts](REVIEW_COMMENTS.md) and [upstream needs](UPSTREAM_REVIEW_API.md).
+
 ## Fixture strategy
 
 The PR fixture uses Git and the CLI to create an actual branch, commit and PR,
@@ -78,11 +86,12 @@ generated afresh instead of committing an
 entire authenticated HTML page, runtime credentials, or server-specific IDs.
 This makes the contracts repeatable across both deployment paths.
 
-Before extending the HTML parser to another operation, capture and sanitize focused
-HTML fragments from these fixtures. Old-side comments, renamed/deleted files, replies, outdated
-comments after a head update, fork removal, and persisted SHA retrieval still
-need dedicated fixtures. The present tests establish a first baseline; they do
-not finish the entire review compatibility matrix.
+Before extending HTML parsing, capture and sanitize focused fragments. PR-10
+covers fork removal and saved SHAs; PR-12 covers old-side, rename/deleted-file,
+position-group and outdated Web reads. Explicit reply relationships and complete
+stored review history still need server support and dedicated contracts. The
+present tests establish a first baseline; they do not finish the entire review
+compatibility matrix.
 
 ## Source-confirmed items awaiting dedicated live contracts
 

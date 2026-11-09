@@ -793,7 +793,7 @@ gb issue comment <NUMBER> [OPTIONS]
 | Option | Short | Description |
 | --- | --- | --- |
 | `--body <TEXT>` | `-b` | Comment body (prompted when omitted) |
-| `--edit-last` | — | Edit your last comment instead of adding a new one |
+| `--edit-last` | — | Edit your last ordinary discussion comment instead of adding a new one |
 
 ---
 
@@ -839,12 +839,20 @@ gb pr view <NUMBER> [OPTIONS]
 | Option | Short | Description |
 | --- | --- | --- |
 | `--comments` | `-c` | Include comments |
+| `--kind <KIND>` | — | With --comments: discussion (default), review, all |
 | `--web` | `-w` | Open in browser |
 | `--json` | — | Print JSON |
 | `--no-pager` | — | Do not use a pager |
 
 With `--json`, `gb` prints the pull request API payload. When `--comments` is also passed, the JSON object includes the complete ordinary discussion `comments` array, sorted by ID ascending. If the API response itself includes a `comments` value, its original is retained
 as `api_comments`. Comment view/list/edit-last use the same collection reader.
+
+Review/all selects the verified 4.44 Web conversation reader. View and comment
+list share data/order and add `review_comments` plus `comment_coverage`, preserving
+the ordinary `comments` array. Public/token reads need no password; only Web
+401/403 enters verified Cookie sign-in. Known head identity is checked before and
+after reading. Unknown layouts, read/auth failures and changed heads return no
+partial JSON. See [review contracts](docs/REVIEW_COMMENTS.md).
 
 #### `gb pr create`
 
@@ -1062,13 +1070,18 @@ gb pr comment list <NUMBER> [OPTIONS]
 | Option | Short | Description |
 | --- | --- | --- |
 | `--body <TEXT>` | `-b` | Comment body (prompted when omitted) |
-| `--edit-last` | — | Edit your last comment instead of adding a new one |
+| `--edit-last` | — | Edit your last ordinary discussion comment instead of adding a new one |
 | `--json` | — | Print the created or edited comment object as JSON |
 | `--no-pager` | — | Do not use a pager for `gb pr comment list` |
 
 On normal text output, `gb pr comment` prints the comment ID. If the API returns `html_url`, it also prints the comment URL.
 
-`gb pr comment list <NUMBER>` lists comments on the pull request. Pass `--json` to print the full comment array, which can be used to verify whether a previous comment mutation succeeded before retrying. Pass `--no-pager` to force direct stdout output.
+`gb pr comment list <NUMBER> [--kind discussion|review|all]` selects comment sources.
+The discussion default preserves the root JSON array. review/all return an object
+with comments, review_comments and comment_coverage. Pass `--json` to print the
+selected records and, for expanded sources, their coverage. The ordinary array can
+be used to check whether a previous discussion mutation succeeded before retrying.
+Pass `--no-pager` to force direct stdout output.
 
 ---
 
@@ -1295,7 +1308,14 @@ array; a count may differ during concurrent updates. No inline/review array is
 invented before those comments can actually be fetched. Server collisions with
 `comment_details` or the required `api_comments` augmentation fail without
 partial output; use view without `--comments` or `gb api` to inspect that response.
-The fixtures in `tests/fixtures/json/` pin these augmented shapes.
+The fixtures in `tests/fixtures/json/` pin the ordinary augmented shapes.
+Review/all additionally include separate review_comments and comment_coverage.
+Review IDs carry kind/instance/repository/id; visible_on_pull_request identifies
+the page, while stored pull_request association remains null when not exposed.
+Rendered bodies and Web display positions are labelled; original Markdown,
+original positions, timezone, update time and reply parent remain unknown.
+Historical completeness is unknown even when visible-scope retrieval succeeds.
+See [review JSON and limits](docs/REVIEW_COMMENTS.md).
 PR list JSON retains unknown top-level collection metadata where canonical detail
 does not provide the same key. Known fields and nested identities remain canonical,
 including their missing/null values; see [source and JSON rules](docs/JSON_OUTPUT.md).

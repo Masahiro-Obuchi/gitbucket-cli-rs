@@ -1,0 +1,39 @@
+{
+  "identity": {
+    "instance": "https://example.test",
+    "kind": "inline",
+    "repository": "alice/project",
+    "id": 1
+  },
+  "visible_on_pull_request": 1,
+  "pull_request": null,
+  "author": "alice",
+  "body": {
+    "format": "rendered_html",
+    "html": "\n        <p>新行 <strong>review</strong></p>\n      ",
+    "text": "新行 review",
+    "markdown": null
+  },
+  "created_at": "2026-11-08 12:00:00",
+  "timestamp_format": "server_local_datetime",
+  "timezone": null,
+  "updated_at": null,
+  "html_url": "https://example.test/alice/project/pull/1#discussion_r1",
+  "position": {
+    "source": "web_display",
+    "validated_against_git": false,
+    "path": "new file.txt",
+    "old_line": null,
+    "new_line": 1,
+    "commit_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "original_commit_id": null,
+    "original_old_line": null,
+    "original_new_line": null,
+    "outdated": false
+  },
+  "thread": {
+    "id": "fold-comments-1",
+    "relation": "web_position_group",
+    "in_reply_to": null
+  }
+}

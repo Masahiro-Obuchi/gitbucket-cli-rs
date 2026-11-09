@@ -1,6 +1,8 @@
 use colored::Colorize;
 
-use crate::cli::common::RepoContext;
+use crate::application::pr_comments::{self, PrComments};
+use crate::cli::common::{create_web_session, RepoContext};
+use crate::domain::review_comment::{CommentIdentity, CommentKind, CommentSelection};
 use crate::error::Result;
 use crate::models::pull_request::PullRequest;
 use crate::output;
@@ -10,6 +12,7 @@ use crate::output::{format_state, page_or_print, truncate};
 pub(super) struct ViewOptions {
     pub number: u64,
     pub show_comments: bool,
+    pub selection: CommentSelection,
     pub web: bool,
     pub json: bool,
     pub no_pager: bool,
@@ -71,48 +74,153 @@ pub(super) async fn list_comments(
     cli_repo: &Option<String>,
     cli_profile: &Option<String>,
     number: u64,
+    selection: CommentSelection,
     json: bool,
     no_pager: bool,
 ) -> Result<()> {
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
-
-    super::target::require_pull_request(&ctx, number).await?;
-    let comments = ctx
-        .client
-        .list_pr_comments(&ctx.owner, &ctx.repo, number)
-        .await?;
-
+    let (_, head) = load_comment_target(&ctx, number, selection).await?;
+    let comments = load_comments(&ctx, cli_profile, number, selection, head.as_ref()).await?;
     if json {
+        if selection == CommentSelection::Discussion {
+            return output::page_json(&comments.comments, no_pager);
+        }
         return output::page_json(&comments, no_pager);
     }
+    page_or_print(&format_comments(&comments, selection), no_pager)?;
+    Ok(())
+}
 
-    let rows: Vec<Vec<String>> = comments
-        .iter()
-        .map(|comment| {
-            vec![
-                comment.id.to_string(),
+async fn load_comment_target(
+    ctx: &RepoContext,
+    number: u64,
+    selection: CommentSelection,
+) -> Result<(PullRequest, Option<crate::domain::pull_request::CommitId>)> {
+    if selection.review() {
+        let (pr, head) =
+            pr_comments::review_target(&ctx.client, &ctx.owner, &ctx.repo, number).await?;
+        Ok((pr, Some(head)))
+    } else {
+        Ok((
+            super::target::require_pull_request(ctx, number).await?,
+            None,
+        ))
+    }
+}
+async fn load_comments(
+    ctx: &RepoContext,
+    profile: &Option<String>,
+    number: u64,
+    selection: CommentSelection,
+    head: Option<&crate::domain::pull_request::CommitId>,
+) -> Result<PrComments> {
+    let reviews = if selection.review() {
+        let head = head.ok_or_else(|| {
+            crate::api::web::review::unavailable(
+                "missing_head_identity",
+                "Review comments require the saved head identity.",
+            )
+        })?;
+        eprintln!("Notice: Reading inline/commit reviews from the GitBucket 4.44 Web conversation; public/token-readable pages need no Web password.");
+        let (comments, web_actor) = match ctx
+            .client
+            .token_review_comments(&ctx.owner, &ctx.repo, number, head)
+            .await
+        {
+            Ok(comments) => (comments, None),
+            Err(crate::error::GbError::Api {
+                status: 401 | 403, ..
+            }) => {
+                eprintln!("Notice: Web read was denied; cookie-authenticated sign-in is required for this review page.");
+                let session = create_web_session(&ctx.client, &ctx.hostname, profile).await?;
+                let comments = session
+                    .review_comments(&ctx.owner, &ctx.repo, number, head)
+                    .await?;
+                (comments, Some(session.principal().to_owned()))
+            }
+            Err(error) => return Err(error),
+        };
+        Some(pr_comments::ReviewRead {
+            comments,
+            web_actor,
+        })
+    } else {
+        eprintln!("Notice: Scope is ordinary discussion comments only; inline/commit reviews are not requested. Use --kind all for Web review reads.");
+        None
+    };
+    let comments = pr_comments::read(
+        &ctx.client,
+        reviews,
+        &ctx.owner,
+        &ctx.repo,
+        number,
+        selection,
+        head,
+    )
+    .await?;
+    if selection.review() {
+        eprintln!("Notice: Review scope is the visible PR conversation. GitBucket may omit historical reviews; original commit/line and reply relationships can be unknown. Bodies are rendered HTML/plain text, not original Markdown.");
+    }
+    Ok(comments)
+}
+
+fn format_comments(comments: &PrComments, selection: CommentSelection) -> String {
+    let mut text = String::new();
+    if selection.discussion() {
+        text.push_str("--- Comments ---\nScope: ordinary discussion only\n");
+        for comment in &comments.comments {
+            let id = CommentIdentity {
+                instance: comments.comment_coverage.instance.clone(),
+                kind: CommentKind::Discussion,
+                repository: comments.comment_coverage.repository.clone(),
+                id: comment.id,
+            };
+            text.push_str(&format!(
+                "\n{id} {} ({})\n{}\n",
                 comment
                     .user
                     .as_ref()
-                    .map(|user| user.login.clone())
-                    .unwrap_or_default(),
-                comment.created_at.clone().unwrap_or_default(),
-                {
-                    let raw = comment.body.as_deref().unwrap_or("");
-                    let normalized = raw.replace(['\r', '\n'], " ");
-                    let collapsed: String =
-                        normalized.split_whitespace().collect::<Vec<_>>().join(" ");
-                    truncate(&collapsed, 70)
-                },
-            ]
-        })
-        .collect();
-
-    page_or_print(
-        &format_table(&["ID", "AUTHOR", "CREATED", "BODY"], &rows),
-        no_pager,
-    )?;
-    Ok(())
+                    .map(|user| user.login.as_str())
+                    .unwrap_or("unknown"),
+                comment.created_at.as_deref().unwrap_or("unknown time"),
+                comment.body.as_deref().unwrap_or("")
+            ));
+        }
+    }
+    if selection.review() {
+        text.push_str("\n--- Inline / commit review comments ---\nScope: visible PR conversation; historical completeness unknown\nBody: rendered text; original Markdown / original positions may be unknown\nPositions: GitBucket Web display; not validated against Git\n");
+        for comment in &comments.review_comments {
+            let position = &comment.position;
+            text.push_str(&format!(
+                "\n{} {} ({}, server local timezone unknown)\n",
+                comment.identity, comment.author, comment.created_at
+            ));
+            if let Some(path) = &position.path {
+                text.push_str(&format!(
+                    "File: {path}  old line: {}  new line: {}\n",
+                    position
+                        .old_line
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| "unknown".into()),
+                    position
+                        .new_line
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| "unknown".into())
+                ));
+            }
+            text.push_str(&format!(
+                "Commit: {}  outdated: {}\n{}\n{}\n",
+                position.commit_id.as_deref().unwrap_or("unknown"),
+                position
+                    .outdated
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "unknown".into()),
+                comment.body.text,
+                comment.html_url
+            ));
+        }
+    }
+    text
 }
 
 pub(super) async fn view(
@@ -123,7 +231,12 @@ pub(super) async fn view(
 ) -> Result<()> {
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
-    let pr = super::target::require_pull_request(&ctx, options.number).await?;
+    let selection = if options.web {
+        CommentSelection::Discussion
+    } else {
+        options.selection
+    };
+    let (pr, head) = load_comment_target(&ctx, options.number, selection).await?;
 
     if options.web {
         let url = ctx.client.web_url(&format!(
@@ -133,43 +246,32 @@ pub(super) async fn view(
         return output::open_web_url(&url);
     }
 
+    let comments = if options.show_comments {
+        Some(load_comments(&ctx, cli_profile, options.number, selection, head.as_ref()).await?)
+    } else {
+        None
+    };
     if options.json {
-        if options.show_comments {
-            let comments = ctx
-                .client
-                .list_pr_comments(&ctx.owner, &ctx.repo, options.number)
-                .await?;
-            output::page_json(
-                &output::comments::pull_request(&pr, &comments)?,
-                options.no_pager,
-            )?;
+        let value = if let Some(comments) = &comments {
+            let mut value = output::comments::pull_request(&pr, &comments.comments)?;
+            if selection.review() {
+                output::comments::add_reviews(&mut value, comments)?;
+            }
+            value
         } else {
-            output::page_json(&pr, options.no_pager)?;
-        }
-        return Ok(());
+            serde_json::to_value(&pr)?
+        };
+        return output::page_json(&value, options.no_pager);
     }
-
-    let output = format_pr_view(
-        &ctx.client,
-        &ctx.owner,
-        &ctx.repo,
-        options.number,
-        options.show_comments,
-        &pr,
-    )
-    .await?;
-    page_or_print(&output, options.no_pager)?;
+    let mut text = format_pr_view(&pr);
+    if let Some(comments) = comments {
+        text.push_str(&format!("\n{}", format_comments(&comments, selection)));
+    }
+    page_or_print(&text, options.no_pager)?;
     Ok(())
 }
 
-async fn format_pr_view(
-    client: &crate::api::client::ApiClient,
-    owner: &str,
-    repo: &str,
-    number: u64,
-    show_comments: bool,
-    pr: &PullRequest,
-) -> Result<String> {
+fn format_pr_view(pr: &PullRequest) -> String {
     let state = if pr.merged == Some(true) {
         "merged"
     } else if pr.state == "open" && pr.draft == Some(true) {
@@ -238,27 +340,7 @@ async fn format_pr_view(
         }
     }
 
-    if show_comments {
-        let comments = client.list_pr_comments(owner, repo, number).await?;
-        if !comments.is_empty() {
-            output.push_str(&format!("\n{}\n", "--- Comments ---".dimmed()));
-            for c in &comments {
-                let author = c
-                    .user
-                    .as_ref()
-                    .map(|u| u.login.as_str())
-                    .unwrap_or("unknown");
-                let date = c.created_at.as_deref().unwrap_or("");
-                output.push_str(&format!("\n{} ({})\n", author.bold(), date.dimmed()));
-                if let Some(body) = &c.body {
-                    output.push_str(body);
-                    output.push('\n');
-                }
-            }
-        }
-    }
-
-    Ok(output)
+    output
 }
 
 pub(super) fn print_pr_refs(pr: &PullRequest) {

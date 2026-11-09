@@ -136,6 +136,8 @@ gb pr checkout 5
 gb pr diff 5 --no-pager
 gb pr comment 5 --edit-last -b "Updated note" --json
 gb pr comment list 5 --json --no-pager
+gb pr comment list 5 --kind all --json
+gb pr view 5 --comments --kind all --json
 ```
 
 ## Command reference
@@ -348,7 +350,8 @@ Numbered PR commands resolve the target through the PR API first, including
 comment listing/posting/editing. Ordinary Issue numbers and mismatched API
 numbers are refused before prompting or using Issue-backed subresources.
 General PR conversation comments still use the Issue comments API after this
-check; this does not add inline review-comment support.
+check. Read inline/commit reviews with `--kind review` or `--kind all`;
+posting/editing them remains a later implementation unit.
 
 Assignees are a separate operation. Actual changes require `--web`; no-op
 assignee requests need no Web authentication. For mixed edits, Web permission
@@ -356,9 +359,28 @@ and sign-in are attempted before the REST mutation; REST fields are then
 updated, and only assignee deltas use Web. Stored assignees are checked before
 success. If a later step fails, the error identifies completed REST fields and
 asks you to inspect the PR before retrying. A combined edit is not atomic;
-concurrent writers can also race with the content snapshot. Shared Web sign-in
-identity verification and general operation-result handling remain separate
-follow-up work.
+concurrent writers can also race with the content snapshot. Web sign-in verifies
+the Cookie actor against the REST actor; selecting a different Web actor requires
+explicit `GB_WEB_USER`. Operation errors retain the completed and unverified steps.
+
+## Pull Request Review Comments
+
+`pr view --comments` and `pr comment list` default to ordinary discussion for
+compatibility. Add `--kind review` or `--kind all` to read the GitBucket 4.44 Web
+conversation too. Public/token-readable pages require no Web password; only a
+401/403 response starts the existing Cookie sign-in flow. Unknown HTML or other
+read failures return an error without partial results.
+
+Expanded JSON includes `review_comments` and `comment_coverage`; the default
+ordinary JSON array remains unchanged. Review identities include kind, instance,
+repository and ID. Body HTML/plain text is distinguished from original Markdown.
+Web positions are marked as unverified against Git; original positions, stored
+PR association and reply-parent IDs stay unknown when the page omits them.
+`all` selects both kinds, while coverage limits reviews to the visible PR
+conversation. GitBucket can omit stored historical records after pushes or due
+to grouping; the CLI reports that limit. `--edit-last` still targets ordinary
+comments only. See [review contracts](docs/REVIEW_COMMENTS.md) and
+[server API requirements](docs/UPSTREAM_REVIEW_API.md).
 
 ## Pull Request Checkout And Diff
 

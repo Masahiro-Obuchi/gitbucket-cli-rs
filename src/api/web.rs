@@ -1,5 +1,6 @@
 mod label;
 mod repository;
+pub(crate) mod review;
 pub(crate) use repository::verify_parent_html;
 
 use std::sync::atomic::{AtomicBool, Ordering};

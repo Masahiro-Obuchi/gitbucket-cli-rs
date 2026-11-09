@@ -63,9 +63,9 @@ field is silently overwritten. View without `--comments` or raw `gb api` remains
 available to inspect such a response.
 
 `tests/fixtures/json/issue-with-comments.json` and `pr-with-comments.json` pin the
-augmented object shapes. No fake review/inline array is emitted. These routes read
-ordinary Issue discussion comments; commit/inline review comments need the
-separate model and retrieval path in the next remediation unit. API fields such
+ordinary augmented object shapes. With --kind review/all, the separate
+[review reader](REVIEW_COMMENTS.md) adds review_comments and comment_coverage;
+the default ordinary shape remains compatible. API fields such
 as review_comments_url are retained as data, not interpreted as proof that the
 advertised route works on the deployed server.
 
