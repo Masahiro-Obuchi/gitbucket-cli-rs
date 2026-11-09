@@ -1147,10 +1147,21 @@ async fn contract_review_comment_markup_and_visibility() {
     assert!(rows
         .iter()
         .any(|r| r["position"]["path"] == "gone.txt" && r["position"]["old_line"] == 1));
-    assert!(rows
+    // 4.44's comment form trims fileName before storing it. Preserve the
+    // displayed stored path rather than inventing the original Git filename.
+    let whitespace_review = rows
         .iter()
-        .any(|r| r["position"]["path"] == " review whitespace.txt "
-            && r["position"]["new_line"] == 1));
+        .find(|r| r["body"]["text"] == "空白付きファイル名の指摘")
+        .unwrap();
+    assert_eq!(
+        whitespace_review["position"]["path"],
+        "review whitespace.txt"
+    );
+    assert_eq!(whitespace_review["position"]["new_line"], 1);
+    assert_eq!(
+        whitespace_review["position"]["validated_against_git"],
+        false
+    );
     assert!(rows
         .iter()
         .any(|r| r["position"]["path"] == "renamed file.txt" && r["position"]["new_line"] == 5));

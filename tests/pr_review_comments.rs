@@ -38,7 +38,7 @@ fn script(mode: &str) -> Vec<ScriptedResponse> {
         ));
         return frames;
     }
-    if mode != "public" {
+    if !mode.starts_with("public") {
         frames.push(ScriptedResponse::html(
             &format!("GET {WEB} HTTP/1.1"),
             "401 Unauthorized",
@@ -59,6 +59,7 @@ fn script(mode: &str) -> Vec<ScriptedResponse> {
         "class=\"commit-comment-box inline-comment\" id=\"discussion_r2\"",
         "class=\"new-review-box\" id=\"discussion_r2\"",
     );
+    let whitespace = PAGE.replace("new file.txt", " new file.txt ");
     let mut page = ScriptedResponse::html(
         &format!("GET {WEB} HTTP/1.1"),
         status,
@@ -66,6 +67,8 @@ fn script(mode: &str) -> Vec<ScriptedResponse> {
             "<html>unknown</html>"
         } else if mode == "partial-layout" {
             &partial
+        } else if mode == "public-whitespace" {
+            &whitespace
         } else {
             PAGE
         },
@@ -130,7 +133,7 @@ fn run(
     } else {
         command.args(["pr", "comment", "list", "1"]);
     }
-    if mode == "public" {
+    if mode.starts_with("public") {
         command.env_remove("GB_USER").env_remove("GB_PASSWORD");
     }
     command.args([
@@ -349,5 +352,23 @@ fn a_partially_recognized_review_group_fails_view_and_list_without_partial_json(
         assert!(!requests
             .iter()
             .any(|r| r.target.contains("/issues/1/comments")));
+    }
+}
+
+#[test]
+fn view_and_list_preserve_whitespace_in_rendered_review_paths() {
+    for view in [false, true] {
+        let (output, requests) = run("public-whitespace", view);
+        assert_success(&output);
+        let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(
+            value["review_comments"][0]["position"]["path"],
+            " new file.txt "
+        );
+        assert_eq!(
+            value["review_comments"][1]["position"]["path"],
+            " new file.txt "
+        );
+        assert!(requests.iter().all(|request| request.method == "GET"));
     }
 }

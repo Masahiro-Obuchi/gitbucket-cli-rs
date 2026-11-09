@@ -84,6 +84,8 @@ that the record was created specifically for that PR.
 Positions report the displayed filename and optional old/new lines, including
 both values or file-level comments without a line. Significant filename
 whitespace is preserved when matching the heading and filename attribute.
+GitBucket 4.44's Web posting form itself trims filenames before storing them;
+whitespace lost by that server operation cannot be recovered by this reader.
 `position.source` is
 `web_display` and `validated_against_git` is false. The pinned `inline-comment`
 marker identifies current-head display positions; older positions retain unknown
