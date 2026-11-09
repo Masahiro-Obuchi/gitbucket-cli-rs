@@ -198,7 +198,9 @@ pub(crate) fn parse_conversation(
             (vec![panel], None, None)
         } else {
             let heading = one(panel, ":scope > .panel-heading > span.monospace")?;
-            let path = text(heading);
+            // This is a Git path, not prose. Trimming or joining text nodes
+            // changes valid filenames and breaks the attribute cross-check.
+            let path: String = heading.text().collect();
             if path.is_empty() {
                 return Err(markup());
             }
@@ -437,6 +439,28 @@ mod tests {
             "<div class=\"commit-comment-box\" id=\"discussion_r999\">fake</div><p>新行",
         );
         assert_eq!(parse(&page, "https://example.test").unwrap().len(), 5);
+    }
+    #[test]
+    fn review_paths_keep_significant_whitespace_and_decoded_entities() {
+        for path in [
+            " file.txt",
+            "file.txt ",
+            " file.txt ",
+            "\tfile\t.txt\t",
+            "  ",
+            " a & <b> \"q\".txt ",
+        ] {
+            let encoded = path
+                .replace('&', "&amp;")
+                .replace('<', "&lt;")
+                .replace('>', "&gt;")
+                .replace('"', "&quot;");
+            let page = PAGE.replace("new file.txt", &encoded);
+            let rows = parse(&page, "https://example.test").unwrap();
+            assert_eq!(rows[0].position.path.as_deref(), Some(path));
+            assert_eq!(rows[1].position.path.as_deref(), Some(path));
+            assert_eq!(rows.len(), 5);
+        }
     }
     #[test]
     fn rejects_unknown_or_ambiguous_layouts_and_invalid_positions_without_partial_records() {

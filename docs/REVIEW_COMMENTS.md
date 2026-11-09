@@ -82,7 +82,9 @@ page, while its stored `pull_request` stays null. Visibility does not establish
 that the record was created specifically for that PR.
 
 Positions report the displayed filename and optional old/new lines, including
-both values or file-level comments without a line. `position.source` is
+both values or file-level comments without a line. Significant filename
+whitespace is preserved when matching the heading and filename attribute.
+`position.source` is
 `web_display` and `validated_against_git` is false. The pinned `inline-comment`
 marker identifies current-head display positions; older positions retain unknown
 commit IDs when the page does not provide them. The `outdated` value follows this

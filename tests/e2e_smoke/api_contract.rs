@@ -995,6 +995,7 @@ async fn contract_review_comment_markup_and_visibility() {
     )
     .unwrap();
     std::fs::write(work.join("new file.txt"), "new first\nnew second\n").unwrap();
+    std::fs::write(work.join(" review whitespace.txt "), "whitespace path\n").unwrap();
     run_git(&work, &["rm", "gone.txt"]);
     run_git(&work, &["add", "."]);
     run_git(&work, &["commit", "-m", "rename delete and add"]);
@@ -1040,6 +1041,12 @@ async fn contract_review_comment_markup_and_visibility() {
     for (side, path, line, marker) in [
         ("newLineNumber", "new file.txt", "1", "新行 **review**"),
         ("newLineNumber", "new file.txt", "1", "同じ位置への追加"),
+        (
+            "newLineNumber",
+            " review whitespace.txt ",
+            "1",
+            "空白付きファイル名の指摘",
+        ),
         ("oldLineNumber", "renamed file.txt", "1", "旧行の指摘"),
         ("newLineNumber", "renamed file.txt", "5", "renameの新行"),
         ("oldLineNumber", "gone.txt", "1", "削除ファイルの指摘"),
@@ -1140,6 +1147,10 @@ async fn contract_review_comment_markup_and_visibility() {
     assert!(rows
         .iter()
         .any(|r| r["position"]["path"] == "gone.txt" && r["position"]["old_line"] == 1));
+    assert!(rows
+        .iter()
+        .any(|r| r["position"]["path"] == " review whitespace.txt "
+            && r["position"]["new_line"] == 1));
     assert!(rows
         .iter()
         .any(|r| r["position"]["path"] == "renamed file.txt" && r["position"]["new_line"] == 5));
