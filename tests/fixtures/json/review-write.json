@@ -1,0 +1,19 @@
+{
+  "status": "succeeded",
+  "action": "create",
+  "identity": {
+    "instance": "https://example.test/bucket",
+    "kind": "inline",
+    "repository": "alice/project",
+    "id": 1
+  },
+  "web_actor": "alice",
+  "reused": false,
+  "review": null,
+  "reply_to": null,
+  "reply_semantics": null,
+  "route": "web",
+  "verification": "saved_git_diff_and_raw_body",
+  "base_commit_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "head_commit_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+}

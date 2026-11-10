@@ -11,7 +11,8 @@ gb pr comment list 42 --kind discussion --json
 `review` includes file/line CommitComments and whole-commit comments. `all` selects
 both kinds of source; its coverage describes the actual scope. `--edit-last`
 continues to edit only ordinary discussion comments. A comment mutation does not
-accept the read filter. Review posting/editing/replying is a later change.
+accept the read filter. [Inline writes](REVIEW_WRITES.md) use separate explicit
+position/ID arguments; the read filter does not authorize a mutation.
 
 | Source | Reader | Credentials |
 | --- | --- | --- |

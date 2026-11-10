@@ -1,4 +1,5 @@
 pub mod auth;
+pub(crate) mod review_receipt;
 
 use std::path::PathBuf;
 

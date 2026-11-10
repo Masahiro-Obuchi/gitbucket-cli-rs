@@ -73,6 +73,14 @@ reads deny the REST token with 401 and require Cookie authentication. Persisted
 association/history and raw Markdown are not all exposed by this server; see
 [review contracts](REVIEW_COMMENTS.md) and [upstream needs](UPSTREAM_REVIEW_API.md).
 
+PR-13 verifies inline AJAX create/edit/delete and permission-gated raw Markdown
+reads in both layouts. CLI end-to-end contracts exercise create/retry reuse,
+edit, position-group reply and deletion; rename new/context lines and deleted
+old lines are compared with saved Git positions and Web readback. Ordinary
+comments remain on REST. The CLI reserves create/reply intents locally; the
+server supplies neither an atomic head guard nor an idempotency key. See
+[write contracts and remaining limits](REVIEW_WRITES.md).
+
 ## Fixture strategy
 
 The PR fixture uses Git and the CLI to create an actual branch, commit and PR,

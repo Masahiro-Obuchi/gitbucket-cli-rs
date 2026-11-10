@@ -138,6 +138,8 @@ gb pr comment 5 --edit-last -b "Updated note" --json
 gb pr comment list 5 --json --no-pager
 gb pr comment list 5 --kind all --json
 gb pr view 5 --comments --kind all --json
+gb pr comment 5 --file src/lib.rs --line 18 --side new --body-file review.md --web
+gb pr comment reply 5 --kind inline --id 123 --body "確認しました" --web
 ```
 
 ## Command reference
@@ -351,7 +353,7 @@ comment listing/posting/editing. Ordinary Issue numbers and mismatched API
 numbers are refused before prompting or using Issue-backed subresources.
 General PR conversation comments still use the Issue comments API after this
 check. Read inline/commit reviews with `--kind review` or `--kind all`;
-posting/editing them remains a later implementation unit.
+line-based inline writes use the explicit Web commands described below.
 
 Assignees are a separate operation. Actual changes require `--web`; no-op
 assignee requests need no Web authentication. For mixed edits, Web permission
@@ -381,6 +383,24 @@ conversation. GitBucket can omit stored historical records after pushes or due
 to grouping; the CLI reports that limit. `--edit-last` still targets ordinary
 comments only. See [review contracts](docs/REVIEW_COMMENTS.md) and
 [server API requirements](docs/UPSTREAM_REVIEW_API.md).
+
+Inline posting uses `pr comment N --file PATH --line N --side old|new --web`.
+Explicit `pr comment edit|reply|delete N --kind inline --id ID --web` targets a
+visible current inline record. Writes require a local Git repository and Cookie
+authentication, validate the saved Git diff, and verify stored body/position.
+Validation uses three context lines regardless of `GIT_DIFF_OPTS` or
+`diff.suppressBlankEmpty` display preferences. Filename matching uses exact case
+even when `GIT_ICASE_PATHSPECS` is set.
+Editing/deleting is limited to your own records; replies add to the observed
+position group without a stored parent ID. Outdated/file-level writes are refused.
+Create/reply require an open, unmerged PR, checked again immediately before POST.
+
+Create/reply requests reserve retry records in `GB_CONFIG_DIR/review-writes`.
+The same intent is reconciled rather than posted again; use a stable
+`--request-id` for automation and a new key only for a deliberate new submission.
+Keep the retry records. The server has no atomic head guard or idempotency key,
+so a concurrent push can still leave an applied write unverified. See
+[write contracts, retry behavior and limits](docs/REVIEW_WRITES.md).
 
 ## Pull Request Checkout And Diff
 

@@ -1065,16 +1065,54 @@ contract. See [snapshot design](docs/PR_SNAPSHOTS.md).
 ```text
 gb pr comment <NUMBER> [OPTIONS]
 gb pr comment list <NUMBER> [OPTIONS]
+gb pr comment edit <NUMBER> --kind inline --id <ID> --web [OPTIONS]
+gb pr comment reply <NUMBER> --kind inline --id <ID> --web [OPTIONS]
+gb pr comment delete <NUMBER> --kind inline --id <ID> --web [OPTIONS]
 ```
 
 | Option | Short | Description |
 | --- | --- | --- |
 | `--body <TEXT>` | `-b` | Comment body (prompted when omitted) |
 | `--edit-last` | — | Edit your last ordinary discussion comment instead of adding a new one |
-| `--json` | — | Print the created or edited comment object as JSON |
+| `--json` | — | Print the ordinary API comment or verified inline write result as JSON |
 | `--no-pager` | — | Do not use a pager for `gb pr comment list` |
 
 On normal text output, `gb pr comment` prints the comment ID. If the API returns `html_url`, it also prints the comment URL.
+
+`--body-file <PATH>` reads UTF-8 text and conflicts with --body. For line-based
+inline posting, require `--file <PATH> --line <N> --side old|new --web`; file
+conflicts with --edit-last. Optional `--commit <FULL_SHA>` must match the saved
+head, otherwise the head is fixed at start. Optional `--request-id <KEY>` binds
+create/reply retries and permits deliberate identical submissions with a new key.
+Inline ID operations require --kind inline and --web; edit/reply accept body or
+body-file, and all ID mutations accept commit/json. Ordinary writes remain REST.
+
+Inline writes require local saved Git objects and a verified Cookie actor. Only
+regular UTF-8 text hunk lines (three context lines), current visible inline IDs,
+and round-trippable paths are supported. Rename uses the destination path;
+deletion uses the old path. Creation/reply require open/unmerged PRs, rechecked
+immediately before submission. Editing and deleting are limited to your own
+records, with permission-form verification.
+The validation patch always uses three context lines and ordinary blank-line
+prefixes, regardless of `GIT_DIFF_OPTS` or `diff.suppressBlankEmpty`.
+Filename matching uses exact case regardless of `GIT_ICASE_PATHSPECS`.
+Replies add at a checked position group without a stored parent ID.
+
+The CLI checks saved base/head before and after writing, verifies exact Markdown
+using the edit form, and verifies author/ID/position in the conversation. Delete
+requires absence plus resource 404. Success JSON is a distinct write result with
+status/action/identity/actor/route/reused/review, reply semantics, verification and
+saved comparison IDs. A failed readback is unverified, with no success JSON.
+
+Create/reply intent reservations in the config directory's review-writes folder
+prevent an uncertain command from automatically posting again. The default key
+derives from scope/actor/position/body/reply target; automation should supply a
+stable request-id. A retry returns a unique confirmed existing result or refuses
+without POST. A reserved key with changed intent/comparison fails. Preserve the
+records; different config directories/clients do not share this protection.
+The server has no atomic head/body guard or idempotency key; races can be detected
+after an applied write but not rolled back automatically. See
+[full write contract and server boundaries](docs/REVIEW_WRITES.md).
 
 `gb pr comment list <NUMBER> [--kind discussion|review|all]` selects comment sources.
 The discussion default preserves the root JSON array. review/all return an object
