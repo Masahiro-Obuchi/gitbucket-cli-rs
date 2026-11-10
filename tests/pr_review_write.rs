@@ -141,6 +141,16 @@ fn invoke_at(
     extra: &[&str],
     directory: &std::path::Path,
 ) -> std::process::Output {
+    inline_command(env, port, extra, directory)
+        .output()
+        .unwrap()
+}
+fn inline_command(
+    env: &GbTestEnv,
+    port: u16,
+    extra: &[&str],
+    directory: &std::path::Path,
+) -> std::process::Command {
     let file = extra
         .windows(2)
         .find(|v| v[0] == "--file")
@@ -175,7 +185,7 @@ fn invoke_at(
     if let Some(commit) = extra.windows(2).find(|v| v[0] == "--commit") {
         command.args(["--commit", commit[1]]);
     }
-    command.output().unwrap()
+    command
 }
 
 #[test]
@@ -205,6 +215,146 @@ fn posts(requests: &[CapturedRequest]) -> usize {
         .filter(|r| r.method == "POST" && !r.target.ends_with("signin"))
         .count()
 }
+
+fn verify_with_diff_preferences(suppress_blank_empty: bool, diff_opts: Option<&str>) {
+    let (env, _, _) = fixture();
+    let path = env.path().join("new file.txt");
+    std::fs::write(&path, "first\n\nold\nlast\n").unwrap();
+    run_git(env.path(), &["commit", "-am", "base with blank context"]);
+    let base = git_output(env.path(), &["rev-parse", "HEAD"]);
+    std::fs::write(&path, "first\n\nnew\nlast\n").unwrap();
+    run_git(env.path(), &["commit", "-am", "change after blank context"]);
+    let head = git_output(env.path(), &["rev-parse", "HEAD"]);
+    run_git(
+        env.path(),
+        &[
+            "config",
+            "diff.suppressBlankEmpty",
+            if suppress_blank_empty {
+                "true"
+            } else {
+                "false"
+            },
+        ],
+    );
+    // With GIT_DIFF_OPTS=-U0, a valid context line disappears unless the
+    // adapter pins its own context. Otherwise exercise a changed line after
+    // a blank context row whose prefix Git can suppress via configuration.
+    let line = if diff_opts.is_some() { "2" } else { "3" };
+    let coordinates = if diff_opts.is_some() {
+        "oldline=\"2\" newline=\"2\""
+    } else {
+        "newline=\"3\""
+    };
+    let frames = script(&base, &head, "success")
+        .into_iter()
+        .map(|mut frame| {
+            frame.body = frame.body.replace("newline=\"1\"", coordinates);
+            frame
+        })
+        .collect();
+    let (port, server) = spawn_scripted_server(frames);
+    let mut command = inline_command(&env, port, &["--line", line], env.path());
+    command.env_remove("GIT_DIFF_OPTS");
+    if let Some(opts) = diff_opts {
+        command.env("GIT_DIFF_OPTS", opts);
+    }
+    assert_success(&command.output().unwrap());
+    let requests = server.join().unwrap();
+    assert_eq!(posts(&requests), 1);
+    let request = requests
+        .iter()
+        .find(|r| r.target.ends_with("/_data/new"))
+        .unwrap();
+    let fields: std::collections::HashMap<_, _> =
+        url::form_urlencoded::parse(request.body.as_bytes())
+            .into_owned()
+            .collect();
+    let snippet: Value = serde_json::from_str(&fields["diff"]).unwrap();
+    assert_eq!(
+        snippet[1],
+        json!({"type":"equal", "text":"", "oldLine":"2", "newLine":"2"})
+    );
+    assert_eq!(fields["newLineNumber"], line);
+    if diff_opts.is_some() {
+        assert_eq!(fields["oldLineNumber"], "2");
+    } else {
+        assert!(!fields.contains_key("oldLineNumber"));
+    }
+}
+
+#[test]
+fn blank_context_preferences_do_not_break_inline_diff_validation() {
+    verify_with_diff_preferences(true, None);
+}
+
+#[test]
+fn inherited_diff_opts_do_not_override_inline_context() {
+    verify_with_diff_preferences(false, Some("--unified=0"));
+}
+
+#[test]
+fn inherited_diff_opts_cannot_expand_the_supported_inline_hunk() {
+    let (env, _, _) = fixture();
+    let original = (1..=12).map(|i| format!("line{i}\n")).collect::<String>();
+    std::fs::write(env.path().join("new file.txt"), &original).unwrap();
+    run_git(env.path(), &["commit", "-am", "base with distant context"]);
+    let base = git_output(env.path(), &["rev-parse", "HEAD"]);
+    std::fs::write(
+        env.path().join("new file.txt"),
+        original.replace("line10\n", "changed\n"),
+    )
+    .unwrap();
+    run_git(env.path(), &["commit", "-am", "change near end of file"]);
+    let head = git_output(env.path(), &["rev-parse", "HEAD"]);
+    let (port, server) = spawn_scripted_server(vec![get_pr(&base, &head), get_pr(&base, &head)]);
+    let output = inline_command(&env, port, &["--line", "1"], env.path())
+        .env("GIT_DIFF_OPTS", "--unified=100")
+        .output()
+        .unwrap();
+    assert_failure(&output);
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["code"], "review_write_unavailable");
+    assert!(error["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("Line is not present"));
+    assert_eq!(server.join().unwrap().len(), 2);
+}
+
+#[test]
+#[cfg(target_os = "linux")] // Both names must coexist on a case-sensitive filesystem.
+fn inherited_case_insensitive_pathspecs_do_not_select_another_file() {
+    let (env, base, _) = fixture();
+    std::fs::write(env.path().join("NEW FILE.TXT"), "another file\n").unwrap();
+    run_git(env.path(), &["add", "NEW FILE.TXT"]);
+    run_git(env.path(), &["commit", "-m", "add case-distinct path"]);
+    let head = git_output(env.path(), &["rev-parse", "HEAD"]);
+    let (port, server) = spawn_scripted_server(script(&base, &head, "success"));
+    let output = inline_command(&env, port, &[], env.path())
+        .env("GIT_ICASE_PATHSPECS", "1")
+        .output()
+        .unwrap();
+    assert_success(&output);
+    let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["review"]["position"]["path"], "new file.txt");
+    let requests = server.join().unwrap();
+    assert_eq!(posts(&requests), 1);
+    let request = requests
+        .iter()
+        .find(|r| r.target.ends_with("/_data/new"))
+        .unwrap();
+    let fields: std::collections::HashMap<_, _> =
+        url::form_urlencoded::parse(request.body.as_bytes())
+            .into_owned()
+            .collect();
+    assert_eq!(fields["fileName"], "new file.txt");
+    assert_eq!(
+        serde_json::from_str::<Value>(&fields["diff"]).unwrap()[0]["text"],
+        "inserted"
+    );
+}
+
 #[test]
 fn create_uses_saved_coordinates_cookie_actor_and_verified_raw_body() {
     let (env, base, head) = fixture();

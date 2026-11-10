@@ -578,6 +578,11 @@ An uncertain response is reconciled with reads only; failed verification retains
 the original transport cause/status and never reports success. A retry of a
 reserved create intent reuses a confirmed result without another POST. Root
 paths and pathspec metacharacters are checked from a nested working directory.
+Git preference regressions cover `diff.suppressBlankEmpty=true` with a blank
+context row and `GIT_DIFF_OPTS=--unified=0` with a context-line target; both assert
+the posted coordinates and stored snippet. An inherited `--unified=100` cannot
+expand the supported hunk, and `GIT_ICASE_PATHSPECS=1` cannot mix case-distinct
+files into the selected patch (Linux filesystem regression).
 Receipt tests cover immutable baselines, changed/corrupt intent rejection and
 symlink directory refusal. Additional regressions cover Unicode repository names,
 PR closure/merge immediately before submission, read-only matching edits and

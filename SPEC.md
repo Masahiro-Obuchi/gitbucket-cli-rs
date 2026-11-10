@@ -1093,6 +1093,9 @@ and round-trippable paths are supported. Rename uses the destination path;
 deletion uses the old path. Creation/reply require open/unmerged PRs, rechecked
 immediately before submission. Editing and deleting are limited to your own
 records, with permission-form verification.
+The validation patch always uses three context lines and ordinary blank-line
+prefixes, regardless of `GIT_DIFF_OPTS` or `diff.suppressBlankEmpty`.
+Filename matching uses exact case regardless of `GIT_ICASE_PATHSPECS`.
 Replies add at a checked position group without a stored parent ID.
 
 The CLI checks saved base/head before and after writing, verifies exact Markdown

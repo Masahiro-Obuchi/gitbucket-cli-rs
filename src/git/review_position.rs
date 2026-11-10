@@ -14,9 +14,11 @@ pub(crate) struct VerifiedLine {
 
 fn git(args: &[&str]) -> Result<Vec<u8>> {
     let output = snapshot::command()
+        .env_remove("GIT_DIFF_OPTS")
         .env_remove("GIT_LITERAL_PATHSPECS")
         .env_remove("GIT_GLOB_PATHSPECS")
         .env_remove("GIT_NOGLOB_PATHSPECS")
+        .env_remove("GIT_ICASE_PATHSPECS")
         .args(args)
         .bounded_output()?;
     if !output.status.success() {
@@ -57,6 +59,8 @@ pub(crate) fn verify(
     let mut args = vec![
         "-c",
         "diff.algorithm=myers",
+        "-c",
+        "diff.suppressBlankEmpty=false",
         "diff",
         "--unified=3",
         "--inter-hunk-context=0",
@@ -72,9 +76,13 @@ pub(crate) fn verify(
     args.extend(literal_paths.iter().map(String::as_str));
     let mut file = tempfile::tempfile()?;
     let output = snapshot::command()
+        // GIT_DIFF_OPTS takes precedence over --unified=3. The parser also
+        // needs the normal space prefix on every unchanged row, even blanks.
+        .env_remove("GIT_DIFF_OPTS")
         .env_remove("GIT_LITERAL_PATHSPECS")
         .env_remove("GIT_GLOB_PATHSPECS")
         .env_remove("GIT_NOGLOB_PATHSPECS")
+        .env_remove("GIT_ICASE_PATHSPECS")
         .args(args)
         .bounded_output_to_file(file.try_clone()?)?;
     if !output.status.success() {

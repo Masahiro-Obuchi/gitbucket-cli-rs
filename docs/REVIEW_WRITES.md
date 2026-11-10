@@ -20,7 +20,8 @@ base/head objects using the same authenticated, bounded fetch adapter as
 checkout/diff. It uses the exact trees, with replacement objects, external diff
 and text conversion disabled. The working tree/index is not the source of the
 comment coordinates. Running in a subdirectory still uses repository-root paths;
-pathspec metacharacters are literal.
+pathspec metacharacters are literal, and `GIT_ICASE_PATHSPECS` cannot widen the
+selected filename match.
 
 Use the destination filename for a rename, and the old filename for a deletion.
 `--side old|new` and `--line` identify file lines, not patch offsets. Only regular
@@ -30,6 +31,8 @@ are refused. Context lines carry both old/new numbers. The chosen line and up to
 three preceding hunk rows are sent as GitBucket's stored diff snippet. Git and
 JGit can choose different rename/hunk boundaries; the saved Git validation is
 explicit, and post-write Web coordinates must also match.
+The validation patch fixes its context and blank-line prefixes independently of
+`GIT_DIFF_OPTS` and the `diff.suppressBlankEmpty` display setting.
 The selected file's patch is produced on disk and limited to 32 MiB before it is
 loaded for position validation; larger diffs fail before submission.
 

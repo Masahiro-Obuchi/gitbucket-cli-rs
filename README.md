@@ -388,6 +388,9 @@ Inline posting uses `pr comment N --file PATH --line N --side old|new --web`.
 Explicit `pr comment edit|reply|delete N --kind inline --id ID --web` targets a
 visible current inline record. Writes require a local Git repository and Cookie
 authentication, validate the saved Git diff, and verify stored body/position.
+Validation uses three context lines regardless of `GIT_DIFF_OPTS` or
+`diff.suppressBlankEmpty` display preferences. Filename matching uses exact case
+even when `GIT_ICASE_PATHSPECS` is set.
 Editing/deleting is limited to your own records; replies add to the observed
 position group without a stored parent ID. Outdated/file-level writes are refused.
 Create/reply require an open, unmerged PR, checked again immediately before POST.
