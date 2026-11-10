@@ -1,5 +1,6 @@
 //! Git authentication scoped to one configured instance and one requested URL.
 mod process;
+pub(crate) mod review_position;
 pub(crate) mod snapshot;
 pub(crate) use process::GitCommandExt;
 

@@ -6,6 +6,7 @@ use crate::domain::review_comment::CommentSelection;
 mod checkout;
 mod git;
 mod read;
+mod review_write;
 mod target;
 mod worktree;
 mod write;
@@ -149,12 +150,16 @@ pub enum PrCommand {
         #[arg(long)]
         no_pager: bool,
     },
-    /// Add, edit, or list comments on a pull request
+    /// Add, edit, reply to, delete, or list comments on a pull request
     Comment(PrCommentArgs),
 }
 
 #[derive(Args)]
-#[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
+#[command(
+    args_conflicts_with_subcommands = true,
+    subcommand_negates_reqs = true,
+    after_help = "Ordinary discussion writes use REST. --file/--line/--side select an inline Web write and require --web and a local Git repository. Rename paths use the destination; deleted files use the old path. Only UTF-8 text diff hunks with 3 context lines are supported. Create/reply recheck that the PR is open and unmerged immediately before POST. The saved head is checked before/after, but the server has no atomic head guard.\n\nCreate/reply intents are reserved under GB_CONFIG_DIR/review-writes before POST. The same intent is only reconciled on retry; an uncertain result is never automatically resent. Keep this directory and use a stable --request-id for automation. A new key deliberately permits another identical submission. See docs/REVIEW_WRITES.md."
+)]
 pub struct PrCommentArgs {
     #[command(subcommand)]
     pub command: Option<PrCommentCommand>,
@@ -163,6 +168,27 @@ pub struct PrCommentArgs {
     /// Comment body (prompts when omitted)
     #[arg(long, short)]
     pub body: Option<String>,
+    /// Read UTF-8 body from a file
+    #[arg(long, conflicts_with = "body")]
+    pub body_file: Option<std::path::PathBuf>,
+    /// Exact path in the saved PR diff (destination path for renames)
+    #[arg(long, requires_all = ["line", "side", "web"], conflicts_with = "edit_last")]
+    pub file: Option<String>,
+    /// Old/new file line number, not a patch offset
+    #[arg(long, requires = "file")]
+    pub line: Option<u64>,
+    /// Side of the saved diff (old or new)
+    #[arg(long, requires = "file")]
+    pub side: Option<crate::domain::review_write::Side>,
+    /// Expected full saved PR head SHA; defaults to the head read at start
+    #[arg(long, requires = "file")]
+    pub commit: Option<String>,
+    /// Explicitly permit Cookie-authenticated inline Web writes
+    #[arg(long, requires = "file")]
+    pub web: bool,
+    /// Stable retry key; a new key permits an intentional identical submission
+    #[arg(long, requires = "file")]
+    pub request_id: Option<String>,
     /// Edit your last ordinary discussion comment instead of adding a new one
     #[arg(long)]
     pub edit_last: bool,
@@ -173,6 +199,28 @@ pub struct PrCommentArgs {
 
 #[derive(Subcommand)]
 pub enum PrCommentCommand {
+    /// Edit your own visible current inline comment (also changes other views of that record)
+    Edit {
+        #[command(flatten)]
+        target: ReviewTargetArgs,
+        #[arg(long, short, conflicts_with = "body_file")]
+        body: Option<String>,
+        #[arg(long)]
+        body_file: Option<std::path::PathBuf>,
+    },
+    /// Add at the selected current position group; no persistent parent-ID relation
+    Reply {
+        #[command(flatten)]
+        target: ReviewTargetArgs,
+        #[arg(long, short, conflicts_with = "body_file")]
+        body: Option<String>,
+        #[arg(long)]
+        body_file: Option<std::path::PathBuf>,
+        #[arg(long)]
+        request_id: Option<String>,
+    },
+    /// Delete your own visible current inline comment (also removes it from other views)
+    Delete(ReviewTargetArgs),
     /// List comments on a pull request
     #[command(
         after_help = "discussion preserves the legacy JSON array. review/all return comments, review_comments and comment_coverage. Review HTML follows the verified GitBucket 4.44 layout; public reads need no Web password, while private reads may need GB_PASSWORD. Historical completeness, raw Markdown and original positions can be unknown."
@@ -190,6 +238,24 @@ pub enum PrCommentCommand {
         #[arg(long)]
         no_pager: bool,
     },
+}
+
+#[derive(Args)]
+pub struct ReviewTargetArgs {
+    pub number: u64,
+    /// Storage kind; ordinary discussion IDs are never accepted here
+    #[arg(long, required = true, value_parser = ["inline"])]
+    pub kind: String,
+    #[arg(long)]
+    pub id: u64,
+    /// Expected full saved PR head SHA
+    #[arg(long)]
+    pub commit: Option<String>,
+    /// Permit Cookie-authenticated Web changes to this CommitComment record
+    #[arg(long, required = true)]
+    pub web: bool,
+    #[arg(long)]
+    pub json: bool,
 }
 
 pub async fn run(
@@ -293,6 +359,60 @@ pub async fn run(
             worktree::diff(cli_hostname, cli_repo, cli_profile, number, no_pager).await
         }
         PrCommand::Comment(args) => match args.command {
+            Some(PrCommentCommand::Edit {
+                target,
+                body,
+                body_file,
+            }) => {
+                review_write::run(
+                    cli_hostname,
+                    cli_repo,
+                    cli_profile,
+                    review_write::Request::identified(
+                        target,
+                        review_write::Action::Edit,
+                        body,
+                        body_file,
+                        None,
+                    ),
+                )
+                .await
+            }
+            Some(PrCommentCommand::Reply {
+                target,
+                body,
+                body_file,
+                request_id,
+            }) => {
+                review_write::run(
+                    cli_hostname,
+                    cli_repo,
+                    cli_profile,
+                    review_write::Request::identified(
+                        target,
+                        review_write::Action::Reply,
+                        body,
+                        body_file,
+                        request_id,
+                    ),
+                )
+                .await
+            }
+            Some(PrCommentCommand::Delete(target)) => {
+                review_write::run(
+                    cli_hostname,
+                    cli_repo,
+                    cli_profile,
+                    review_write::Request::identified(
+                        target,
+                        review_write::Action::Delete,
+                        None,
+                        None,
+                        None,
+                    ),
+                )
+                .await
+            }
             Some(PrCommentCommand::List {
                 number,
                 kind,
@@ -316,12 +436,22 @@ pub async fn run(
                         "PR number is required. Use `gb pr comment <NUMBER>` or `gb pr comment list <NUMBER>`.".into(),
                     )
                 })?;
+                if args.file.is_some() {
+                    return review_write::run(
+                        cli_hostname,
+                        cli_repo,
+                        cli_profile,
+                        review_write::Request::create(number, args)?,
+                    )
+                    .await;
+                }
+                let body = review_write::body_file(args.body, args.body_file)?;
                 write::comment(
                     cli_hostname,
                     cli_repo,
                     cli_profile,
                     number,
-                    args.body,
+                    body,
                     args.edit_last,
                     args.json,
                 )

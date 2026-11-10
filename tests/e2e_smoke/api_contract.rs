@@ -7,6 +7,261 @@ use serde_json::{json, Value};
 use std::time::Duration;
 use tempfile::tempdir;
 
+#[test]
+#[ignore = "requires the pinned Docker GitBucket fixture"]
+fn contract_cli_inline_create_edit_reply_delete_and_retry() {
+    let temp = tempdir().unwrap();
+    login(temp.path());
+    let (number, branch, file) = create_live_pr_fixture(temp.path(), "inline-write");
+    let work = temp.path().join(format!("work-{branch}"));
+    let number = number.to_string();
+    let sha = git_output(&work, &["rev-parse", "HEAD"]);
+    let original = "新規 **指摘**\n\n次の行 <tag> & value";
+    let body_file = temp.path().join("review.md");
+    std::fs::write(&body_file, original).unwrap();
+    let create = || {
+        serde_json::from_str::<Value>(&gb_output_with_env(
+            temp.path(),
+            &work,
+            &[
+                "pr",
+                "comment",
+                &number,
+                "--file",
+                &file,
+                "--line",
+                "1",
+                "--side",
+                "new",
+                "--commit",
+                &sha,
+                "--web",
+                "--body-file",
+                body_file.to_str().unwrap(),
+                "--json",
+            ],
+        ))
+        .unwrap()
+    };
+    let created = create();
+    let id = created["identity"]["id"].as_u64().unwrap().to_string();
+    assert_eq!(created["identity"]["kind"], "inline");
+    assert_eq!(created["review"]["position"]["path"], file);
+    assert_eq!(created["review"]["position"]["new_line"], 1);
+    assert_eq!(created["reused"], false);
+    let reused = create();
+    assert_eq!(reused["identity"], created["identity"]);
+    assert_eq!(reused["reused"], true);
+    let edited: Value = serde_json::from_str(&gb_output_with_env(
+        temp.path(),
+        &work,
+        &[
+            "pr",
+            "comment",
+            "edit",
+            &number,
+            "--kind",
+            "inline",
+            "--id",
+            &id,
+            "--web",
+            "--body",
+            "編集 **Markdown**",
+            "--json",
+        ],
+    ))
+    .unwrap();
+    assert_eq!(edited["action"], "edit");
+    assert_eq!(edited["identity"], created["identity"]);
+    assert!(edited["review"]["body"]["html"]
+        .as_str()
+        .unwrap()
+        .contains("<strong>Markdown</strong>"));
+    let reply: Value = serde_json::from_str(&gb_output_with_env(
+        temp.path(),
+        &work,
+        &[
+            "pr",
+            "comment",
+            "reply",
+            &number,
+            "--kind",
+            "inline",
+            "--id",
+            &id,
+            "--web",
+            "--body",
+            "返信しました",
+            "--json",
+        ],
+    ))
+    .unwrap();
+    assert_eq!(reply["reply_to"], created["identity"]);
+    assert_eq!(reply["review"]["thread"], created["review"]["thread"]);
+    assert_eq!(
+        reply["reply_semantics"],
+        "same_web_position_group_not_parent_id"
+    );
+    let deleted: Value = serde_json::from_str(&gb_output_with_env(
+        temp.path(),
+        &work,
+        &[
+            "pr", "comment", "delete", &number, "--kind", "inline", "--id", &id, "--web", "--json",
+        ],
+    ))
+    .unwrap();
+    assert_eq!(deleted["action"], "delete");
+    assert!(deleted["review"].is_null());
+    let listed: Value = serde_json::from_str(&gb_output_with_env(
+        temp.path(),
+        &work,
+        &["pr", "comment", "list", &number, "--kind", "all", "--json"],
+    ))
+    .unwrap();
+    assert!(!listed["review_comments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|row| row["identity"] == created["identity"]));
+    assert!(listed["review_comments"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|row| row["identity"] == reply["identity"]));
+}
+
+#[test]
+#[ignore = "requires the pinned Docker GitBucket fixture"]
+fn contract_cli_inline_old_new_rename_deleted_and_context_positions() {
+    let temp = tempdir().unwrap();
+    login(temp.path());
+    let repo = required_env("GB_E2E_REPO");
+    let work = temp.path().join("coordinate-work");
+    clone_repo_to(temp.path(), &repo, &work);
+    ensure_remote_main(&work);
+    let suffix = unique_suffix();
+    let base = format!("inline-base-{suffix}");
+    let head = format!("inline-head-{suffix}");
+    run_git(&work, &["checkout", "-b", &base]);
+    std::fs::write(work.join("before.txt"), "first\nsecond\nthird\nfourth\n").unwrap();
+    std::fs::write(work.join("gone.txt"), "deleted\n").unwrap();
+    std::fs::write(work.join("modified.txt"), "first\nold\nthird\n").unwrap();
+    run_git(&work, &["add", "."]);
+    run_git(&work, &["commit", "-m", "inline coordinate base"]);
+    run_git(&work, &["push", "origin", &base]);
+    run_git(&work, &["checkout", "-b", &head]);
+    run_git(&work, &["mv", "before.txt", "renamed file.txt"]);
+    std::fs::write(
+        work.join("renamed file.txt"),
+        "first\nsecond\nthird\nfourth\nfifth\n",
+    )
+    .unwrap();
+    run_git(&work, &["rm", "gone.txt"]);
+    std::fs::write(work.join("modified.txt"), "first\nnew\nthird\n").unwrap();
+    run_git(&work, &["add", "."]);
+    run_git(&work, &["commit", "-m", "inline coordinate changes"]);
+    run_git(&work, &["push", "origin", &head]);
+    let output = gb_output_with_env(
+        temp.path(),
+        &work,
+        &[
+            "pr",
+            "create",
+            "--head",
+            &head,
+            "--base",
+            &base,
+            "--title",
+            "Inline coordinate contract",
+            "--body",
+            "Coordinate verification",
+        ],
+    );
+    let number = parse_pr_number(&output).to_string();
+    let mut rows = Vec::new();
+    for (path, line, side, body, old, new) in [
+        (
+            "renamed file.txt",
+            "5",
+            "new",
+            "renamed new line",
+            None,
+            Some(5),
+        ),
+        (
+            "renamed file.txt",
+            "4",
+            "old",
+            "renamed context",
+            Some(4),
+            Some(4),
+        ),
+        ("gone.txt", "1", "old", "deleted old line", Some(1), None),
+        (
+            "modified.txt",
+            "2",
+            "old",
+            "modified old line",
+            Some(2),
+            None,
+        ),
+        (
+            "modified.txt",
+            "2",
+            "new",
+            "modified new line",
+            None,
+            Some(2),
+        ),
+    ] {
+        let row: Value = serde_json::from_str(&gb_output_with_env(
+            temp.path(),
+            &work,
+            &[
+                "pr", "comment", &number, "--file", path, "--line", line, "--side", side, "--body",
+                body, "--web", "--json",
+            ],
+        ))
+        .unwrap();
+        assert_eq!(row["review"]["position"]["path"], path);
+        assert_eq!(row["review"]["position"]["old_line"], json!(old));
+        assert_eq!(row["review"]["position"]["new_line"], json!(new));
+        rows.push(row);
+    }
+    let duplicate: Value = serde_json::from_str(&gb_output_with_env(
+        temp.path(),
+        &work,
+        &[
+            "pr",
+            "comment",
+            &number,
+            "--file",
+            "renamed file.txt",
+            "--line",
+            "5",
+            "--side",
+            "new",
+            "--body",
+            "renamed new line",
+            "--request-id",
+            "intentional-second",
+            "--web",
+            "--json",
+        ],
+    ))
+    .unwrap();
+    assert_ne!(rows[0]["identity"], duplicate["identity"]);
+    let listed: Value = serde_json::from_str(&gb_output_with_env(
+        temp.path(),
+        &work,
+        &[
+            "pr", "comment", "list", &number, "--kind", "review", "--json",
+        ],
+    ))
+    .unwrap();
+    assert_eq!(listed["review_comments"].as_array().unwrap().len(), 6);
+}
+
 fn client() -> Client {
     Client::builder()
         .timeout(Duration::from_secs(30))

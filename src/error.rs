@@ -2,6 +2,11 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum GbError {
+    #[error("Inline review write unavailable: {message}")]
+    ReviewWrite {
+        cause: &'static str,
+        message: String,
+    },
     #[error("Review comments unavailable: {message}")]
     ReviewUnavailable {
         cause: &'static str,
@@ -92,6 +97,7 @@ pub enum GbError {
 impl GbError {
     pub fn code(&self) -> &'static str {
         match self {
+            GbError::ReviewWrite { .. } => "review_write_unavailable",
             GbError::ReviewUnavailable { .. } => "review_comments_unavailable",
             GbError::Pagination { .. } => "pagination_incomplete",
             GbError::Context { source, .. } => source.code(),
@@ -126,6 +132,7 @@ impl GbError {
 
     pub fn cause_code(&self) -> Option<&'static str> {
         match self {
+            GbError::ReviewWrite { cause, .. } => Some(cause),
             GbError::ReviewUnavailable { cause, .. } => Some(cause),
             GbError::Pagination { cause, .. } => Some(cause),
             GbError::Context { source, .. } => source.cause_code(),

@@ -6,6 +6,8 @@ use crate::models::repository::Repository;
 
 pub(crate) struct SavedPullRequest {
     pub snapshot: PullRequestSnapshot,
+    pub state: String,
+    pub merged: Option<bool>,
     pub base_repository: Option<Repository>,
     pub head_repository: Option<Repository>,
 }
@@ -62,6 +64,8 @@ pub(crate) async fn load_saved_pull_request(
         ));
     }
     Ok(SavedPullRequest {
+        state: pr.state.clone(),
+        merged: pr.merged,
         snapshot: PullRequestSnapshot {
             number,
             base: base_sha,

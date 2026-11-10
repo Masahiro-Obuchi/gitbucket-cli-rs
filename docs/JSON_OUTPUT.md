@@ -69,6 +69,16 @@ the default ordinary shape remains compatible. API fields such
 as review_comments_url are retained as data, not interpreted as proof that the
 advertised route works on the deployed server.
 
+Inline write commands produce a separate verified operation result rather than
+pretending the Web reply is an ordinary REST Comment. The result carries qualified
+identity, Web actor/route, saved comparison, verification type, optional review
+readback and explicit position-group reply semantics. The nested review remains
+the reader's rendered representation, including its unknown fields. Deletion
+returns review null, and a failed verification returns only an operation error.
+`tests/fixtures/json/review-write.json` pins the result envelope, combined with
+the existing review record fixture in the HTTP regression. See
+[write JSON and retry contracts](REVIEW_WRITES.md).
+
 ## PR metadata
 
 The typed PR projection now includes nullable draft, labels, assignees and

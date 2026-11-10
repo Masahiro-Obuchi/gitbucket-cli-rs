@@ -567,3 +567,39 @@ The discussion edit-last path remains isolated. Public reads explicitly remove
 password/user overrides; the private fixture checks token-only 401 before Cookie
 reading. [Scope and server limits](docs/REVIEW_COMMENTS.md) distinguish these
 successful reads from complete stored-history or original-Markdown guarantees.
+
+## Inline Review Writes
+
+`tests/pr_review_write.rs` uses local saved Git objects and HTTP scripts to check
+Cookie-only payloads, stored diff coordinates/snippets, exact original Markdown,
+same-ID namespace isolation, author/permission/outdated/position rejection,
+head changes, body/resource mismatch, definite rejection and truncated responses.
+An uncertain response is reconciled with reads only; failed verification retains
+the original transport cause/status and never reports success. A retry of a
+reserved create intent reuses a confirmed result without another POST. Root
+paths and pathspec metacharacters are checked from a nested working directory.
+Receipt tests cover immutable baselines, changed/corrupt intent rejection and
+symlink directory refusal. Additional regressions cover Unicode repository names,
+PR closure/merge immediately before submission, read-only matching edits and
+binary/non-UTF-8/symlink/submodule rejection before Web authentication.
+
+```sh
+cargo test --locked --test pr_review_write
+cargo test --locked --bin gb review_
+```
+
+The live contracts `contract_cli_inline_create_edit_reply_delete_and_retry` and
+`contract_cli_inline_old_new_rename_deleted_and_context_positions` run in root and
+/gitbucket deployments. They create/list/edit/reply/delete real inline comments,
+verify matching Web groups, preserve Markdown and test retry reuse. They also
+compare modified old/new, renamed new/context and deleted old-line positions and
+verify that a new explicit request key permits an intentional second identical
+submission. See
+[write evidence and limits](docs/REVIEW_WRITES.md). No business server is mutated.
+
+PR-13 local validation on 2026-11-10: 479 ordinary tests passed, with 42 Docker
+E2E cases ignored by default. The complete live suite passed all 42 cases in
+both root and `/gitbucket` deployments. The first concurrent subpath run had
+API response timeouts (26 passed, 16 failed); proxy logs showed requests closing
+before a response. A rerun with `--test-threads=4` passed all 42. `cargo check`,
+Clippy with `-D warnings`, formatting and diff whitespace checks passed too.
