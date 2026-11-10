@@ -226,10 +226,19 @@ pub(super) fn authenticated_clone_url(temp: &Path, repo: &str) -> String {
 
 pub(super) fn clone_repo_to(temp: &Path, repo: &str, destination: &Path) {
     let clone_url = authenticated_clone_url(temp, repo);
+    // Parallel fixtures force-push and delete their own topic branches. Only
+    // fetch the default branch so an unrelated advertised tip cannot disappear
+    // between clone's ref discovery and upload-pack request.
     let output = std::process::Command::new("git")
         .current_dir(temp)
         .env("GIT_TERMINAL_PROMPT", "0")
-        .args(["clone", &clone_url, destination.to_str().unwrap()])
+        .args([
+            "clone",
+            "--single-branch",
+            "--no-tags",
+            &clone_url,
+            destination.to_str().unwrap(),
+        ])
         .output()
         .unwrap();
     assert!(

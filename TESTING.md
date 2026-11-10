@@ -151,6 +151,9 @@ Add or extend a git regression test when:
 
 A Docker-backed live smoke test scaffold exists in `tests/e2e_smoke.rs`.
 These tests are ignored by default and are intended to be driven by the bootstrap scripts in `scripts/e2e/`.
+Fixture clones fetch only the default branch without tags. Parallel scenarios
+force-push or delete their own topic branches, which must not enter unrelated
+fixtures' clone requests. Tests fetch additional PR refs explicitly when needed.
 
 Default local flow:
 
