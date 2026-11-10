@@ -56,9 +56,13 @@ fn private_fetch_uses_ephemeral_credentials_without_writing_token_to_repo() {
     );
     let config_before = std::fs::read(env.path().join(".git/config")).unwrap();
     // The helper command must also survive shell quoting in an installed path.
-    let executable_dir = tempfile::tempdir().unwrap();
+    // Link the built binary on the same filesystem instead of copying it:
+    // concurrent forks can inherit a copy's writable fd until exec and cause
+    // a transient ETXTBSY when this test executes the newly copied inode.
+    let executable = std::path::PathBuf::from(env.command().get_program());
+    let executable_dir = tempfile::tempdir_in(executable.parent().unwrap()).unwrap();
     let copied = executable_dir.path().join("gb helper's copy.exe");
-    std::fs::copy(env.command().get_program(), &copied).unwrap();
+    std::fs::hard_link(&executable, &copied).unwrap();
     let output = std::process::Command::new(&copied)
         .current_dir(env.path())
         .env("GB_CONFIG_DIR", env.path())
