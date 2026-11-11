@@ -223,7 +223,7 @@ fn remove_host_promotes_next_sorted_host() {
     assert!(config.remove_host("b.example.com").unwrap());
     assert_eq!(
         config.resolve_hostname(None, None).unwrap().as_deref(),
-        Some("a.example.com")
+        Some("https://a.example.com")
     );
 }
 

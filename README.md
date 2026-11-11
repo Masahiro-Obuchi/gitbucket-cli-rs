@@ -608,6 +608,9 @@ Auth/config `--global` explicitly selects global storage instead of the saved
 default profile and conflicts with explicit --profile/GB_PROFILE. Host settings
 and logout affect only their selected scope; profile logout preserves global
 credentials and reports remaining environment/fallback authentication.
+Default-host updates retain the selected instance's full URL, including when a
+profile uses global credentials. Logout also preserves a legacy default's
+scheme, so removing an HTTP credential cannot select an HTTPS fallback instead.
 
 ```sh
 gb config get host --host https://bucket.example/gitbucket --profile work

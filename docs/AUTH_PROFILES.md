@@ -32,6 +32,10 @@ and environment variables. Logout reports the remaining possibility of fallback
 and the presence of `GB_TOKEN`. Removing a profile also clears default-profile
 when it points to that profile; it does not delete global or other profiles'
 credentials. Clearing profile default-host instead removes that routing choice.
+When logout removes a legacy credential used by a profile default, it first pins
+that default to its actual full URL. An HTTP target cannot become an HTTPS
+fallback merely because its own credential was removed. Global logout likewise
+stores the full URL of any replacement default.
 
 ## Verified status and offline inventory
 
@@ -87,6 +91,15 @@ updates an existing unique legacy alias without silently migrating the file.
 `config get host` exposes the stored protocol; runtime status reports the actual
 instance protocol. `config set host --protocol` can update a legacy bare key;
 changing the scheme of an explicit URL requires login to the new URL.
+`config set default-host` and `config set host --default` store the selected
+instance's normalized full URL, even when the credential remains under a legacy
+bare key. This also applies when a profile default selects a global credential:
+the scheme must survive later profile/global lookup.
+
+```text
+$ gb config set default-host http://bucket.example/gitbucket --profile work
+✓ Set default host to http://bucket.example/gitbucket
+```
 
 ## Explicit migration and guarded restore
 
@@ -106,6 +119,9 @@ unknown fields that would collide at one key stop the entire migration before
 any backup/config write. Only identical normalized records are merged. A bare
 default without matching saved credentials, or an ambiguous default, is refused;
 set an explicit HTTP(S) URL first instead of guessing its scheme.
+An exact legacy bare key does not disambiguate a default when both HTTP and
+HTTPS instances match. Both preview and apply refuse it without creating a
+backup or changing configuration.
 
 Apply writes and syncs a unique `config.toml.migration-*.json` backup before
 atomically replacing config.toml. The backup contains the original secrets and

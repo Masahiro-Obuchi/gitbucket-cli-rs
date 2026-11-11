@@ -93,6 +93,146 @@ fn explicit_http_never_selects_a_saved_https_token() {
 }
 
 #[test]
+fn explicit_default_host_does_not_lose_its_scheme_when_using_global_fallback() {
+    let env = GbTestEnv::new();
+    let path = env.path().join("config.toml");
+    fs::write(&path, "[hosts.'bucket.test']\ntoken='global-http'\nuser='global'\nprotocol='http'\n[profiles.work.hosts.'https://bucket.test']\ntoken='profile-https'\nuser='profile'\n").unwrap();
+    assert_success(
+        &command(&env)
+            .args([
+                "config",
+                "set",
+                "default-host",
+                "http://bucket.test",
+                "--profile",
+                "work",
+            ])
+            .output()
+            .unwrap(),
+    );
+    let out = command(&env)
+        .args(["auth", "status", "--offline", "--json", "--profile", "work"])
+        .output()
+        .unwrap();
+    assert_success(&out);
+    let status: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(status["effective_actor"]["instance"], "http://bucket.test");
+    assert_eq!(status["effective_actor"]["credential_source"], "global");
+    let config: toml::Value = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(
+        config["profiles"]["work"]["default_host"].as_str(),
+        Some("http://bucket.test")
+    );
+    assert_eq!(
+        config["hosts"]["bucket.test"]["token"].as_str(),
+        Some("global-http")
+    );
+}
+
+#[test]
+fn making_a_legacy_host_default_pins_the_selected_protocol() {
+    let env = GbTestEnv::new();
+    fs::write(env.path().join("config.toml"), "[hosts.'bucket.test']\ntoken='http-token'\nuser='a'\nprotocol='http'\n[hosts.'https://bucket.test']\ntoken='https-token'\nuser='b'\n").unwrap();
+    assert_success(
+        &command(&env)
+            .args([
+                "config",
+                "set",
+                "host",
+                "--host",
+                "http://bucket.test",
+                "--default",
+            ])
+            .output()
+            .unwrap(),
+    );
+    let out = command(&env).args(["auth", "token"]).output().unwrap();
+    assert_success(&out);
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "http-token");
+}
+
+#[test]
+fn profile_logout_does_not_change_a_legacy_default_to_another_scheme() {
+    let env = GbTestEnv::new();
+    let path = env.path().join("config.toml");
+    fs::write(&path, "[hosts.'https://bucket.test']\ntoken='global-https'\nuser='global'\n[profiles.work]\ndefault_host='bucket.test'\n[profiles.work.hosts.'bucket.test']\ntoken='profile-http'\nuser='profile'\nprotocol='http'\n").unwrap();
+    assert_success(
+        &command(&env)
+            .args(["auth", "logout", "--profile", "work"])
+            .output()
+            .unwrap(),
+    );
+    let out = command(&env)
+        .args(["auth", "status", "--offline", "--json", "--profile", "work"])
+        .output()
+        .unwrap();
+    assert_success(&out);
+    let status: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(status["effective_actor"].is_null(), "{status}");
+    let config: toml::Value = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(
+        config["profiles"]["work"]["default_host"].as_str(),
+        Some("http://bucket.test")
+    );
+    assert_eq!(
+        config["hosts"]["https://bucket.test"]["token"].as_str(),
+        Some("global-https")
+    );
+}
+
+#[test]
+fn global_logout_promotes_an_exact_instance_instead_of_an_ambiguous_bare_key() {
+    let env = GbTestEnv::new();
+    fs::write(env.path().join("config.toml"), "default_host='https://old.test'\n[hosts.'https://old.test']\ntoken='old'\nuser='old'\n[hosts.'bucket.test']\ntoken='http-token'\nuser='a'\nprotocol='http'\n[hosts.'https://bucket.test']\ntoken='https-token'\nuser='b'\n").unwrap();
+    assert_success(&command(&env).args(["auth", "logout"]).output().unwrap());
+    let out = command(&env).args(["auth", "token"]).output().unwrap();
+    assert_success(&out);
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "http-token");
+}
+
+#[test]
+fn migration_refuses_bare_defaults_that_match_multiple_schemes() {
+    for scope in ["", "profiles.work."] {
+        let env = GbTestEnv::new();
+        let path = env.path().join("config.toml");
+        let prefix = if scope.is_empty() {
+            String::new()
+        } else {
+            "[profiles.work]\n".into()
+        };
+        let original = format!("{prefix}default_host='bucket.test'\n[{scope}hosts.'bucket.test']\ntoken='http-token'\nuser='a'\nprotocol='http'\n[{scope}hosts.'https://bucket.test']\ntoken='https-token'\nuser='b'\n");
+        fs::write(&path, &original).unwrap();
+        for args in [
+            vec!["config", "migrate"],
+            vec!["config", "migrate", "--apply"],
+        ] {
+            let out = command(&env).args(args).output().unwrap();
+            assert_failure(&out);
+            assert_eq!(fs::read_to_string(&path).unwrap(), original);
+            assert!(!fs::read_dir(env.path()).unwrap().any(|entry| entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with("config.toml.migration-")));
+        }
+        fs::write(
+            &path,
+            original.replace(
+                "default_host='bucket.test'",
+                "default_host='http://bucket.test'",
+            ),
+        )
+        .unwrap();
+        assert_success(
+            &command(&env)
+                .args(["config", "migrate", "--apply"])
+                .output()
+                .unwrap(),
+        );
+    }
+}
+
+#[test]
 fn scoped_edits_global_override_and_profile_cleanup_are_isolated() {
     let env = GbTestEnv::new();
     let path = env.path().join("config.toml");
@@ -590,7 +730,7 @@ fn global_logout_reconciles_a_normalized_default_with_a_legacy_storage_key() {
             .unwrap(),
     );
     let value: toml::Value = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-    assert_eq!(value["default_host"].as_str(), Some("next.test"));
+    assert_eq!(value["default_host"].as_str(), Some("https://next.test"));
     let out = command(&env).args(["auth", "token"]).output().unwrap();
     assert_success(&out);
     assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "next");

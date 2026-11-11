@@ -6,7 +6,7 @@ use crate::error::{GbError, Result};
 
 #[derive(Args)]
 #[command(
-    after_help = "Storage scope follows --profile, GB_PROFILE, then default_profile. --global bypasses default_profile and conflicts with an explicit --profile/GB_PROFILE. Logout removes only the selected scope; environment tokens and global fallback may remain active."
+    after_help = "Storage scope follows --profile, GB_PROFILE, then default_profile. --global bypasses default_profile and conflicts with an explicit --profile/GB_PROFILE. Logout removes only the selected scope; environment tokens and global fallback may remain active. Retained or replacement defaults preserve their instance URL scheme."
 )]
 pub struct AuthArgs {
     /// Use global credentials, bypassing the saved default profile

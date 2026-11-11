@@ -298,6 +298,9 @@ Auth/config storage scope follows --profile, GB_PROFILE, then default_profile;
 explicit profile. Host settings and logout never write/remove fallback entries.
 Profile logout retains its target and reports remaining global/environment
 fallback. `config get/set/unset default-host` respects the selected scope.
+`config set default-host` and `config set host --default` store full instance
+URLs even for legacy keys or global fallback. Profile logout pins any retained
+legacy default to its original scheme; replacement global defaults use full URLs.
 `config get/unset default-repo` targets the selected profile. `config unset host
 --host URL` removes only scoped credentials, and `config unset profile NAME`
 removes that profile and clears a matching default-profile. Named profile
@@ -308,7 +311,9 @@ all collisions, saves a private exact backup, and atomically replaces the file
 under the shared lock. --restore BACKUP checks the migrated digest before
 restoring the original bytes; subsequent edits refuse automatic restoration.
 Unknown TOML fields survive migration, while comments/formatting may change in
-the migrated version. See [complete migration contract](docs/AUTH_PROFILES.md).
+the migrated version. A bare default matching both HTTP and HTTPS is refused,
+even if one original storage key matches it exactly. See
+[complete migration contract](docs/AUTH_PROFILES.md).
 
 ### 3.5 `gb completion` — shell completion generation
 

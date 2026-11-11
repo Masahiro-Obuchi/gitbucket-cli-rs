@@ -619,6 +619,11 @@ conflicts, scoped logout and retained routing/fallback, environment-only tokens,
 online actor verification versus saved hints, rejected/unverified status, and
 offline operation without a request. Saved credentials are tested across
 schemes, ports, deployments, aliases and legacy default references.
+Regressions also cover explicit default selection through global legacy keys,
+`host --default` and promoted global defaults with both schemes saved, and
+profile logout preserving its original HTTP instance rather than selecting an
+HTTPS fallback. Migration refuses ambiguous bare defaults in global/profile
+scopes during preview and apply; an explicit URL resolves that ambiguity.
 
 Migration tests compare preview/apply/no-op/restore with exact original bytes,
 unknown TOML fields, IPv6 and subpaths, identical aliases, conflicting tokens,

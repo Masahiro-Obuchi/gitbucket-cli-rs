@@ -53,14 +53,9 @@ fn host_table(node: &Value) -> Result<HashMap<String, HostConfig>> {
         None => Ok(HashMap::new()),
     }
 }
-fn normalize_hosts(
-    node: &mut Value,
-    scope: &str,
-    changes: &mut Vec<KeyChange>,
-) -> Result<HashMap<String, String>> {
-    let mut aliases = HashMap::new();
+fn normalize_hosts(node: &mut Value, scope: &str, changes: &mut Vec<KeyChange>) -> Result<()> {
     let Some(hosts) = node.get_mut("hosts") else {
-        return Ok(aliases);
+        return Ok(());
     };
     let mut normalized = toml::map::Map::new();
     for (key, value) in hosts
@@ -89,18 +84,12 @@ fn normalize_hosts(
                 to: canonical.clone(),
             });
         }
-        aliases.insert(key.clone(), canonical.clone());
         normalized.insert(canonical, value);
     }
     *hosts = Value::Table(normalized);
-    Ok(aliases)
+    Ok(())
 }
-fn normalize_default(
-    node: &mut Value,
-    own_aliases: &HashMap<String, String>,
-    global_aliases: &HashMap<String, String>,
-    global: &HashMap<String, HostConfig>,
-) -> Result<()> {
+fn normalize_default(node: &mut Value, global: &HashMap<String, HostConfig>) -> Result<()> {
     let Some(value) = node.get("default_host") else {
         return Ok(());
     };
@@ -108,12 +97,8 @@ fn normalize_default(
         .as_str()
         .ok_or_else(|| GbError::Config("default_host must be a string.".into()))?;
     let own = host_table(node)?;
-    let normalized = if let Some(key) = own_aliases.get(target) {
-        key.clone()
-    } else if let Some(key) = unique_key(&own, target, None)? {
+    let normalized = if let Some(key) = unique_key(&own, target, None)? {
         key
-    } else if let Some(key) = global_aliases.get(target) {
-        key.clone()
     } else if let Some(key) = unique_key(global, target, None)? {
         key
     } else if target.contains("://") {
@@ -131,13 +116,13 @@ fn plan(original: &str) -> Result<(String, bool, Vec<KeyChange>)> {
     let mut document: Value = toml::from_str(original)?;
     let before = document.clone();
     let mut changes = Vec::new();
-    let global_aliases = normalize_hosts(&mut document, "global", &mut changes)?;
+    normalize_hosts(&mut document, "global", &mut changes)?;
     let global = host_table(&document)?;
-    normalize_default(&mut document, &global_aliases, &global_aliases, &global)?;
+    normalize_default(&mut document, &global)?;
     if let Some(profiles) = document.get_mut("profiles").and_then(Value::as_table_mut) {
         for (name, profile) in profiles {
-            let aliases = normalize_hosts(profile, &format!("profile:{name}"), &mut changes)?;
-            normalize_default(profile, &aliases, &global_aliases, &global)?;
+            normalize_hosts(profile, &format!("profile:{name}"), &mut changes)?;
+            normalize_default(profile, &global)?;
         }
     }
     Ok((

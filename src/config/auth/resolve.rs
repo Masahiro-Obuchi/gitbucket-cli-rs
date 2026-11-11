@@ -187,21 +187,27 @@ impl AuthConfig {
         };
         let removed = &self.hosts_in(scope)?[&key];
         let instance = stored_instance(&key, removed)?;
-        let was_default = if matches!(scope, Scope::Global) {
-            self.default_host
-                .as_deref()
-                .map(|default| {
-                    instance_key(default, &removed.protocol).map(|target| target == instance)
-                })
+        let protocol = protocol_from_hostname(&instance).expect("validated instance");
+        let was_default = self
+            .default_host_in(scope)?
+            .map(|default| instance_key(default, &protocol).map(|target| target == instance))
+            .transpose()?
+            .unwrap_or(false);
+        let next_default = if matches!(scope, Scope::Global) && was_default {
+            let hosts = self.hosts_in(scope)?;
+            sorted_hostnames(hosts)
+                .into_iter()
+                .find(|candidate| candidate != &key)
+                .map(|key| stored_instance(&key, &hosts[&key]))
                 .transpose()?
-                .unwrap_or(false)
         } else {
-            false
+            Some(instance)
         };
         self.hosts_in_mut(scope)?.remove(&key);
-        // Profile routing survives logout, independently of its credentials.
-        if matches!(scope, Scope::Global) && was_default {
-            self.default_host = sorted_hostnames(&self.hosts).into_iter().next();
+        // A profile's target survives logout with its original scheme, so
+        // fallback cannot reinterpret a legacy bare default as another instance.
+        if was_default {
+            *self.default_host_in_mut(scope)? = next_default;
         }
         Ok(true)
     }

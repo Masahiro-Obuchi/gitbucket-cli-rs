@@ -8,7 +8,7 @@ use crate::error::{GbError, Result};
 
 #[derive(Args)]
 #[command(
-    after_help = "Host/default-host operations use --profile, GB_PROFILE, then default_profile. --global explicitly selects global settings and conflicts with --profile/GB_PROFILE. Management never edits fallback credentials. config list shows the full saved inventory.\n\nUpdates atomically replace config.toml and wait up to 5 seconds for an OS lock. The empty config.toml.lock file remains after exit; do not delete it. Configuration and lock files must be regular files (no symlinks/reparse points).\n\nconfig migrate previews the entire file; --apply saves a private backup before migration. --restore BACKUP restores the exact original only if configuration has not subsequently changed."
+    after_help = "Host/default-host operations use --profile, GB_PROFILE, then default_profile. --global explicitly selects global settings and conflicts with --profile/GB_PROFILE. Management never edits fallback credentials. Default-host updates store the full instance URL, including its scheme. config list shows the full saved inventory.\n\nUpdates atomically replace config.toml and wait up to 5 seconds for an OS lock. The empty config.toml.lock file remains after exit; do not delete it. Configuration and lock files must be regular files (no symlinks/reparse points).\n\nconfig migrate previews the entire file; --apply saves a private backup before migration. --restore BACKUP restores the exact original only if configuration has not subsequently changed."
 )]
 pub struct ConfigArgs {
     /// Address global settings instead of the selected/default profile
@@ -231,15 +231,18 @@ fn set(key: ConfigSetKey, scope: &Scope) -> Result<()> {
         let message = match key {
             ConfigSetKey::DefaultHost { hostname } => {
                 // Profile defaults can intentionally route to global credentials.
-                let stored = match config.saved_key(scope, &hostname)? {
-                    Some(key) => key,
-                    None if scope.profile().is_some() => {
-                        resolve_saved_hostname(config, &Scope::Global, &hostname)?
-                    }
+                let (stored, hosts) = match config.saved_key(scope, &hostname)? {
+                    Some(key) => (key, config.hosts_in(scope)?),
+                    None if scope.profile().is_some() => (
+                        resolve_saved_hostname(config, &Scope::Global, &hostname)?,
+                        &config.hosts,
+                    ),
                     None => return Err(GbError::Config("No matching saved host entry.".into())),
                 };
-                *config.default_host_in_mut(scope)? = Some(stored.clone());
-                format!("✓ Set default host to {}", stored)
+                let instance =
+                    crate::config::auth::instance_key(&stored, &hosts[&stored].protocol)?;
+                *config.default_host_in_mut(scope)? = Some(instance.clone());
+                format!("✓ Set default host to {}", instance)
             }
             ConfigSetKey::DefaultProfile { name } => {
                 if !config.profiles.contains_key(&name) {
@@ -275,7 +278,8 @@ fn set(key: ConfigSetKey, scope: &Scope) -> Result<()> {
                     entry.protocol = protocol;
                 }
                 if default {
-                    *config.default_host_in_mut(scope)? = Some(stored.clone());
+                    let instance = crate::config::auth::instance_key(&stored, &entry.protocol)?;
+                    *config.default_host_in_mut(scope)? = Some(instance);
                 }
                 format!("✓ Updated config for {}", stored)
             }
