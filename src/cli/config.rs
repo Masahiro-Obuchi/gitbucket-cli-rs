@@ -1,19 +1,34 @@
 use clap::{Args, Subcommand, ValueEnum};
 
-use crate::config::{auth::AuthConfig, config_dir};
+use crate::config::{
+    auth::{AuthConfig, Scope},
+    config_dir,
+};
 use crate::error::{GbError, Result};
 
 #[derive(Args)]
 #[command(
-    after_help = "Updates atomically replace config.toml and wait up to 5 seconds for an OS lock.\nThe empty config.toml.lock file remains after exit; do not delete it.\nConfiguration and lock files must be regular files (no symlinks/reparse points)."
+    after_help = "Host/default-host operations use --profile, GB_PROFILE, then default_profile. --global explicitly selects global settings and conflicts with --profile/GB_PROFILE. Management never edits fallback credentials. config list shows the full saved inventory.\n\nUpdates atomically replace config.toml and wait up to 5 seconds for an OS lock. The empty config.toml.lock file remains after exit; do not delete it. Configuration and lock files must be regular files (no symlinks/reparse points).\n\nconfig migrate previews the entire file; --apply saves a private backup before migration. --restore BACKUP restores the exact original only if configuration has not subsequently changed."
 )]
 pub struct ConfigArgs {
+    /// Address global settings instead of the selected/default profile
+    #[arg(long, global = true)]
+    pub global: bool,
     #[command(subcommand)]
     pub command: ConfigCommand,
 }
 
 #[derive(Subcommand)]
 pub enum ConfigCommand {
+    /// Preview/apply instance-key migration or restore its protected backup
+    Migrate {
+        /// Apply whole-file normalization after creating a protected backup
+        #[arg(long, conflicts_with = "restore")]
+        apply: bool,
+        /// Restore exact original bytes if no later configuration edit is present
+        #[arg(long, value_name = "BACKUP")]
+        restore: Option<std::path::PathBuf>,
+    },
     /// Print the config file path
     Path,
     /// List stored configuration values
@@ -41,6 +56,8 @@ pub enum ConfigCommand {
 
 #[derive(Subcommand)]
 pub enum ConfigGetKey {
+    /// Get the selected profile's default repository
+    DefaultRepo,
     /// Get the stored default host
     DefaultHost,
     /// Get the stored default profile
@@ -110,6 +127,15 @@ pub enum ConfigSetKey {
 
 #[derive(Subcommand)]
 pub enum ConfigUnsetKey {
+    /// Clear the selected profile's default repository
+    DefaultRepo,
+    /// Remove credentials only from the selected scope
+    Host {
+        #[arg(long = "host", value_name = "HOST_OR_URL")]
+        host: String,
+    },
+    /// Delete a saved profile, clearing default-profile if it points here
+    Profile { name: String },
     /// Clear the stored default host
     DefaultHost,
     /// Clear the stored default profile
@@ -123,13 +149,24 @@ pub enum HostField {
     HasToken,
 }
 
-pub async fn run(args: ConfigArgs, _cli_profile: &Option<String>) -> Result<()> {
+pub async fn run(args: ConfigArgs, cli_profile: &Option<String>) -> Result<()> {
+    if matches!(&args.command, ConfigCommand::Path) {
+        return path();
+    }
+    let config = AuthConfig::load()?;
+    let scope = config.scope(cli_profile.as_deref(), args.global)?;
     match args.command {
         ConfigCommand::Path => path(),
         ConfigCommand::List { json } => list(json),
-        ConfigCommand::Get { key } => get(key),
-        ConfigCommand::Set { key } => set(key),
-        ConfigCommand::Unset { key } => unset(key),
+        ConfigCommand::Get { key } => get(key, &scope),
+        ConfigCommand::Set { key } => set(key, &scope),
+        ConfigCommand::Unset { key } => unset(key, &scope),
+        ConfigCommand::Migrate { apply, restore } => {
+            if cli_profile.is_some() || std::env::var_os("GB_PROFILE").is_some() || args.global {
+                return Err(GbError::Config("Migration covers the entire config; do not combine it with --profile/GB_PROFILE/--global.".into()));
+            }
+            crate::output::print_json(&AuthConfig::migrate(apply, restore.as_deref())?)
+        }
     }
 }
 
@@ -145,13 +182,27 @@ fn list(json: bool) -> Result<()> {
     crate::cli::config_output::print_list(&config, &path, json)
 }
 
-fn get(key: ConfigGetKey) -> Result<()> {
+fn get(key: ConfigGetKey, scope: &Scope) -> Result<()> {
     let config = AuthConfig::load()?;
 
     match key {
+        ConfigGetKey::DefaultRepo => {
+            let name = scope.profile().ok_or_else(|| {
+                GbError::Config("default-repo belongs to a profile; select --profile.".into())
+            })?;
+            println!(
+                "{}",
+                config
+                    .profile(name)?
+                    .default_repo
+                    .as_deref()
+                    .ok_or_else(|| GbError::Config("No default repo configured.".into()))?
+            );
+        }
         ConfigGetKey::DefaultHost => {
             let hostname = config
-                .default_host
+                .default_host_in(scope)?
+                .map(str::to_string)
                 .ok_or_else(|| GbError::Config("No default host configured.".into()))?;
             println!("{}", hostname);
         }
@@ -162,8 +213,8 @@ fn get(key: ConfigGetKey) -> Result<()> {
             println!("{}", profile);
         }
         ConfigGetKey::Host { host, field, json } => {
-            let stored_hostname = resolve_saved_hostname(&config, &host)?;
-            let stored = config.hosts.get(&stored_hostname).unwrap();
+            let stored_hostname = resolve_saved_hostname(&config, scope, &host)?;
+            let stored = &config.hosts_in(scope)?[&stored_hostname];
             crate::cli::config_output::print_host(&stored_hostname, stored, field.as_ref(), json)?;
         }
         ConfigGetKey::Profile { name, json } => {
@@ -175,12 +226,19 @@ fn get(key: ConfigGetKey) -> Result<()> {
     Ok(())
 }
 
-fn set(key: ConfigSetKey) -> Result<()> {
+fn set(key: ConfigSetKey, scope: &Scope) -> Result<()> {
     let message = AuthConfig::update(|config| {
         let message = match key {
             ConfigSetKey::DefaultHost { hostname } => {
-                let stored = resolve_saved_hostname(config, &hostname)?;
-                config.default_host = Some(stored.clone());
+                // Profile defaults can intentionally route to global credentials.
+                let stored = match config.saved_key(scope, &hostname)? {
+                    Some(key) => key,
+                    None if scope.profile().is_some() => {
+                        resolve_saved_hostname(config, &Scope::Global, &hostname)?
+                    }
+                    None => return Err(GbError::Config("No matching saved host entry.".into())),
+                };
+                *config.default_host_in_mut(scope)? = Some(stored.clone());
                 format!("✓ Set default host to {}", stored)
             }
             ConfigSetKey::DefaultProfile { name } => {
@@ -204,17 +262,20 @@ fn set(key: ConfigSetKey) -> Result<()> {
                         "Nothing to update. Specify --user, --protocol, or --default.".into(),
                     ));
                 }
-                let stored = resolve_saved_hostname(config, &host)?;
-                let entry = config.hosts.get_mut(&stored).unwrap();
+                let stored = resolve_saved_hostname(config, scope, &host)?;
+                let entry = config.hosts_in_mut(scope)?.get_mut(&stored).unwrap();
                 if let Some(user) = user {
                     entry.user = user;
                 }
                 if let Some(protocol) = protocol {
                     validate_protocol(&protocol)?;
+                    if stored.contains("://") && !stored.starts_with(&format!("{protocol}://")) {
+                        return Err(GbError::Config("An explicit URL fixes the scheme. Log in to the new URL instead of moving its credentials across schemes.".into()));
+                    }
                     entry.protocol = protocol;
                 }
                 if default {
-                    config.default_host = Some(stored.clone());
+                    *config.default_host_in_mut(scope)? = Some(stored.clone());
                 }
                 format!("✓ Updated config for {}", stored)
             }
@@ -223,6 +284,12 @@ fn set(key: ConfigSetKey) -> Result<()> {
                 default_host,
                 default_repo,
             } => {
+                if name.is_empty() || name.trim() != name || name.chars().any(char::is_control) {
+                    return Err(GbError::Config("Profile name cannot be empty or contain boundary whitespace/control characters.".into()));
+                }
+                if let Some(host) = default_host.as_deref() {
+                    crate::config::auth::instance_key(host, "https")?;
+                }
                 if let Some(repo) = default_repo.as_deref() {
                     crate::cli::common::parse_owner_repo(repo)?;
                 }
@@ -242,11 +309,35 @@ fn set(key: ConfigSetKey) -> Result<()> {
     Ok(())
 }
 
-fn unset(key: ConfigUnsetKey) -> Result<()> {
+fn unset(key: ConfigUnsetKey, scope: &Scope) -> Result<()> {
     let message = AuthConfig::update(|config| {
         Ok(match key {
+            ConfigUnsetKey::DefaultRepo => {
+                let name = scope.profile().ok_or_else(|| {
+                    GbError::Config("default-repo belongs to a profile; select --profile.".into())
+                })?;
+                config.profile(name)?;
+                config.profile_mut(name).default_repo = None;
+                "✓ Cleared default repo"
+            }
+            ConfigUnsetKey::Host { host } => {
+                if config.remove_in(scope, &host)? {
+                    "✓ Removed saved host credentials"
+                } else {
+                    "No matching host in the selected scope."
+                }
+            }
+            ConfigUnsetKey::Profile { name } => {
+                if config.profiles.remove(&name).is_none() {
+                    return Err(GbError::Config("No matching saved profile.".into()));
+                }
+                if config.default_profile.as_deref() == Some(&name) {
+                    config.default_profile = None;
+                }
+                "✓ Removed profile"
+            }
             ConfigUnsetKey::DefaultHost => {
-                if config.default_host.take().is_some() {
+                if config.default_host_in_mut(scope)?.take().is_some() {
                     "✓ Cleared default host"
                 } else {
                     "No default host configured."
@@ -265,8 +356,8 @@ fn unset(key: ConfigUnsetKey) -> Result<()> {
     Ok(())
 }
 
-fn resolve_saved_hostname(config: &AuthConfig, host: &str) -> Result<String> {
-    config.stored_hostname(host).ok_or_else(|| {
+fn resolve_saved_hostname(config: &AuthConfig, scope: &Scope, host: &str) -> Result<String> {
+    config.saved_key(scope, host)?.ok_or_else(|| {
         GbError::Config(format!(
             "No saved host entry matches {}. Run `gb auth login -H {}` first.",
             host, host

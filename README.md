@@ -148,7 +148,7 @@ gb pr comment reply 5 --kind inline --id 123 --body "確認しました" --web
 | ------------------------------ | ------------------------------------ |
 | `gb auth login`                | Authenticate to a GitBucket instance |
 | `gb auth logout`               | Remove auth for a host               |
-| `gb auth status [--json]`      | Show current auth status             |
+| `gb auth status [--json] [--offline]`      | Show current auth status             |
 | `gb auth token`                | Print access token                   |
 | `gb config`                    | Manage local CLI configuration       |
 | `gb completion <SHELL>`        | Generate shell completion scripts    |
@@ -520,7 +520,7 @@ read back, the original mutation error and checkout provenance are retained.
 | `GB_HTTP_TIMEOUT` | Total HTTP request deadline in seconds (default 120) |
 | `GB_GIT_TIMEOUT` | Deadline per Git subprocess in seconds (default 300) |
 | `GB_CONFIG_DIR` | Config directory path (default: `~/.config/gb/`)          |
-| `GB_PROTOCOL`   | Protocol override when using `GB_TOKEN` with a plain host |
+| `GB_PROTOCOL`   | Protocol selection for a bare target, including saved credentials |
 | `GB_USER`       | Username for GitBucket web sessions and token-authenticated Git transfers |
 | `GB_WEB_USER`   | Explicit Web actor override; permits a different actor from the REST token |
 | `GB_PASSWORD`   | Password for GitBucket web-session fallbacks              |
@@ -599,9 +599,35 @@ gb auth status --profile personal --json
 gb issue list --profile work -R alice/project
 ```
 
-`gb auth status --profile <name>` prints only that profile and shows its effective actor, including whether credentials came from the profile, global host entry, or environment token. `gb auth status --json` exposes the same information in `effective_actor` for scripts.
+`gb auth status` verifies the selected token with `/user`; its JSON `effective_actor.user`
+is the verified login. `--offline` makes no request and leaves that field null;
+`stored_user` is a separate unverified hint. Environment tokens never inherit a
+saved user as proof of ownership. Online verification failure exits 1.
 
-When `GB_TOKEN` is set, protocol selection uses this order:
+Auth/config `--global` explicitly selects global storage instead of the saved
+default profile and conflicts with explicit --profile/GB_PROFILE. Host settings
+and logout affect only their selected scope; profile logout preserves global
+credentials and reports remaining environment/fallback authentication.
+
+```sh
+gb config get host --host https://bucket.example/gitbucket --profile work
+gb config unset default-repo --profile work
+gb config unset host --host https://bucket.example/gitbucket --profile work
+gb config unset profile personal
+gb auth logout --global -H https://bucket.example/gitbucket
+gb config migrate          # preview all instance-key changes
+gb config migrate --apply  # save a private backup, then apply
+gb config migrate --restore /path/from/the/backup/result.json
+```
+
+New credential keys include the URL scheme. HTTP and HTTPS, ports and deployment
+paths remain distinct; ambiguous aliases are refused. Migration preserves unknown
+TOML fields, stops on conflicting credentials, and supports exact restoration
+only if configuration has not changed since migration. Backups contain secrets
+and use the same protection as configuration. See
+[authentication, profile and migration contracts](docs/AUTH_PROFILES.md).
+
+For bare targets, protocol selection uses this order:
 
 1. URL scheme from `--hostname` or `GB_HOST` when present
 2. `GB_PROTOCOL`

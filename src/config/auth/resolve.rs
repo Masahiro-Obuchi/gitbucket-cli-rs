@@ -1,75 +1,168 @@
 use std::collections::HashMap;
 
+use super::{
+    instance::{instance_key, matching_keys, stored_instance, unique_key},
+    model::{AuthConfig, CredentialSource, HostConfig, ProfileConfig, ResolvedCredential, Scope},
+};
 use crate::error::{GbError, Result};
-
-use super::model::{default_protocol, AuthConfig, HostConfig, ProfileConfig};
 
 pub(crate) fn protocol_from_hostname(hostname: &str) -> Option<String> {
     hostname
         .split_once("://")
-        .map(|(protocol, _)| protocol.to_string())
+        .map(|(scheme, _)| scheme.to_ascii_lowercase())
 }
 
-pub(crate) fn canonical_hostname(hostname: &str) -> Option<String> {
-    let trimmed = hostname.trim().trim_end_matches('/');
-    let without_api = trimmed.strip_suffix("/api/v3").unwrap_or(trimmed);
-
-    if without_api.starts_with("http://") || without_api.starts_with("https://") {
-        let parsed = url::Url::parse(without_api).ok()?;
-        let host = parsed.host_str()?;
-
-        let mut canonical = host.to_string();
-        if let Some(port) = parsed.port() {
-            canonical.push(':');
-            canonical.push_str(&port.to_string());
-        }
-
-        let path = parsed.path().trim_end_matches('/');
-        if !path.is_empty() && path != "/" {
-            canonical.push_str(path);
-        }
-
-        Some(canonical)
-    } else {
-        Some(without_api.to_string())
+pub(crate) fn profile_name(name: &str) -> Result<String> {
+    if name.is_empty() || name.trim() != name || name.chars().any(char::is_control) {
+        return Err(GbError::Config(
+            "Profile name cannot be empty or contain boundary whitespace/control characters."
+                .into(),
+        ));
     }
+    Ok(name.to_string())
 }
 
 impl AuthConfig {
+    pub fn save_login(&mut self, scope: &Scope, instance: &str, host: HostConfig) -> Result<()> {
+        let key = match scope {
+            Scope::Profile(name) if !self.profiles.contains_key(name) => None,
+            _ => unique_key(self.hosts_in(scope)?, instance, None)?,
+        }
+        .unwrap_or_else(|| instance.to_string());
+        self.set_host_for_profile(scope.profile(), key, host);
+        *self.default_host_in_mut(scope)? = Some(instance.to_string());
+        Ok(())
+    }
+    pub fn scope(&self, profile: Option<&str>, global: bool) -> Result<Scope> {
+        let explicit = profile
+            .map(str::to_string)
+            .or_else(|| std::env::var("GB_PROFILE").ok());
+        if global {
+            if explicit.is_some() {
+                return Err(GbError::Config(
+                    "--global conflicts with --profile and GB_PROFILE.".into(),
+                ));
+            }
+            return Ok(Scope::Global);
+        }
+        match explicit.or_else(|| self.default_profile.clone()) {
+            Some(name) => Ok(Scope::Profile(profile_name(&name)?)),
+            None => Ok(Scope::Global),
+        }
+    }
+    pub fn hosts_in(&self, scope: &Scope) -> Result<&HashMap<String, HostConfig>> {
+        match scope {
+            Scope::Global => Ok(&self.hosts),
+            Scope::Profile(name) => Ok(&self.profile(name)?.hosts),
+        }
+    }
+    pub fn hosts_in_mut(&mut self, scope: &Scope) -> Result<&mut HashMap<String, HostConfig>> {
+        match scope {
+            Scope::Global => Ok(&mut self.hosts),
+            Scope::Profile(name) => self
+                .profiles
+                .get_mut(name)
+                .map(|p| &mut p.hosts)
+                .ok_or_else(|| GbError::Config("Selected profile is not configured.".into())),
+        }
+    }
+    pub fn default_host_in(&self, scope: &Scope) -> Result<Option<&str>> {
+        match scope {
+            Scope::Global => Ok(self.default_host.as_deref()),
+            Scope::Profile(name) => Ok(self.profile(name)?.default_host.as_deref()),
+        }
+    }
+    pub fn default_host_in_mut(&mut self, scope: &Scope) -> Result<&mut Option<String>> {
+        match scope {
+            Scope::Global => Ok(&mut self.default_host),
+            Scope::Profile(name) => self
+                .profiles
+                .get_mut(name)
+                .map(|p| &mut p.default_host)
+                .ok_or_else(|| GbError::Config("Selected profile is not configured.".into())),
+        }
+    }
+    // Management addresses only the selected table. Exact aliases remain
+    // inspectable/removable so conflicting legacy entries can be repaired.
+    pub fn saved_key(&self, scope: &Scope, host: &str) -> Result<Option<String>> {
+        let hosts = self.hosts_in(scope)?;
+        if hosts.contains_key(host) {
+            return Ok(Some(host.to_string()));
+        }
+        unique_key(hosts, host, None)
+    }
+    pub fn credential(&self, hostname: &str, scope: &Scope) -> Result<ResolvedCredential> {
+        let protocol =
+            protocol_from_hostname(hostname).or_else(|| std::env::var("GB_PROTOCOL").ok());
+        let tables = match scope {
+            Scope::Global => vec![(&self.hosts, CredentialSource::Global)],
+            Scope::Profile(name) => vec![
+                (&self.profile(name)?.hosts, CredentialSource::Profile),
+                (&self.hosts, CredentialSource::Global),
+            ],
+        };
+        if let Ok(token) = std::env::var("GB_TOKEN") {
+            if token.is_empty() {
+                return Err(GbError::Config("GB_TOKEN is empty.".into()));
+            }
+            let mut protocol = protocol;
+            if protocol.is_none() {
+                for (hosts, _) in &tables {
+                    let keys = matching_keys(hosts, hostname, None)?;
+                    let instances: std::collections::BTreeSet<_> = keys
+                        .iter()
+                        .map(|key| stored_instance(key, &hosts[key]))
+                        .collect::<Result<_>>()?;
+                    if instances.len() > 1 {
+                        return Err(GbError::Config("Specify an explicit HTTP(S) URL or GB_PROTOCOL; the saved instance scheme is ambiguous.".into()));
+                    }
+                    if let Some(instance) = instances.into_iter().next() {
+                        protocol = protocol_from_hostname(&instance);
+                        break;
+                    }
+                }
+            }
+            let instance = instance_key(hostname, protocol.as_deref().unwrap_or("https"))?;
+            return Ok(ResolvedCredential {
+                host: HostConfig {
+                    token,
+                    user: std::env::var("GB_USER").unwrap_or_default(),
+                    protocol: protocol_from_hostname(&instance).expect("validated instance"),
+                },
+                instance,
+                source: CredentialSource::Environment,
+            });
+        }
+        for (hosts, source) in tables {
+            if let Some(key) = unique_key(hosts, hostname, protocol.as_deref())? {
+                let mut host = hosts[&key].clone();
+                if host.token.is_empty() {
+                    return Err(GbError::NotAuthenticated);
+                }
+                let instance = stored_instance(&key, &host)?;
+                host.protocol = protocol_from_hostname(&instance).expect("validated instance");
+                return Ok(ResolvedCredential {
+                    instance,
+                    host,
+                    source,
+                });
+            }
+        }
+        Err(GbError::NotAuthenticated)
+    }
     pub fn get_host_for_profile(
         &self,
         hostname: &str,
         profile: Option<&str>,
     ) -> Result<HostConfig> {
-        let profile_name = self.active_profile_name(profile)?;
-        let profile_host = profile_name
-            .as_deref()
-            .and_then(|name| self.profiles.get(name))
-            .and_then(|profile| find_host_in(&profile.hosts, hostname));
-        let stored_host = profile_host.or_else(|| self.find_host(hostname));
-
-        if let Ok(token) = std::env::var("GB_TOKEN") {
-            return Ok(HostConfig {
-                token,
-                user: std::env::var("GB_USER")
-                    .ok()
-                    .or_else(|| stored_host.map(|host| host.user.clone()))
-                    .unwrap_or_default(),
-                protocol: protocol_from_hostname(hostname)
-                    .or_else(|| std::env::var("GB_PROTOCOL").ok())
-                    .or_else(|| stored_host.map(|host| host.protocol.clone()))
-                    .unwrap_or_else(default_protocol),
-            });
-        }
-
-        stored_host.cloned().ok_or(GbError::NotAuthenticated)
+        Ok(self
+            .credential(hostname, &self.scope(profile, false)?)?
+            .host)
     }
-
     pub fn set_host(&mut self, hostname: String, config: HostConfig) {
         self.default_host = Some(hostname.clone());
         self.hosts.insert(hostname, config);
     }
-
     pub fn set_host_for_profile(
         &mut self,
         profile: Option<&str>,
@@ -84,25 +177,38 @@ impl AuthConfig {
             self.set_host(hostname, config);
         }
     }
-
-    pub fn remove_host(&mut self, hostname: &str) -> bool {
-        remove_host_from(&mut self.hosts, &mut self.default_host, hostname)
+    pub fn remove_host(&mut self, hostname: &str) -> Result<bool> {
+        self.remove_in(&Scope::Global, hostname)
     }
-
-    pub fn remove_host_for_profile(&mut self, profile: Option<&str>, hostname: &str) -> bool {
-        let Some(profile) = profile else {
-            return self.remove_host(hostname);
+    pub fn remove_in(&mut self, scope: &Scope, hostname: &str) -> Result<bool> {
+        let key = match self.saved_key(scope, hostname)? {
+            Some(key) => key,
+            None => return Ok(false),
         };
-        let Some(profile) = self.profiles.get_mut(profile) else {
-            return false;
+        let removed = &self.hosts_in(scope)?[&key];
+        let instance = stored_instance(&key, removed)?;
+        let was_default = if matches!(scope, Scope::Global) {
+            self.default_host
+                .as_deref()
+                .map(|default| {
+                    instance_key(default, &removed.protocol).map(|target| target == instance)
+                })
+                .transpose()?
+                .unwrap_or(false)
+        } else {
+            false
         };
-        remove_host_from(&mut profile.hosts, &mut profile.default_host, hostname)
+        self.hosts_in_mut(scope)?.remove(&key);
+        // Profile routing survives logout, independently of its credentials.
+        if matches!(scope, Scope::Global) && was_default {
+            self.default_host = sorted_hostnames(&self.hosts).into_iter().next();
+        }
+        Ok(true)
     }
-
-    pub fn resolve_hostname(
+    pub fn resolve_hostname_in(
         &self,
         cli_hostname: Option<&str>,
-        profile: Option<&str>,
+        scope: &Scope,
     ) -> Result<Option<String>> {
         if let Some(host) = cli_hostname {
             return Ok(Some(host.to_string()));
@@ -110,17 +216,19 @@ impl AuthConfig {
         if let Ok(host) = std::env::var("GB_HOST") {
             return Ok(Some(host));
         }
-
-        if let Some(profile_name) = self.active_profile_name(profile)? {
-            return Ok(self
-                .profiles
-                .get(&profile_name)
-                .and_then(|profile| profile.default_host.clone()));
+        let selected = self.default_host_in(scope)?.map(str::to_string);
+        if selected.is_some() || scope.profile().is_some() {
+            return Ok(selected);
         }
-
-        Ok(self.default_hostname_without_profile())
+        Ok(sorted_hostnames(&self.hosts).into_iter().next())
     }
-
+    pub fn resolve_hostname(
+        &self,
+        cli_hostname: Option<&str>,
+        profile: Option<&str>,
+    ) -> Result<Option<String>> {
+        self.resolve_hostname_in(cli_hostname, &self.scope(profile, false)?)
+    }
     pub fn resolve_repo(
         &self,
         cli_repo: Option<&str>,
@@ -132,191 +240,31 @@ impl AuthConfig {
         if let Ok(repo) = std::env::var("GB_REPO") {
             return Ok(Some(repo));
         }
-
-        let Some(profile_name) = self.active_profile_name(profile)? else {
+        let Some(name) = self.active_profile_name(profile)? else {
             return Ok(None);
         };
-
-        Ok(self
-            .profiles
-            .get(&profile_name)
-            .and_then(|profile| profile.default_repo.clone()))
+        Ok(self.profile(&name)?.default_repo.clone())
     }
-
     pub fn active_profile_name(&self, profile: Option<&str>) -> Result<Option<String>> {
-        let selected = profile
-            .map(str::to_string)
-            .or_else(|| std::env::var("GB_PROFILE").ok())
-            .or_else(|| self.default_profile.clone());
-
-        let Some(selected) = selected else {
-            return Ok(None);
-        };
-        if selected.trim().is_empty() {
-            return Err(GbError::Config("Profile name cannot be empty.".into()));
+        let scope = self.scope(profile, false)?;
+        if let Scope::Profile(name) = scope {
+            self.profile(&name)?;
+            Ok(Some(name))
+        } else {
+            Ok(None)
         }
-        if !self.profiles.contains_key(&selected) {
-            return Err(GbError::Config(format!(
-                "Profile '{}' is not configured. Add it with `gb config set profile {}` or run `gb auth login --profile {}`.",
-                selected, selected, selected
-            )));
-        }
-        Ok(Some(selected))
     }
-
     pub fn profile(&self, profile: &str) -> Result<&ProfileConfig> {
-        self.profiles.get(profile).ok_or_else(|| {
-            GbError::Config(format!(
-                "Profile '{}' is not configured. Add it with `gb config set profile {}`.",
-                profile, profile
-            ))
-        })
+        self.profiles.get(profile).ok_or_else(|| GbError::Config(format!(
+            "Profile '{}' is not configured. Add it with `gb config set profile {}` or run `gb auth login --profile {}`.", profile, profile, profile)))
     }
-
     pub fn profile_mut(&mut self, profile: &str) -> &mut ProfileConfig {
         self.profiles.entry(profile.to_string()).or_default()
     }
-
-    fn default_hostname_without_profile(&self) -> Option<String> {
-        if let Some(host) = self
-            .default_host
-            .as_ref()
-            .filter(|host| self.hosts.contains_key(host.as_str()))
-        {
-            return Some(host.clone());
-        }
-        sorted_hostnames(&self.hosts).into_iter().next()
-    }
-
-    pub fn stored_hostname(&self, hostname: &str) -> Option<String> {
-        stored_hostname_in(&self.hosts, hostname)
-    }
-
-    pub fn stored_hostname_for_profile(&self, profile: &str, hostname: &str) -> Option<String> {
-        self.profiles
-            .get(profile)
-            .and_then(|profile| stored_hostname_in(&profile.hosts, hostname))
-    }
-
-    pub(super) fn find_host(&self, hostname: &str) -> Option<&HostConfig> {
-        find_host_in(&self.hosts, hostname)
-    }
-}
-
-fn remove_host_from(
-    hosts: &mut HashMap<String, HostConfig>,
-    default_host: &mut Option<String>,
-    hostname: &str,
-) -> bool {
-    let key_to_remove = if hosts.contains_key(hostname) {
-        Some(hostname.to_string())
-    } else {
-        let canonical = canonical_hostname(hostname);
-        hosts.keys().find_map(|key| {
-            (canonical_hostname(key).as_ref() == canonical.as_ref()).then(|| key.clone())
-        })
-    };
-
-    let removed = key_to_remove
-        .as_ref()
-        .map(|key| hosts.remove(key).is_some())
-        .unwrap_or(false);
-
-    if removed
-        && key_to_remove
-            .as_deref()
-            .is_some_and(|key| default_host.as_deref() == Some(key))
-    {
-        *default_host = sorted_hostnames(hosts).into_iter().next();
-    }
-    removed
-}
-
-fn stored_hostname_in(hosts: &HashMap<String, HostConfig>, hostname: &str) -> Option<String> {
-    if hosts.contains_key(hostname) {
-        return Some(hostname.to_string());
-    }
-
-    let canonical = canonical_hostname(hostname)?;
-    let mut matches: Vec<String> = hosts
-        .keys()
-        .filter(|key| canonical_hostname(key).as_deref() == Some(canonical.as_str()))
-        .cloned()
-        .collect();
-    matches.sort();
-    matches.into_iter().next()
-}
-
-fn find_host_in<'a>(
-    hosts: &'a HashMap<String, HostConfig>,
-    hostname: &str,
-) -> Option<&'a HostConfig> {
-    let key = stored_hostname_in(hosts, hostname)?;
-    hosts.get(&key)
 }
 
 pub(super) fn sorted_hostnames(hosts: &HashMap<String, HostConfig>) -> Vec<String> {
-    let mut hostnames: Vec<String> = hosts.keys().cloned().collect();
-    hostnames.sort();
-    hostnames
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn host_config() -> HostConfig {
-        HostConfig {
-            token: "tok".to_string(),
-            user: "user".to_string(),
-            protocol: "https".to_string(),
-        }
-    }
-
-    fn config_with_hosts(keys: &[&str]) -> AuthConfig {
-        let mut hosts = HashMap::new();
-        for key in keys {
-            hosts.insert(key.to_string(), host_config());
-        }
-        AuthConfig {
-            hosts,
-            default_host: None,
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn stored_hostname_exact_match() {
-        let config = config_with_hosts(&["example.com"]);
-        assert_eq!(
-            config.stored_hostname("example.com"),
-            Some("example.com".to_string())
-        );
-    }
-
-    #[test]
-    fn stored_hostname_canonical_match() {
-        let config = config_with_hosts(&["example.com"]);
-        assert_eq!(
-            config.stored_hostname("https://example.com"),
-            Some("example.com".to_string())
-        );
-    }
-
-    #[test]
-    fn stored_hostname_no_match() {
-        let config = config_with_hosts(&["example.com"]);
-        assert_eq!(config.stored_hostname("other.com"), None);
-    }
-
-    #[test]
-    fn stored_hostname_multiple_canonical_matches_returns_lexicographically_smallest() {
-        // Both "example.com" and "https://example.com" canonicalize to "example.com".
-        // The function should deterministically return the lexicographically smallest key.
-        let config = config_with_hosts(&["https://example.com", "example.com"]);
-        assert_eq!(
-            config.stored_hostname("example.com"),
-            Some("example.com".to_string())
-        );
-    }
+    let mut names: Vec<_> = hosts.keys().cloned().collect();
+    names.sort();
+    names
 }

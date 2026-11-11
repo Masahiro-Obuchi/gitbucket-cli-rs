@@ -78,7 +78,7 @@ Behavior:
 
 1. Prompt for hostname/token when omitted.
 2. Validate credentials by calling `GET /user`.
-3. Save the host profile to `config.toml` on success and mark it as the default host.
+3. Save a normalized full base-URL key and actual protocol on success, preserving an existing unique legacy key on re-login. Set the selected scope default host to the normalized URL.
 
 Examples:
 
@@ -103,29 +103,26 @@ gb auth logout [OPTIONS]
 
 #### `gb auth status`
 
-Show current authentication entries.
+Verify the selected token and show saved inventory separately.
 
 ```text
-gb auth status [--json]
+gb auth status [--json] [--offline] [--global]
 ```
 
-`--profile <NAME>` limits output to that profile and prints the profile's effective actor. `--json` prints structured output with a top-level `effective_actor` object containing `host`, `user`, `protocol`, and `credential_source`.
-
-Example output:
-
-```text
-gitbucket.example.com
-  ✓ Logged in as alice
-  Protocol: https
-```
-
-Profile example:
+The default sends GET /user to the selected instance and reports the returned
+login as effective_actor.user. --offline sends no request and leaves user null;
+stored_user is a separate unverified hint. Environment tokens do not inherit a
+saved username as their effective actor. Profile/global/environment source and
+verification (verified/offline/rejected/unverified) are explicit. Other saved
+hosts remain unverified inventory. Failed/unavailable online verification exits
+1, with status JSON still available on stdout. See
+[auth contracts](docs/AUTH_PROFILES.md) for the schema and compatibility changes.
 
 ```text
 Profile: work
-  Default host: gitbucket.example.com
-  Default repo: alice/project
-  Effective actor: alice @ gitbucket.example.com (profile credentials)
+✓ Logged in as alice @ https://bucket.example/gitbucket (verified)
+Credential source: profile credentials
+Saved user hint: alice (not proof of current token ownership)
 ```
 
 #### `gb auth token`
@@ -196,7 +193,7 @@ gb config get host --host <HOST> [--field <FIELD>] [--json]
 | `--field <FIELD>` | `user`, `protocol`, or `has-token` |
 | `--json` | Output the full host summary as JSON |
 
-Host lookup is canonical, so equivalent forms such as `https://host/path`, `host/path`, and `https://host/path/api/v3` resolve to the same saved entry.
+Host lookup addresses the selected storage scope. Exact saved aliases can be inspected for repair; otherwise the normalized scheme/host/port/deployment must match unambiguously. HTTP and HTTPS entries remain distinct.
 
 #### `gb config get profile`
 
@@ -296,6 +293,23 @@ echo '{"state":"closed"}' | gb api repos/alice/project/issues/1 -X PATCH --input
 
 ---
 
+Auth/config storage scope follows --profile, GB_PROFILE, then default_profile;
+--global explicitly bypasses the saved default profile and conflicts with an
+explicit profile. Host settings and logout never write/remove fallback entries.
+Profile logout retains its target and reports remaining global/environment
+fallback. `config get/set/unset default-host` respects the selected scope.
+`config get/unset default-repo` targets the selected profile. `config unset host
+--host URL` removes only scoped credentials, and `config unset profile NAME`
+removes that profile and clears a matching default-profile. Named profile
+operations and default-profile address the registry; list remains full inventory.
+
+`config migrate` previews whole-file instance-key normalization. --apply checks
+all collisions, saves a private exact backup, and atomically replaces the file
+under the shared lock. --restore BACKUP checks the migrated digest before
+restoring the original bytes; subsequent edits refuse automatic restoration.
+Unknown TOML fields survive migration, while comments/formatting may change in
+the migrated version. See [complete migration contract](docs/AUTH_PROFILES.md).
+
 ### 3.5 `gb completion` — shell completion generation
 
 `gb completion` prints shell completion scripts to stdout.
@@ -391,8 +405,8 @@ gb repo clone <REPO> [DIRECTORY]
 - Full clone URL
 
 For `OWNER/REPO`, HTTP(S) clones reuse the selected host/profile user and token
-through an ephemeral Git credential helper. `GB_USER` supplies the username when
-using `GB_TOKEN` without a saved user. Full URLs use Git's own authentication;
+through an ephemeral Git credential helper. `GB_USER` supplies the Git username when using `GB_TOKEN`; the saved user hint
+is not inherited for an environment token. Full URLs use Git's own authentication;
 HTTP URLs containing a password are rejected before invoking Git.
 
 The helper only supplies credentials within the configured scheme/host/port/base
@@ -1229,7 +1243,7 @@ and power loss are not covered by a universal durability guarantee.
 2. Profile-scoped host entry in `config.toml`
 3. Global host entry in `config.toml`
 
-When `GB_TOKEN` is set, protocol resolution uses this order:
+For bare targets, protocol selection uses this order (explicit URL schemes always win):
 
 1. URL scheme embedded in `--hostname/-H` or `GB_HOST`
 2. `GB_PROTOCOL`
@@ -1253,7 +1267,12 @@ If a selected profile does not exist, commands fail with a clear configuration e
 4. Saved `default_host` in `config.toml` when no profile is active
 5. Lexicographically first configured host in `config.toml` as a backward-compatible fallback when no profile is active
 
-Stored hosts are matched canonically, so equivalent forms such as `https://host/path`, `host/path`, and `https://host/path/api/v3` resolve to the same saved entry.
+Stored hosts match a normalized scheme/host/port/deployment identity. API suffix
+and trailing slash aliases are accepted when unambiguous, but HTTP and HTTPS
+credentials never match each other. Bare targets use an explicit GB_PROTOCOL or
+one unambiguous saved instance; multiple aliases require repair/migration. New
+login keys are full base URLs; unique legacy keys remain readable. See
+[instance matching and migration](docs/AUTH_PROFILES.md).
 
 ### 4.6 Authenticated request URL boundaries
 
@@ -1474,7 +1493,7 @@ not network deadlines. Unrelated background work is not cancelled.
 | `GB_REPO` | Default repository (`OWNER/REPO`) |
 | `GB_PROFILE` | Default configuration profile |
 | `GB_TOKEN` | Access token override |
-| `GB_PROTOCOL` | Protocol override when `GB_TOKEN` is used with a plain hostname |
+| `GB_PROTOCOL` | Protocol selection for a bare target, including saved credentials |
 | `GB_USER` | Username for GitBucket web-session fallbacks |
 | `GB_WEB_USER` | Explicit Web user override; authorizes an actor different from the REST token |
 | `GB_PASSWORD` | Password for GitBucket web-session fallbacks |

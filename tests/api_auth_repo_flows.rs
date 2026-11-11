@@ -42,7 +42,7 @@ fn auth_login_success_saves_default_host_and_user() {
     );
 
     let config = fs::read_to_string(env.path().join("config.toml")).unwrap();
-    assert!(config.contains("default_host = \"127.0.0.1:"));
+    assert!(config.contains("default_host = \"http://127.0.0.1:"));
     assert!(config.contains("token = \"secret-token\""));
     assert!(config.contains("user = \"alice\""));
     assert!(config.contains("protocol = \"http\""));
@@ -82,8 +82,8 @@ fn auth_login_with_profile_saves_profile_scoped_host() {
 
     let config = fs::read_to_string(env.path().join("config.toml")).unwrap();
     assert!(config.contains("[profiles.work]"));
-    assert!(config.contains(&format!("default_host = \"{host}\"")));
-    assert!(config.contains(&format!("[profiles.work.hosts.\"{host}\"]")));
+    assert!(config.contains(&format!("default_host = \"http://{host}\"")));
+    assert!(config.contains(&format!("[profiles.work.hosts.\"http://{host}\"]")));
     assert!(config.contains("token = \"profile-token\""));
     assert!(!config.contains("default_host = \"bad.example.com\""));
 }
@@ -110,7 +110,7 @@ fn auth_login_rejects_empty_profile_before_api_call() {
 
     assert!(!output.status.success());
     assert!(
-        String::from_utf8_lossy(&output.stderr).contains("Profile name cannot be empty."),
+        String::from_utf8_lossy(&output.stderr).contains("Profile name cannot be empty"),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
@@ -153,7 +153,7 @@ protocol = "https"
 
     let output = env
         .command()
-        .args(["auth", "status", "--profile", "work"])
+        .args(["auth", "status", "--offline", "--profile", "work"])
         .output()
         .unwrap();
 
@@ -165,7 +165,7 @@ protocol = "https"
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Profile: work"));
     assert!(stdout.contains("Default repo: alice/project"));
-    assert!(stdout.contains("Effective actor: alice @ gitbucket.example.com"));
+    assert!(stdout.contains("Actor: <unverified> @ https://gitbucket.example.com"));
     assert!(stdout.contains("profile credentials"));
     assert!(!stdout.contains("sandbox"));
     assert!(!stdout.contains("bob"));
@@ -199,7 +199,7 @@ protocol = "https"
 
     let output = env
         .command()
-        .args(["auth", "status", "--json"])
+        .args(["auth", "status", "--offline", "--json"])
         .output()
         .unwrap();
 
@@ -211,11 +211,11 @@ protocol = "https"
     let payload: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(payload["active_profile"], "work");
     assert_eq!(payload["effective_actor"]["host"], "gitbucket.example.com");
-    assert_eq!(payload["effective_actor"]["user"], "alice");
+    assert_eq!(payload["effective_actor"]["stored_user"], "alice");
     assert_eq!(payload["effective_actor"]["protocol"], "https");
     assert_eq!(payload["effective_actor"]["credential_source"], "profile");
     assert_eq!(
-        payload["profiles"]["work"]["effective_actor"]["user"],
+        payload["profiles"]["work"]["effective_actor"]["stored_user"],
         "alice"
     );
 }
@@ -236,7 +236,14 @@ protocol = "https"
 
     let output = env
         .command()
-        .args(["auth", "status", "--json", "-H", "gitbucket.example.com"])
+        .args([
+            "auth",
+            "status",
+            "--offline",
+            "--json",
+            "-H",
+            "gitbucket.example.com",
+        ])
         .output()
         .unwrap();
 
@@ -248,7 +255,7 @@ protocol = "https"
     let payload: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert!(payload["active_profile"].is_null());
     assert_eq!(payload["effective_actor"]["host"], "gitbucket.example.com");
-    assert_eq!(payload["effective_actor"]["user"], "global-user");
+    assert_eq!(payload["effective_actor"]["stored_user"], "global-user");
     assert_eq!(payload["effective_actor"]["protocol"], "https");
     assert_eq!(payload["effective_actor"]["credential_source"], "global");
 }

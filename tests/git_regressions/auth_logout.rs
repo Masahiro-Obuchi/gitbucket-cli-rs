@@ -36,7 +36,7 @@ protocol = "https"
 }
 
 #[test]
-fn auth_logout_with_profile_removes_fallback_global_credentials() {
+fn auth_logout_with_profile_preserves_fallback_global_credentials() {
     let env = GbTestEnv::new();
     std::fs::write(
         env.path().join("config.toml"),
@@ -63,14 +63,15 @@ protocol = "https"
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        String::from_utf8_lossy(&output.stdout).contains("global credentials used by profile work"),
+        String::from_utf8_lossy(&output.stdout)
+            .contains("global fallback credentials were retained"),
         "stdout: {}",
         String::from_utf8_lossy(&output.stdout)
     );
 
     let config = std::fs::read_to_string(env.path().join("config.toml")).unwrap();
     assert!(
-        !config.contains("global-token"),
+        config.contains("global-token"),
         "config was not updated: {config}"
     );
 }
