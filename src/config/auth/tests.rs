@@ -2,8 +2,9 @@ use std::collections::HashMap;
 
 use crate::test_support::TestEnv;
 
+use super::instance_key;
 use super::model::{AuthConfig, HostConfig, ProfileConfig};
-use super::resolve::{canonical_hostname, protocol_from_hostname};
+use super::resolve::protocol_from_hostname;
 
 fn host(user: &str) -> HostConfig {
     HostConfig {
@@ -84,14 +85,14 @@ fn protocol_can_be_derived_from_hostname() {
 }
 
 #[test]
-fn canonical_hostname_ignores_scheme_and_api_suffix() {
+fn instance_keys_preserve_scheme_and_remove_api_suffix() {
     assert_eq!(
-        canonical_hostname("https://gitbucket.example.com/gitbucket/api/v3").as_deref(),
-        Some("gitbucket.example.com/gitbucket")
+        instance_key("https://gitbucket.example.com/gitbucket/api/v3", "http").unwrap(),
+        "https://gitbucket.example.com/gitbucket"
     );
     assert_eq!(
-        canonical_hostname("gitbucket.example.com/gitbucket").as_deref(),
-        Some("gitbucket.example.com/gitbucket")
+        instance_key("gitbucket.example.com/gitbucket", "http").unwrap(),
+        "http://gitbucket.example.com/gitbucket"
     );
 }
 
@@ -111,7 +112,7 @@ fn get_host_matches_equivalent_hostnames() {
     let host = config
         .get_host_for_profile("gitbucket.example.com/gitbucket", None)
         .unwrap();
-    assert_eq!(host.protocol, "http");
+    assert_eq!(host.protocol, "https");
 }
 
 #[test]
@@ -219,10 +220,10 @@ fn remove_host_promotes_next_sorted_host() {
     config.hosts.insert("a.example.com".into(), host("alice"));
     config.hosts.insert("b.example.com".into(), host("bob"));
 
-    assert!(config.remove_host("b.example.com"));
+    assert!(config.remove_host("b.example.com").unwrap());
     assert_eq!(
         config.resolve_hostname(None, None).unwrap().as_deref(),
-        Some("a.example.com")
+        Some("https://a.example.com")
     );
 }
 

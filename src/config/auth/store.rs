@@ -67,6 +67,10 @@ fn read_config(path: &Path) -> Result<AuthConfig> {
 }
 
 fn update_config<T>(path: &Path, change: impl FnOnce(&mut AuthConfig) -> Result<T>) -> Result<T> {
+    with_config_lock(path, || update_locked(path, change))
+}
+
+pub(super) fn with_config_lock<T>(path: &Path, operation: impl FnOnce() -> Result<T>) -> Result<T> {
     // The lock uses a stable separate inode. Never unlink it on release: doing
     // so could let a new writer lock another inode while a waiter holds this one.
     let lock_path = path.with_file_name("config.toml.lock");
@@ -93,6 +97,10 @@ fn update_config<T>(path: &Path, change: impl FnOnce(&mut AuthConfig) -> Result<
     }
     // Dropping the file releases the OS lock, even after a failed change or a
     // process termination. No lock-file contents or PID expiry are involved.
+    operation()
+}
+
+fn update_locked<T>(path: &Path, change: impl FnOnce(&mut AuthConfig) -> Result<T>) -> Result<T> {
     let mut config = read_config(path)?;
     let before = toml::to_string_pretty(&config)?;
     let result = change(&mut config)?;
@@ -137,7 +145,7 @@ fn is_regular(metadata: &fs::Metadata) -> bool {
     metadata.is_file() && !metadata.file_type().is_symlink()
 }
 
-fn open_regular(path: &Path, create: bool) -> Result<File> {
+pub(super) fn open_regular(path: &Path, create: bool) -> Result<File> {
     check_regular(path)?;
     let mut options = OpenOptions::new();
     options.read(true);

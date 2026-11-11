@@ -21,14 +21,19 @@ pub async fn create_web_session(
     } else if !host.user.is_empty() {
         host.user.clone()
     } else {
-        return Err(GbError::Auth(
-            "GitBucket web actions require a username. Run `gb auth login` first or set `GB_USER`."
-                .into(),
-        ));
+        String::new()
     };
 
-    crate::target::validate_component(&username)?;
+    if !username.is_empty() {
+        crate::target::validate_component(&username)?;
+    }
     let api_user = client.current_user().await?;
+    let username = if username.is_empty() {
+        api_user.login.clone()
+    } else {
+        username
+    };
+    crate::target::validate_component(&username)?;
     if explicit_web_user.is_none() && !api_user.login.eq_ignore_ascii_case(&username) {
         return Err(GbError::Auth(format!("REST token belongs to {:?}, but Web username is {:?}. No Web changes were attempted. Set GB_WEB_USER explicitly to authorize a different Web actor.", api_user.login, username)));
     }

@@ -1,11 +1,17 @@
 use clap::{Args, Subcommand};
 use dialoguer::{Input, Password};
 
-use crate::config::auth::{AuthConfig, HostConfig};
+use crate::config::auth::{instance_key, AuthConfig, HostConfig, Scope};
 use crate::error::{GbError, Result};
 
 #[derive(Args)]
+#[command(
+    after_help = "Storage scope follows --profile, GB_PROFILE, then default_profile. --global bypasses default_profile and conflicts with an explicit --profile/GB_PROFILE. Logout removes only the selected scope; environment tokens and global fallback may remain active. Retained or replacement defaults preserve their instance URL scheme."
+)]
 pub struct AuthArgs {
+    /// Use global credentials, bypassing the saved default profile
+    #[arg(long, global = true)]
+    pub global: bool,
     #[command(subcommand)]
     pub command: AuthCommand,
 }
@@ -30,8 +36,14 @@ pub enum AuthCommand {
         #[arg(long, short = 'H', value_name = "HOST_OR_URL")]
         hostname: Option<String>,
     },
-    /// Display the authentication status
+    /// Verify the selected token and show saved credentials separately
+    #[command(
+        after_help = "By default, verify the selected token with GET /user. Only a verified response supplies effective_actor.user. --offline makes no request and leaves the actor unknown. Rejected or unverifiable online credentials exit 1; JSON status is still printed without tokens. Other saved entries are inventory and are not probed."
+    )]
     Status {
+        /// Show saved state without contacting the server; actor remains unverified
+        #[arg(long)]
+        offline: bool,
         /// Print status as JSON
         #[arg(long)]
         json: bool,
@@ -49,6 +61,8 @@ pub async fn run(
     cli_hostname: &Option<String>,
     cli_profile: &Option<String>,
 ) -> Result<()> {
+    let config = AuthConfig::load()?;
+    let scope = config.scope(cli_profile.as_deref(), args.global)?;
     match args.command {
         AuthCommand::Login {
             hostname,
@@ -57,25 +71,35 @@ pub async fn run(
         } => {
             login(
                 hostname.as_ref().or(cli_hostname.as_ref()),
-                cli_profile,
+                &scope,
                 token,
                 protocol,
             )
             .await
         }
         AuthCommand::Logout { hostname } => {
-            logout(hostname.as_ref().or(cli_hostname.as_ref()), cli_profile).await
+            logout(hostname.as_ref().or(cli_hostname.as_ref()), &scope).await
         }
-        AuthCommand::Status { json } => status(cli_hostname, cli_profile, json).await,
+        AuthCommand::Status { json, offline } => {
+            crate::cli::auth_status::print_status(
+                &config,
+                cli_hostname,
+                &scope,
+                args.global || cli_profile.is_some() || std::env::var_os("GB_PROFILE").is_some(),
+                json,
+                offline,
+            )
+            .await
+        }
         AuthCommand::Token { hostname } => {
-            print_token(hostname.as_ref().or(cli_hostname.as_ref()), cli_profile).await
+            print_token(hostname.as_ref().or(cli_hostname.as_ref()), &scope).await
         }
     }
 }
 
 async fn login(
     hostname: Option<&String>,
-    cli_profile: &Option<String>,
+    scope: &Scope,
     token: Option<String>,
     protocol: String,
 ) -> Result<()> {
@@ -102,8 +126,8 @@ async fn login(
         }
     };
 
-    let config = AuthConfig::load()?;
-    let profile = selected_profile_for_write(&config, cli_profile)?;
+    let instance = instance_key(&hostname, &protocol)?;
+    let protocol = url::Url::parse(&instance)?.scheme().to_string();
 
     // Verify the token by making a test API call
     let client = crate::api::client::ApiClient::new(&hostname, &token, &protocol)?;
@@ -113,111 +137,66 @@ async fn login(
         .map_err(|err| map_login_error(&hostname, err))?;
 
     AuthConfig::update(|config| {
-        config.set_host_for_profile(
-            profile.as_deref(),
-            hostname.clone(),
+        config.save_login(
+            scope,
+            &instance,
             HostConfig {
                 token,
                 user: user.login.clone(),
                 protocol,
             },
-        );
-        Ok(())
+        )
     })?;
 
     println!("✓ Logged in to {} as {}", hostname, user.login);
     Ok(())
 }
 
-async fn logout(hostname: Option<&String>, cli_profile: &Option<String>) -> Result<()> {
+async fn logout(hostname: Option<&String>, scope: &Scope) -> Result<()> {
     let message = AuthConfig::update(|config| {
-        if let Some(profile) = selected_profile_for_read(config, cli_profile)? {
+        if let Some(profile) = scope.profile() {
             let hostname = config
-                .resolve_hostname(hostname.map(String::as_str), Some(&profile))?
+                .resolve_hostname_in(hostname.map(String::as_str), scope)?
                 .ok_or_else(|| GbError::Auth("No hosts configured.".into()))?;
-            if config.remove_host_for_profile(Some(&profile), &hostname) {
+            if config.remove_in(scope, &hostname)? {
                 return Ok(format!(
                     "✓ Logged out from {} for profile {}",
                     hostname, profile
                 ));
-            } else if config.remove_host(&hostname) {
-                return Ok(format!(
-                    "✓ Logged out from {} (global credentials used by profile {})",
-                    hostname, profile
-                ));
             }
             return Ok(format!(
-                "Not logged in to {} for profile {}",
+                "No saved credentials for {} in profile {}; global fallback credentials were retained",
                 hostname, profile
             ));
         }
         let hostname = config
-            .resolve_hostname(hostname.map(String::as_str), None)?
+            .resolve_hostname_in(hostname.map(String::as_str), scope)?
             .ok_or_else(|| GbError::Auth("No hosts configured.".into()))?;
-        Ok(if config.remove_host(&hostname) {
+        Ok(if config.remove_host(&hostname)? {
             format!("✓ Logged out from {}", hostname)
         } else {
             format!("Not logged in to {}", hostname)
         })
     })?;
     println!("{}", message);
+    if std::env::var_os("GB_TOKEN").is_some() {
+        println!("GB_TOKEN remains active; logout does not modify environment variables.");
+    }
+    if scope.profile().is_some() {
+        println!("Global entries are unchanged and may still supply fallback credentials. Use `gb auth logout --global -H <URL>` to remove them explicitly.");
+    }
     Ok(())
 }
 
-async fn status(
-    cli_hostname: &Option<String>,
-    cli_profile: &Option<String>,
-    json: bool,
-) -> Result<()> {
+async fn print_token(hostname: Option<&String>, scope: &Scope) -> Result<()> {
     let config = AuthConfig::load()?;
-    let active_profile = selected_profile_for_read(&config, cli_profile)?;
-    crate::cli::auth_status::print_status(
-        &config,
-        cli_hostname,
-        active_profile.as_deref(),
-        cli_profile,
-        json,
-    )
-}
-
-async fn print_token(hostname: Option<&String>, cli_profile: &Option<String>) -> Result<()> {
-    let config = AuthConfig::load()?;
-    let profile = selected_profile_for_read(&config, cli_profile)?;
     let hostname = config
-        .resolve_hostname(hostname.map(String::as_str), profile.as_deref())?
+        .resolve_hostname_in(hostname.map(String::as_str), scope)?
         .ok_or_else(|| crate::error::GbError::Auth("No hosts configured.".into()))?;
 
-    let host = config.get_host_for_profile(&hostname, profile.as_deref())?;
-    println!("{}", host.token);
+    let credential = config.credential(&hostname, scope)?;
+    println!("{}", credential.host.token);
     Ok(())
-}
-
-fn selected_profile_for_write(
-    config: &AuthConfig,
-    cli_profile: &Option<String>,
-) -> Result<Option<String>> {
-    let profile = cli_profile
-        .clone()
-        .or_else(|| std::env::var("GB_PROFILE").ok())
-        .or_else(|| config.default_profile.clone());
-
-    profile.map(sanitize_profile_name).transpose()
-}
-
-fn sanitize_profile_name(profile: String) -> Result<String> {
-    let profile = profile.trim();
-    if profile.is_empty() {
-        Err(GbError::Config("Profile name cannot be empty.".into()))
-    } else {
-        Ok(profile.to_string())
-    }
-}
-
-fn selected_profile_for_read(
-    config: &AuthConfig,
-    cli_profile: &Option<String>,
-) -> Result<Option<String>> {
-    config.active_profile_name(cli_profile.as_deref())
 }
 
 fn map_login_error(hostname: &str, err: GbError) -> GbError {

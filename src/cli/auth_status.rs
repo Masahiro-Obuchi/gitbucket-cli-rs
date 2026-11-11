@@ -1,288 +1,219 @@
-use std::collections::BTreeMap;
-
-use serde::Serialize;
-
-use crate::config::auth::{AuthConfig, HostConfig, ProfileConfig};
+//! Saved inventory is distinct from the actor verified for the selected token.
+use crate::config::auth::{AuthConfig, CredentialSource, HostConfig, Scope};
 use crate::error::{GbError, Result};
-use crate::output;
+use serde::Serialize;
+use std::collections::BTreeMap;
 
 #[derive(Serialize)]
 struct AuthStatusOutput {
     active_profile: Option<String>,
-    effective_actor: Option<EffectiveActorOutput>,
-    hosts: BTreeMap<String, HostStatusOutput>,
-    profiles: BTreeMap<String, ProfileStatusOutput>,
+    offline: bool,
+    effective_actor: Option<Actor>,
+    hosts: BTreeMap<String, SavedHost>,
+    profiles: BTreeMap<String, SavedProfile>,
 }
-
-#[derive(Serialize)]
-struct ProfileStatusOutput {
-    default_host: Option<String>,
-    default_repo: Option<String>,
-    effective_actor: Option<EffectiveActorOutput>,
-    hosts: BTreeMap<String, HostStatusOutput>,
-}
-
-#[derive(Serialize, Clone)]
-struct EffectiveActorOutput {
+#[derive(Clone, Serialize)]
+struct Actor {
     host: String,
-    user: String,
+    instance: String,
+    user: Option<String>,
+    stored_user: Option<String>,
     protocol: String,
     credential_source: CredentialSource,
+    verification: &'static str,
+    error: Option<VerificationError>,
 }
-
+#[derive(Clone, Serialize)]
+struct VerificationError {
+    code: &'static str,
+    status: Option<u16>,
+    cause: Option<&'static str>,
+}
 #[derive(Serialize)]
-struct HostStatusOutput {
+struct SavedHost {
     user: String,
     protocol: String,
     has_token: bool,
     credential_source: CredentialSource,
+    verification: &'static str,
+}
+#[derive(Serialize)]
+struct SavedProfile {
+    default_host: Option<String>,
+    default_repo: Option<String>,
+    effective_actor: Option<Actor>,
+    hosts: BTreeMap<String, SavedHost>,
 }
 
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "snake_case")]
-enum CredentialSource {
-    Profile,
-    Global,
-    Environment,
-}
-
-pub(crate) fn print_status(
-    config: &AuthConfig,
-    cli_hostname: &Option<String>,
-    active_profile: Option<&str>,
-    cli_profile: &Option<String>,
-    json: bool,
-) -> Result<()> {
-    let profile_filter = selected_profile_filter(active_profile, cli_profile);
-    let output = status_output(config, cli_hostname, active_profile, profile_filter)?;
-
-    if json {
-        return output::print_json(&output);
-    }
-
-    if profile_filter.is_some() {
-        print_profile_status(&output);
-        return Ok(());
-    }
-
-    let profile_hosts_empty = config
-        .profiles
-        .values()
-        .all(|profile| profile.hosts.is_empty());
-    if config.hosts.is_empty() && profile_hosts_empty {
-        println!("Not logged in to any GitBucket instance.");
-        println!("Run `gb auth login` to authenticate.");
-        return Ok(());
-    }
-
-    for (hostname, host_config) in &output.hosts {
-        println!("{}", hostname);
-        println!("  ✓ Logged in as {}", host_config.user);
-        println!("  Protocol: {}", host_config.protocol);
-    }
-    if !output.profiles.is_empty() {
-        println!("Profiles:");
-        for (profile_name, profile) in &output.profiles {
-            println!("{}", profile_name);
-            if let Some(default_host) = &profile.default_host {
-                println!("  Default host: {}", default_host);
-            }
-            if let Some(default_repo) = &profile.default_repo {
-                println!("  Default repo: {}", default_repo);
-            }
-            if let Some(actor) = &profile.effective_actor {
-                println!(
-                    "  Effective actor: {} @ {} ({})",
-                    actor.user,
-                    actor.host,
-                    credential_source_label(&actor.credential_source)
-                );
-            }
-            for (hostname, host_config) in &profile.hosts {
-                println!("  {}", hostname);
-                println!("    ✓ Logged in as {}", host_config.user);
-                println!("    Protocol: {}", host_config.protocol);
-            }
-        }
-    }
-    Ok(())
-}
-
-fn status_output(
-    config: &AuthConfig,
-    cli_hostname: &Option<String>,
-    active_profile: Option<&str>,
-    profile_filter: Option<&str>,
-) -> Result<AuthStatusOutput> {
-    let hosts = if profile_filter.is_none() {
-        summarize_global_hosts(config)
-    } else {
-        BTreeMap::new()
-    };
-    let profiles = match profile_filter {
-        Some(profile_name) => {
-            let profile = config.profile(profile_name)?;
-            BTreeMap::from([(
-                profile_name.to_string(),
-                profile_status_output(config, profile_name, profile, cli_hostname)?,
-            )])
-        }
-        None => {
-            let mut profiles = BTreeMap::new();
-            for (profile_name, profile) in &config.profiles {
-                profiles.insert(
-                    profile_name.clone(),
-                    profile_status_output(config, profile_name, profile, &None)?,
-                );
-            }
-            profiles
-        }
-    };
-    let effective_actor = effective_actor(config, cli_hostname, active_profile)?;
-
-    Ok(AuthStatusOutput {
-        active_profile: active_profile.map(str::to_string),
-        effective_actor,
-        hosts,
-        profiles,
-    })
-}
-
-fn selected_profile_filter<'a>(
-    active_profile: Option<&'a str>,
-    cli_profile: &Option<String>,
-) -> Option<&'a str> {
-    if cli_profile.is_some() || std::env::var("GB_PROFILE").is_ok() {
-        active_profile
-    } else {
-        None
-    }
-}
-
-fn profile_status_output(
-    config: &AuthConfig,
-    profile_name: &str,
-    profile: &ProfileConfig,
-    cli_hostname: &Option<String>,
-) -> Result<ProfileStatusOutput> {
-    let effective_actor = effective_actor(config, cli_hostname, Some(profile_name))?;
-    let hosts = profile
-        .hosts
+fn inventory(
+    hosts: &std::collections::HashMap<String, HostConfig>,
+    source: CredentialSource,
+) -> BTreeMap<String, SavedHost> {
+    hosts
         .iter()
-        .map(|(hostname, host)| {
+        .map(|(key, host)| {
             (
-                hostname.clone(),
-                host_status_output(host, CredentialSource::Profile),
-            )
-        })
-        .collect();
-
-    Ok(ProfileStatusOutput {
-        default_host: profile.default_host.clone(),
-        default_repo: profile.default_repo.clone(),
-        effective_actor,
-        hosts,
-    })
-}
-
-fn summarize_global_hosts(config: &AuthConfig) -> BTreeMap<String, HostStatusOutput> {
-    config
-        .hosts
-        .iter()
-        .map(|(hostname, host)| {
-            (
-                hostname.clone(),
-                host_status_output(host, CredentialSource::Global),
+                key.clone(),
+                SavedHost {
+                    user: host.user.clone(),
+                    protocol: host.protocol.clone(),
+                    has_token: !host.token.is_empty(),
+                    credential_source: source,
+                    verification: "not_checked",
+                },
             )
         })
         .collect()
 }
 
-fn host_status_output(host: &HostConfig, credential_source: CredentialSource) -> HostStatusOutput {
-    HostStatusOutput {
-        user: host.user.clone(),
-        protocol: host.protocol.clone(),
-        has_token: !host.token.is_empty(),
-        credential_source,
-    }
-}
-
-fn effective_actor(
+pub(crate) async fn print_status(
     config: &AuthConfig,
     cli_hostname: &Option<String>,
-    profile: Option<&str>,
-) -> Result<Option<EffectiveActorOutput>> {
-    let hostname = match config.resolve_hostname(cli_hostname.as_deref(), profile)? {
-        Some(hostname) => hostname,
-        None => return Ok(None),
-    };
-    let host = match config.get_host_for_profile(&hostname, profile) {
-        Ok(host) => host,
-        Err(GbError::NotAuthenticated) => return Ok(None),
-        Err(err) => return Err(err),
-    };
-
-    let credential_source = if std::env::var("GB_TOKEN").is_ok() {
-        CredentialSource::Environment
-    } else if profile.is_some_and(|profile| {
-        config
-            .stored_hostname_for_profile(profile, &hostname)
-            .is_some()
-    }) {
-        CredentialSource::Profile
-    } else {
-        CredentialSource::Global
-    };
-
-    Ok(Some(EffectiveActorOutput {
-        host: hostname,
-        user: host.user,
-        protocol: host.protocol,
-        credential_source,
-    }))
-}
-
-fn print_profile_status(output: &AuthStatusOutput) {
-    let Some(profile_name) = output.profiles.keys().next() else {
-        return;
-    };
-    let Some(profile) = output.profiles.get(profile_name) else {
-        return;
-    };
-
-    println!("Profile: {}", profile_name);
-    println!(
-        "  Default host: {}",
-        profile.default_host.as_deref().unwrap_or("<unset>")
-    );
-    println!(
-        "  Default repo: {}",
-        profile.default_repo.as_deref().unwrap_or("<unset>")
-    );
-    match &profile.effective_actor {
-        Some(actor) => println!(
-            "  Effective actor: {} @ {} ({})",
-            actor.user,
-            actor.host,
-            credential_source_label(&actor.credential_source)
-        ),
-        None => println!("  Effective actor: <not authenticated>"),
-    }
-
-    if !profile.hosts.is_empty() {
-        println!("  Stored credentials:");
-        for (hostname, host_config) in &profile.hosts {
-            println!("    {}", hostname);
-            println!("      ✓ Logged in as {}", host_config.user);
-            println!("      Protocol: {}", host_config.protocol);
+    scope: &Scope,
+    filter_scope: bool,
+    json: bool,
+    offline: bool,
+) -> Result<()> {
+    let mut actor = None;
+    let mut failure = None;
+    if let Some(hostname) = config.resolve_hostname_in(cli_hostname.as_deref(), scope)? {
+        match config.credential(&hostname, scope) {
+            Ok(credential) => {
+                let mut selected = Actor {
+                    host: hostname,
+                    instance: credential.instance.clone(),
+                    user: None,
+                    stored_user: match credential.source {
+                        CredentialSource::Environment => None,
+                        _ => Some(credential.host.user.clone()),
+                    },
+                    protocol: credential.host.protocol.clone(),
+                    credential_source: credential.source,
+                    verification: "offline",
+                    error: None,
+                };
+                if !offline {
+                    let probe = async {
+                        let client = crate::api::client::ApiClient::new(
+                            &credential.instance,
+                            &credential.host.token,
+                            &credential.host.protocol,
+                        )?;
+                        let user = client.current_user().await?;
+                        if user.login.is_empty() {
+                            return Err(GbError::Auth(
+                                "The authentication probe returned an empty login.".into(),
+                            ));
+                        }
+                        Ok(user.login.clone())
+                    }
+                    .await;
+                    match probe {
+                        Ok(user) => {
+                            selected.user = Some(user);
+                            selected.verification = "verified";
+                        }
+                        Err(error) => {
+                            selected.verification = if matches!(error.status(), Some(401 | 403)) {
+                                "rejected"
+                            } else {
+                                "unverified"
+                            };
+                            selected.error = Some(VerificationError {
+                                code: error.code(),
+                                status: error.status(),
+                                cause: error.cause_code(),
+                            });
+                            failure = Some(error);
+                        }
+                    }
+                }
+                actor = Some(selected);
+            }
+            Err(GbError::NotAuthenticated) => (),
+            Err(error) => return Err(error),
         }
     }
+    let mut profiles = BTreeMap::new();
+    if !filter_scope || scope.profile().is_some() {
+        for (name, profile) in &config.profiles {
+            if filter_scope && scope.profile() != Some(name.as_str()) {
+                continue;
+            }
+            profiles.insert(
+                name.clone(),
+                SavedProfile {
+                    default_host: profile.default_host.clone(),
+                    default_repo: profile.default_repo.clone(),
+                    effective_actor: if scope.profile() == Some(name.as_str()) {
+                        actor.clone()
+                    } else {
+                        None
+                    },
+                    hosts: inventory(&profile.hosts, CredentialSource::Profile),
+                },
+            );
+        }
+    }
+    let output = AuthStatusOutput {
+        active_profile: scope.profile().map(str::to_string),
+        offline,
+        effective_actor: actor,
+        hosts: if !filter_scope || scope.profile().is_none() {
+            inventory(&config.hosts, CredentialSource::Global)
+        } else {
+            BTreeMap::new()
+        },
+        profiles,
+    };
+    if json {
+        crate::output::print_json(&output)?;
+    } else {
+        print_text(&output);
+    }
+    if let Some(error) = failure {
+        return Err(error);
+    }
+    if !offline && output.effective_actor.is_none() {
+        return Err(GbError::NotAuthenticated);
+    }
+    Ok(())
 }
 
-fn credential_source_label(source: &CredentialSource) -> &'static str {
-    match source {
-        CredentialSource::Profile => "profile credentials",
-        CredentialSource::Global => "global credentials",
-        CredentialSource::Environment => "environment token",
+fn print_text(output: &AuthStatusOutput) {
+    if let Some(profile) = &output.active_profile {
+        println!("Profile: {profile}");
+    }
+    if let Some(actor) = &output.effective_actor {
+        match &actor.user {
+            Some(user) => println!("✓ Logged in as {user} @ {} (verified)", actor.instance),
+            None => println!(
+                "Actor: <unverified> @ {} ({})",
+                actor.instance, actor.verification
+            ),
+        }
+        let source = match actor.credential_source {
+            CredentialSource::Environment => "environment token",
+            CredentialSource::Profile => "profile credentials",
+            CredentialSource::Global => "global credentials",
+        };
+        println!("Credential source: {source}");
+        if let Some(user) = &actor.stored_user {
+            println!("Saved user hint: {user} (not proof of current token ownership)");
+        }
+    } else {
+        println!("No effective credentials for the selected target.");
+    }
+    for (key, host) in &output.hosts {
+        println!("{key}: saved user {} (unverified)", host.user);
+    }
+    for (name, profile) in &output.profiles {
+        println!("Saved profile: {name}");
+        if let Some(repo) = &profile.default_repo {
+            println!("  Default repo: {repo}");
+        }
+        for (key, host) in &profile.hosts {
+            println!("  {key}: saved user {} (unverified)", host.user);
+        }
     }
 }

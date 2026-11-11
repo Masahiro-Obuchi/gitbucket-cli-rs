@@ -330,7 +330,7 @@ fn config_set_host_updates_fields_and_default() {
     fs::write(
         env.path().join("config.toml"),
         r#"
-[hosts."https://gitbucket.example.com/gitbucket"]
+[hosts."gitbucket.example.com/gitbucket"]
 token = "secret-token"
 user = "alice"
 protocol = "https"
@@ -361,7 +361,7 @@ protocol = "https"
         String::from_utf8_lossy(&output.stderr)
     );
     let config = fs::read_to_string(env.path().join("config.toml")).unwrap();
-    assert!(config.contains("default_host = \"https://gitbucket.example.com/gitbucket\""));
+    assert!(config.contains("default_host = \"http://gitbucket.example.com/gitbucket\""));
     assert!(config.contains("user = \"carol\""));
     assert!(config.contains("protocol = \"http\""));
 }

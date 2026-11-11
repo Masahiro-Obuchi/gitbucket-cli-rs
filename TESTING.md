@@ -611,3 +611,42 @@ both root and `/gitbucket` deployments. The first concurrent subpath run had
 API response timeouts (26 passed, 16 failed); proxy logs showed requests closing
 before a response. A rerun with `--test-threads=4` passed all 42. `cargo check`,
 Clippy with `-D warnings`, formatting and diff whitespace checks passed too.
+
+## Authentication Scopes and Credential-Key Migration
+
+`tests/auth_profiles.rs` checks profile/global edit isolation, explicit scope
+conflicts, scoped logout and retained routing/fallback, environment-only tokens,
+online actor verification versus saved hints, rejected/unverified status, and
+offline operation without a request. Saved credentials are tested across
+schemes, ports, deployments, aliases and legacy default references.
+Regressions also cover explicit default selection through global legacy keys,
+`host --default` and promoted global defaults with both schemes saved, and
+profile logout preserving its original HTTP instance rather than selecting an
+HTTPS fallback. Migration refuses ambiguous bare defaults in global/profile
+scopes during preview and apply; an explicit URL resolves that ambiguity.
+
+Migration tests compare preview/apply/no-op/restore with exact original bytes,
+unknown TOML fields, IPv6 and subpaths, identical aliases, conflicting tokens,
+unknown default schemes, later-edit restore refusal and Unix backup permissions.
+Unix symlink cases verify that neither config nor backup links are followed.
+Corrupt-backup errors are checked for secret omission and unchanged config bytes.
+The existing process-lock and atomic-replacement tests exercise the shared lock
+and persistence code used by migration. macOS/Windows CI now runs auth_profiles
+alongside configuration storage tests.
+
+```sh
+cargo test --locked --test auth_profiles
+cargo test --locked --test e2e_smoke auth_config -- --ignored --test-threads=4
+```
+
+The live profile case verifies the actual `/user` login despite a stale saved
+hint, profile and global fallback after logout, isolation of another profile,
+normalization of a real legacy credential and exact rollback without losing
+authentication. It runs in root and `/gitbucket` fixtures.
+
+PR-14 validation on 2026-11-11: 496 ordinary tests passed; all 43 live E2E cases
+passed in each deployment. `cargo check`, Clippy with `-D warnings`, formatting
+and diff checks passed. The first three added regressions failed before the
+scope/scheme fixes. [Behavior, JSON changes and migration limits](docs/AUTH_PROFILES.md)
+are documented separately. No business server credentials are migrated by these
+tests; all config mutations use temporary directories.
