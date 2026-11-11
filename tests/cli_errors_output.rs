@@ -5,6 +5,7 @@ use std::process::Stdio;
 use support::gb_cmd::{assert_failure, assert_success, GbTestEnv};
 
 fn json_error(output: &std::process::Output, exit: i32) -> Value {
+    assert_failure(output);
     assert_eq!(
         output.status.code(),
         Some(exit),
