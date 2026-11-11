@@ -17,13 +17,13 @@ pub(in crate::cli::issue) async fn create(
 
     let title = match title {
         Some(title) => title,
-        None => crate::cancel::input(|| Input::new().with_prompt("Title").interact_text()).await?,
+        None => crate::cancel::prompt(|| Input::new().with_prompt("Title").interact_text()).await?,
     };
 
     let body_text = match body {
         Some(body) => Some(body),
         None => {
-            let body: String = crate::cancel::input(|| {
+            let body: String = crate::cancel::prompt(|| {
                 Input::new()
                     .with_prompt("Body (optional)")
                     .allow_empty(true)

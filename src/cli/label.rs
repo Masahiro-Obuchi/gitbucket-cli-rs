@@ -202,7 +202,7 @@ async fn create(
     let name = match name {
         Some(name) => name,
         None => {
-            crate::cancel::input(|| Input::new().with_prompt("Label name").interact_text()).await?
+            crate::cancel::prompt(|| Input::new().with_prompt("Label name").interact_text()).await?
         }
     };
 
@@ -210,7 +210,7 @@ async fn create(
     let raw_color = match color {
         Some(color) => color,
         None => {
-            crate::cancel::input(|| {
+            crate::cancel::prompt(|| {
                 Input::new()
                     .with_prompt("Label color (6-digit hex)")
                     .interact_text()
@@ -396,7 +396,7 @@ async fn delete(
             "Are you sure you want to delete label '{}' from {}/{}?",
             name, ctx.owner, ctx.repo
         );
-        let confirmed = crate::cancel::input(move || {
+        let confirmed = crate::cancel::prompt(move || {
             Confirm::new().with_prompt(prompt).default(false).interact()
         })
         .await?;

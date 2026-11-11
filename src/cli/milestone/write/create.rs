@@ -19,7 +19,7 @@ pub(in crate::cli::milestone) async fn create(
     let title = match title {
         Some(title) => title,
         None => {
-            crate::cancel::input(|| Input::new().with_prompt("Milestone title").interact_text())
+            crate::cancel::prompt(|| Input::new().with_prompt("Milestone title").interact_text())
                 .await?
         }
     };

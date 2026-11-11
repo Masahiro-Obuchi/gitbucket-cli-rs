@@ -105,7 +105,7 @@ async fn login(
 ) -> Result<()> {
     let hostname = match hostname {
         Some(h) => h.clone(),
-        None => crate::cancel::input(|| {
+        None => crate::cancel::prompt(|| {
             Input::new()
             .with_prompt(
                 "GitBucket host or URL (e.g., gitbucket.example.com or https://gitbucket.example.com/gitbucket)",
@@ -117,7 +117,7 @@ async fn login(
     let token = match token {
         Some(t) => t,
         None => {
-            crate::cancel::input(|| {
+            crate::cancel::prompt(|| {
                 Password::new()
                     .with_prompt("Personal access token")
                     .interact()

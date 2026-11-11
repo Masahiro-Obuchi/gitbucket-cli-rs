@@ -41,7 +41,7 @@ pub async fn create_web_session(
         Ok(password) => password,
         Err(_) => {
             let prompt = format!("GitBucket password for {}", username);
-            crate::cancel::input(move || Password::new().with_prompt(prompt).interact()).await?
+            crate::cancel::prompt(move || Password::new().with_prompt(prompt).interact()).await?
         }
     };
 

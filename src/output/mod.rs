@@ -1,4 +1,8 @@
 pub(crate) mod comments;
+mod error;
+pub(crate) use error::{argument_error, report_error};
+mod stdout;
+pub use stdout::{finish, stdout_line, stdout_write, write_stdout};
 pub mod table;
 
 use colored::Colorize;
@@ -37,8 +41,7 @@ pub fn stderr_write(args: std::fmt::Arguments<'_>) {
 }
 
 pub fn print_json<T: Serialize>(value: &T) -> Result<()> {
-    println!("{}", serde_json::to_string_pretty(value)?);
-    Ok(())
+    write_stdout(format!("{}\n", serde_json::to_string_pretty(value)?).as_bytes())
 }
 
 pub fn page_json<T: Serialize>(value: &T, no_pager: bool) -> Result<()> {
@@ -88,24 +91,29 @@ pub fn page_reader(content: &mut impl Read, no_pager: bool) -> Result<()> {
         return Err(GbError::Cancelled);
     }
     if no_pager || !std::io::stdout().is_terminal() {
-        return Ok(copy_output(content, &mut std::io::stdout().lock())?);
+        return stdout::stream_stdout(content);
     }
 
     let pager = std::env::var("PAGER").unwrap_or_else(|_| "less -R".to_string());
     let mut parts = pager.split_whitespace();
     let Some(program) = parts.next() else {
-        return Ok(copy_output(content, &mut std::io::stdout().lock())?);
+        return stdout::stream_stdout(content);
     };
     let args: Vec<&str> = parts.collect();
 
     let child = Command::new(program)
         .args(args)
         .stdin(Stdio::piped())
+        .stderr(if suppress_stderr() {
+            Stdio::null()
+        } else {
+            Stdio::inherit()
+        })
         .spawn();
     let mut child = match child {
         Ok(child) => child,
         Err(_) => {
-            return Ok(copy_output(content, &mut std::io::stdout().lock())?);
+            return stdout::stream_stdout(content);
         }
     };
 
@@ -130,8 +138,13 @@ fn wait_pager(mut child: std::process::Child) -> Result<()> {
         if crate::cancel::requested() {
             break Err(GbError::Cancelled);
         }
-        if child.try_wait()?.is_some() {
-            break Ok(());
+        if let Some(status) = child.try_wait()? {
+            if status.success() {
+                return Ok(());
+            }
+            return Err(GbError::Pager {
+                status: status.code(),
+            });
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     })();

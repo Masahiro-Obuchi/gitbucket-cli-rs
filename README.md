@@ -449,7 +449,26 @@ participate in this lock. Repository hooks still run: a failed post-checkout hoo
 can occur after the switch; the error explicitly reports this partial completion
 and asks you to inspect the working tree.
 
-For automation, pass global `--json-errors` or set `GB_JSON_ERRORS=true` to get a single JSON error object on stderr, including fields such as `error.code`, `error.cause`, `error.status`, `error.exit_code`, and `error.operations` when mutation progress is available.
+For automation, pass global `--json-errors` or set `GB_JSON_ERRORS=true` to get
+one JSON error object on stderr for argument errors (exit 2) and runtime errors
+(exit 1). Help/version remain normal output with exit 0. Successful data output
+is unchanged; use `--json` where supported to select JSON data.
+
+JSON-error mode disables interactive prompts: provide required values and
+confirmations explicitly. Explicit stdin input remains available. Fields include
+`error.code`, `cause`, `status`, `exit_code`, and mutation progress where available.
+Values containing the flag text do not enable this mode.
+
+```sh
+gb --json-errors pr view nope  # invalid_arguments / invalid_value, exit 2
+gb completion bash | head -n 5
+```
+
+Closing a stdout consumer is a normal pipeline exit, without a BrokenPipe panic.
+Other output failures and nonzero pager exits return 1. Pager errors also report
+`child_exit_code` when available. See the
+[error, prompt and output contracts](docs/CLI_ERRORS_OUTPUT.md) for JSON examples,
+redaction, compatibility changes and pager lifecycle details.
 
 ### Git authentication
 

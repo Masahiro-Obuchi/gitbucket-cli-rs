@@ -87,7 +87,7 @@ pub(super) async fn run(
         let text = match body_file(request.body, request.body_file)? {
             Some(text) => text,
             None => {
-                crate::cancel::input(|| {
+                crate::cancel::prompt(|| {
                     dialoguer::Input::<String>::new()
                         .with_prompt("Inline review body")
                         .interact_text()

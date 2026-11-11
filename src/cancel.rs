@@ -51,6 +51,19 @@ where
     }
 }
 
+pub async fn prompt<T, E>(
+    read: impl FnOnce() -> std::result::Result<T, E> + Send + 'static,
+) -> crate::error::Result<T>
+where
+    T: Send + 'static,
+    E: Into<crate::error::GbError> + Send + 'static,
+{
+    if crate::output::suppress_stderr() {
+        return Err(crate::error::GbError::InputRequired);
+    }
+    input(read).await
+}
+
 pub fn install() -> std::io::Result<()> {
     // Construct synchronously so interception is installed before spawning Git.
     #[cfg(unix)]

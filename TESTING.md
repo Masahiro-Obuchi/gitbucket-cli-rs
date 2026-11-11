@@ -650,3 +650,35 @@ and diff checks passed. The first three added regressions failed before the
 scope/scheme fixes. [Behavior, JSON changes and migration limits](docs/AUTH_PROFILES.md)
 are documented separately. No business server credentials are migrated by these
 tests; all config mutations use temporary directories.
+
+## CLI Errors, Pipes and Pager Lifecycle
+
+`tests/cli_errors_output.rs` checks argument errors before/after the global JSON
+flag, boolish environment values, option-value/terminator false positives,
+help/version, secret omission, malformed config and runtime child failures.
+Closing completion/table/JSON stdout must exit normally without a panic; an
+existing runtime error retains exit 1. Linux /dev/full checks non-pipe write
+failure as one JSON io_error. Unix PTYs verify that JSON-error mode never starts
+a prompt and that pager stderr cannot corrupt the record. Consuming/early-exit,
+failed and missing pagers are checked for stdin closure, status and child reaping.
+macOS/Windows CI includes this integration target (platform cases are gated).
+
+The output diagnostic unit case verifies that unverified operations retain HTTP
+status, route, operation status and CLI exit code while redacting dynamic strings.
+The CLI grammar guard records the assumptions needed to distinguish a real
+--json-errors option from data; future hyphenated/trailing/external-command
+arguments must update format selection. Existing pager cancellation tests still
+cover blocked writes/waits, and input cancellation covers ordinary terminal
+prompts plus explicit stdin under JSON-error mode.
+
+```sh
+cargo test --locked --test cli_errors_output --test cancellation --test pr_snapshots
+```
+
+PR-15 validation on 2026-11-12: all 516 ordinary tests passed, plus all 43 live
+E2E cases at root and /gitbucket. The final CLI/unit subset passed 13 integration
+and 125 unit cases. Check, Clippy with -D warnings, fmt and diff checks passed.
+Four initial regressions failed before the fix: parse-error JSON, argument-secret
+omission, completion BrokenPipe and non-pipe stdout error handling. See
+[CLI error/output contracts](docs/CLI_ERRORS_OUTPUT.md) for the intentional
+JSON-prompt and pager-exit compatibility changes.

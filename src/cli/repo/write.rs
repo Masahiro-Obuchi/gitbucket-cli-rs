@@ -19,7 +19,7 @@ pub(super) async fn create(
     let name = match name {
         Some(n) => n,
         None => {
-            crate::cancel::input(|| Input::new().with_prompt("Repository name").interact_text())
+            crate::cancel::prompt(|| Input::new().with_prompt("Repository name").interact_text())
                 .await?
         }
     };
@@ -59,7 +59,7 @@ pub(super) async fn delete(
 
     if !yes {
         let prompt = format!("Are you sure you want to delete {}/{}?", owner, repo);
-        let confirmed = crate::cancel::input(move || {
+        let confirmed = crate::cancel::prompt(move || {
             Confirm::new().with_prompt(prompt).default(false).interact()
         })
         .await?;
