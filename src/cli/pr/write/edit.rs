@@ -39,7 +39,11 @@ pub(in crate::cli::pr) async fn edit(
     request: EditRequest,
 ) -> Result<()> {
     let pr = apply_edit(hostname, cli_repo, cli_profile, request).await?;
-    println!("✓ Updated pull request #{}: {}", pr.number, pr.title);
+    println!(
+        "✓ Updated pull request #{}: {}",
+        pr.number,
+        crate::output::single_line(&pr.title)
+    );
     Ok(())
 }
 

@@ -2,6 +2,7 @@ pub(crate) mod comments;
 mod error;
 pub(crate) use error::{argument_error, report_error};
 mod stdout;
+mod text;
 pub use stdout::{finish, stdout_line, stdout_write, write_stdout};
 pub mod table;
 
@@ -23,12 +24,17 @@ pub fn suppress_stderr() -> bool {
     SUPPRESS_STDERR.load(Ordering::Relaxed)
 }
 
+/// Format a scalar human field without allowing it to add lines or columns.
+pub fn single_line(text: &str) -> String {
+    self::text::cell(text)
+}
+
 pub fn stderr_line(args: std::fmt::Arguments<'_>) {
     if suppress_stderr() {
         return;
     }
     let mut stderr = std::io::stderr().lock();
-    let _ = stderr.write_fmt(args);
+    let _ = stderr.write_all(text::human(&args.to_string()).as_bytes());
     let _ = stderr.write_all(b"\n");
 }
 
@@ -37,7 +43,7 @@ pub fn stderr_write(args: std::fmt::Arguments<'_>) {
         return;
     }
     let mut stderr = std::io::stderr().lock();
-    let _ = stderr.write_fmt(args);
+    let _ = stderr.write_all(text::human(&args.to_string()).as_bytes());
 }
 
 pub fn print_json<T: Serialize>(value: &T) -> Result<()> {
@@ -45,8 +51,8 @@ pub fn print_json<T: Serialize>(value: &T) -> Result<()> {
 }
 
 pub fn page_json<T: Serialize>(value: &T, no_pager: bool) -> Result<()> {
-    page_or_print(
-        &format!("{}\n", serde_json::to_string_pretty(value)?),
+    page_reader(
+        &mut format!("{}\n", serde_json::to_string_pretty(value)?).as_bytes(),
         no_pager,
     )?;
     Ok(())
@@ -65,24 +71,17 @@ pub fn format_state(state: &str) -> String {
         "closed" => "CLOSED".red().bold().to_string(),
         "draft" => "DRAFT".cyan().bold().to_string(),
         "merged" => "MERGED".magenta().bold().to_string(),
-        _ => state.to_string(),
+        _ => single_line(state),
     }
 }
 
 /// Truncate a string to a max width, appending "..." if needed
 pub fn truncate(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        s.to_string()
-    } else if max > 3 {
-        let prefix: String = s.chars().take(max - 3).collect();
-        format!("{prefix}...")
-    } else {
-        s.chars().take(max).collect()
-    }
+    text::truncate(s, max)
 }
 
 pub fn page_or_print(content: &str, no_pager: bool) -> Result<()> {
-    page_reader(&mut content.as_bytes(), no_pager)
+    page_reader(&mut text::human(content).as_bytes(), no_pager)
 }
 
 /// Stream validated output, closing stdin and reaping even an early-exit pager.
@@ -175,7 +174,7 @@ mod tests {
 
     #[test]
     fn truncates_multibyte_strings_without_panicking() {
-        assert_eq!(truncate("こんにちは", 4), "こ...");
-        assert_eq!(truncate("こんにちは", 2), "こん");
+        assert_eq!(truncate("こんにちは", 4), "...");
+        assert_eq!(truncate("こんにちは", 2), "こ");
     }
 }

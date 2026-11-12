@@ -1,3 +1,4 @@
+use super::text::{cell, width};
 use colored::Colorize;
 
 /// Print a simple table with aligned columns
@@ -11,14 +12,17 @@ pub fn format_table(headers: &[&str], rows: &[Vec<String>]) -> String {
         return "No items found.\n".to_string();
     }
 
+    let headers: Vec<_> = headers.iter().map(|h| cell(h)).collect();
+    let rows: Vec<Vec<_>> = rows
+        .iter()
+        .map(|row| row.iter().map(|value| cell(value)).collect())
+        .collect();
     // Calculate column widths
-    let mut widths: Vec<usize> = headers.iter().map(|h| h.chars().count()).collect();
-    for row in rows {
+    let mut widths: Vec<usize> = headers.iter().map(|h| width(h)).collect();
+    for row in &rows {
         for (i, cell) in row.iter().enumerate() {
             if i < widths.len() {
-                // Strip ANSI codes for width calculation
-                let plain = strip_ansi(cell);
-                widths[i] = widths[i].max(plain.chars().count());
+                widths[i] = widths[i].max(width(cell));
             }
         }
     }
@@ -27,22 +31,22 @@ pub fn format_table(headers: &[&str], rows: &[Vec<String>]) -> String {
     let header_line: Vec<String> = headers
         .iter()
         .enumerate()
-        .map(|(i, h)| format!("{:<width$}", h, width = widths[i]))
+        .map(|(i, h)| format!("{}{}", h, " ".repeat(widths[i] - width(h))))
         .collect();
     let mut output = String::new();
     output.push_str(&header_line.join("  ").dimmed().to_string());
     output.push('\n');
 
     // Print rows
-    for row in rows {
+    for row in &rows {
         let line: Vec<String> = row
             .iter()
             .enumerate()
             .map(|(i, cell)| {
-                let plain_len = strip_ansi(cell).chars().count();
-                let width = widths.get(i).copied().unwrap_or(0);
-                let padding = if width > plain_len {
-                    " ".repeat(width - plain_len)
+                let plain_len = width(cell);
+                let column_width = widths.get(i).copied().unwrap_or(0);
+                let padding = if column_width > plain_len {
+                    " ".repeat(column_width - plain_len)
                 } else {
                     String::new()
                 };
@@ -56,35 +60,24 @@ pub fn format_table(headers: &[&str], rows: &[Vec<String>]) -> String {
     output
 }
 
-fn strip_ansi(s: &str) -> String {
-    let mut result = String::new();
-    let mut in_escape = false;
-    for c in s.chars() {
-        if c == '\x1b' {
-            in_escape = true;
-        } else if in_escape {
-            if c == 'm' {
-                in_escape = false;
-            }
-        } else {
-            result.push(c);
-        }
-    }
-    result
-}
-
 #[cfg(test)]
 mod tests {
-    use super::strip_ansi;
-
+    use super::*;
     #[test]
-    fn strip_ansi_removes_color_codes() {
-        let colored = "\u{1b}[31mERROR\u{1b}[0m";
-        assert_eq!(strip_ansi(colored), "ERROR");
-    }
-
-    #[test]
-    fn strip_ansi_keeps_plain_text() {
-        assert_eq!(strip_ansi("plain text"), "plain text");
+    fn unicode_cells_align_and_do_not_inject_rows_or_terminal_commands() {
+        let result = format_table(
+            &["名前", "N"],
+            &[
+                vec!["e\u{301}".into(), "1".into()],
+                vec!["👩‍💻".into(), "2".into()],
+            ],
+        );
+        let lines: Vec<_> = result.lines().collect();
+        assert_eq!(lines[1], "e\u{301}     1");
+        assert_eq!(lines[2], "👩‍💻    2");
+        let result = format_table(&["NAME"], &[vec!["x\n\x1b[2J\ry".into()]]);
+        assert_eq!(result.lines().count(), 2);
+        assert!(!result.contains('\x1b'));
+        assert!(result.contains("x\\n\\u{1b}[2J\\ry"));
     }
 }

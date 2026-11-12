@@ -282,7 +282,7 @@ fn format_pr_view(pr: &PullRequest) -> String {
     let mut output = String::new();
     output.push_str(&format!(
         "{} {}\n",
-        pr.title.bold(),
+        output::single_line(&pr.title).bold(),
         format!("#{}", pr.number).dimmed()
     ));
     output.push_str(&format!("{}\n\n", format_state(state)));
@@ -291,17 +291,17 @@ fn format_pr_view(pr: &PullRequest) -> String {
         if let Some(base) = &pr.base {
             output.push_str(&format!(
                 "{} ← {}\n",
-                base.ref_name.cyan(),
-                head.ref_name.green()
+                output::single_line(&base.ref_name).cyan(),
+                output::single_line(&head.ref_name).green()
             ));
         }
     }
 
     if let Some(user) = &pr.user {
-        output.push_str(&format!("Author: {}  ", user.login));
+        output.push_str(&format!("Author: {}  ", output::single_line(&user.login)));
     }
     if let Some(created) = &pr.created_at {
-        output.push_str(&format!("Created: {}", created));
+        output.push_str(&format!("Created: {}", output::single_line(created)));
     }
     output.push('\n');
 
@@ -309,7 +309,10 @@ fn format_pr_view(pr: &PullRequest) -> String {
         output.push_str(&format!("Draft: {}\n", if draft { "yes" } else { "no" }));
     }
     if let Some(labels) = &pr.labels {
-        let names: Vec<_> = labels.iter().map(|label| label.name.as_str()).collect();
+        let names: Vec<_> = labels
+            .iter()
+            .map(|label| output::single_line(&label.name))
+            .collect();
         output.push_str(&format!(
             "Labels: {}\n",
             if names.is_empty() {
@@ -320,7 +323,10 @@ fn format_pr_view(pr: &PullRequest) -> String {
         ));
     }
     if let Some(assignees) = &pr.assignees {
-        let names: Vec<_> = assignees.iter().map(|user| user.login.as_str()).collect();
+        let names: Vec<_> = assignees
+            .iter()
+            .map(|user| output::single_line(&user.login))
+            .collect();
         output.push_str(&format!(
             "Assignees: {}\n",
             if names.is_empty() {
@@ -331,7 +337,10 @@ fn format_pr_view(pr: &PullRequest) -> String {
         ));
     }
     if let Some(user) = &pr.merged_by {
-        output.push_str(&format!("Merged by: {}\n", user.login));
+        output.push_str(&format!(
+            "Merged by: {}\n",
+            output::single_line(&user.login)
+        ));
     }
 
     if let Some(body) = &pr.body {

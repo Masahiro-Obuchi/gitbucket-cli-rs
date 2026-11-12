@@ -2,7 +2,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum GbError {
-    #[error("Interactive input is disabled with --json-errors. Supply all required options or explicit confirmation flags.")]
+    #[error("Interactive input requires terminal stdin/stderr and is disabled with --json-errors. Supply all required options or explicit confirmation flags.")]
     InputRequired,
     #[error("Pager exited unsuccessfully (status {status:?})")]
     Pager { status: Option<i32> },

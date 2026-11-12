@@ -66,9 +66,9 @@ These cover pure logic and formatting behavior.
 - `src/api/`
   base URL normalization, endpoint path construction, pagination link handling, and web URL generation
 - `src/output/mod.rs`
-  UTF-8-safe truncation
+  Unicode display-width/grapheme-safe truncation
 - `src/output/table.rs`
-  ANSI stripping and table helper behavior
+  Unicode column alignment, row/control escaping and table helper behavior
 - `src/cli/auth.rs`
   login error mapping
 - `src/cli/pr/`
@@ -685,3 +685,32 @@ Four initial regressions failed before the fix: parse-error JSON, argument-secre
 omission, completion BrokenPipe and non-pipe stdout error handling. See
 [CLI error/output contracts](docs/CLI_ERRORS_OUTPUT.md) for the intentional
 JSON-prompt and pager-exit compatibility changes.
+
+## Explicit Input, PR Creation and Human Display
+
+`tests/input_display.rs` covers file/stdin/argument source conflicts; exact
+REST Markdown/CRLF/trailing whitespace; omitted and empty descriptions; empty
+file clears; blank comments and invalid UTF-8; noninteractive input_required;
+token stdin validation/storage without echo; master/develop default bases;
+and live published-ref comparison in disposable Git repositories (matched,
+dirty, ahead, behind, diverged and missing). Local/tracking and remote refs
+are compared before/after to catch unintended fetch/push updates. The suite
+runs on Linux/macOS/Windows. Existing detached-head and target validation
+regressions remain; required noninteractive input now fails before lookup.
+
+Output unit cases cover CJK, combining marks, ZWJ/skin-tone/flag emoji,
+SGR widths and dangerous CSI/OSC/C1/bidi controls. CLI view/list cases compare
+human escaping with exact JSON values. Raw patch and broken-pipe tests remain.
+The live `contract_cli_default_base_published_head_and_multiline_input` case
+verifies token stdin, the actual default branch, inferred published head,
+multiline file/stdin storage and an unpublished commit refusal in an isolated
+repository at both root and /gitbucket.
+
+```sh
+cargo test --locked --test input_display --test pr_target_validation
+```
+
+PR-16 local validation: all 528 ordinary tests passed; all 44 live E2E cases
+passed at root and /gitbucket. Check, Clippy with -D warnings, fmt and diff
+checks passed. The final focused suite rechecks input/index preservation,
+output pipes, cancellation and PR target validation after the final changes.

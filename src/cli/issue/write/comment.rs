@@ -1,5 +1,3 @@
-use dialoguer::Input;
-
 use crate::cli::common::RepoContext;
 use crate::cli::issue_like::latest_comment_by_current_user;
 use crate::error::Result;
@@ -15,13 +13,7 @@ pub(in crate::cli::issue) async fn comment(
 ) -> Result<()> {
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
-    let body_text = match body {
-        Some(body) => body,
-        None => {
-            crate::cancel::prompt(|| Input::new().with_prompt("Comment body").interact_text())
-                .await?
-        }
-    };
+    let body_text = crate::cli::input::comment(body).await?;
 
     let comment_body = CreateComment { body: body_text };
     if edit_last {

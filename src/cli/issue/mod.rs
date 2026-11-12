@@ -56,15 +56,18 @@ pub enum IssueCommand {
     },
     /// Create a new issue
     #[command(
-        after_help = "Label names are used exactly as passed after comma splitting, including surrounding spaces."
+        after_help = "Label names are used exactly as passed after comma splitting, including surrounding spaces. Non-terminal input requires --title; an omitted body is optional. --body-file - reads UTF-8 stdin and conflicts with --body. Empty descriptions are allowed."
     )]
     Create {
         /// Issue title (prompts when omitted)
         #[arg(long, short)]
         title: Option<String>,
-        /// Issue body (prompts when omitted)
+        /// Issue body (optional without a terminal)
         #[arg(long, short)]
         body: Option<String>,
+        /// Read UTF-8 body from a file, or - for stdin
+        #[arg(long, conflicts_with = "body", value_name = "FILE|-")]
+        body_file: Option<std::path::PathBuf>,
         /// Label name (repeatable or comma-separated)
         #[arg(long, short, value_delimiter = ',')]
         label: Vec<String>,
@@ -85,6 +88,9 @@ pub enum IssueCommand {
         /// New issue body
         #[arg(long, short)]
         body: Option<String>,
+        /// Read UTF-8 body from a file, or - for stdin
+        #[arg(long, conflicts_with = "body", value_name = "FILE|-")]
+        body_file: Option<std::path::PathBuf>,
         /// Add label name (repeatable or comma-separated)
         #[arg(long = "add-label", value_delimiter = ',')]
         add_label: Vec<String>,
@@ -124,6 +130,9 @@ pub enum IssueCommand {
         /// Comment body (prompts when omitted)
         #[arg(long, short)]
         body: Option<String>,
+        /// Read UTF-8 body from a file, or - for stdin
+        #[arg(long, conflicts_with = "body", value_name = "FILE|-")]
+        body_file: Option<std::path::PathBuf>,
         /// Edit your last comment instead of adding a new one
         #[arg(long)]
         edit_last: bool,
@@ -166,6 +175,7 @@ pub async fn run(
         IssueCommand::Create {
             title,
             body,
+            body_file,
             label,
             assignee,
         } => {
@@ -174,7 +184,7 @@ pub async fn run(
                 cli_repo,
                 cli_profile,
                 title,
-                body,
+                super::input::body(body, body_file).await?,
                 nonempty_label_names(label),
                 normalize_str_vec(assignee),
             )
@@ -184,6 +194,7 @@ pub async fn run(
             number,
             title,
             body,
+            body_file,
             add_label,
             remove_label,
             add_assignee,
@@ -199,7 +210,7 @@ pub async fn run(
                 write::EditRequest {
                     number,
                     title,
-                    body,
+                    body: super::input::body(body, body_file).await?,
                     add_labels: nonempty_label_names(add_label),
                     remove_labels: nonempty_label_names(remove_label),
                     add_assignees: normalize_str_vec(add_assignee),
@@ -220,8 +231,19 @@ pub async fn run(
         IssueCommand::Comment {
             number,
             body,
+            body_file,
             edit_last,
-        } => write::comment(cli_hostname, cli_repo, cli_profile, number, body, edit_last).await,
+        } => {
+            write::comment(
+                cli_hostname,
+                cli_repo,
+                cli_profile,
+                number,
+                super::input::body(body, body_file).await?,
+                edit_last,
+            )
+            .await
+        }
     }
 }
 

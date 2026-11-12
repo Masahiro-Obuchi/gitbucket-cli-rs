@@ -1,5 +1,3 @@
-use dialoguer::Input;
-
 use crate::error::{GbError, Result};
 use crate::models::pull_request::{CreatePullRequest, PullRequest};
 use crate::{cli::common::RepoContext, output};
@@ -25,6 +23,10 @@ pub(in crate::cli::pr) async fn create(
     request: CreateRequest,
 ) -> Result<()> {
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
+    if request.title.is_none() && !request.detect_existing && !crate::cli::input::interactive() {
+        return Err(crate::cli::input::required("--title"));
+    }
+    let inferred_head = request.head.is_none();
 
     let head_branch = match request.head {
         Some(h) => h,
@@ -34,19 +36,34 @@ pub(in crate::cli::pr) async fn create(
             )
         })?,
     };
-    let head = qualified_head(head_branch, request.head_owner)?;
+    let head_owner = request
+        .head_owner
+        .as_deref()
+        .unwrap_or(&ctx.owner)
+        .trim()
+        .to_owned();
+    let head = qualified_head(head_branch.clone(), request.head_owner)?;
 
+    let target_repo = if request.base.is_none() || (inferred_head && head_owner == ctx.owner) {
+        let repo = ctx.client.get_repo(&ctx.owner, &ctx.repo).await?;
+        if repo.full_name != format!("{}/{}", ctx.owner, ctx.repo) {
+            return Err(GbError::Other(
+                "Repository lookup returned a different PR target.".into(),
+            ));
+        }
+        Some(repo)
+    } else {
+        None
+    };
     let base = match request.base {
         Some(b) => b,
-        None => {
-            crate::cancel::prompt(|| {
-                Input::new()
-                    .with_prompt("Base branch")
-                    .default("main".to_string())
-                    .interact_text()
-            })
-            .await?
-        }
+        None => target_repo
+            .as_ref()
+            .and_then(|repo| repo.default_branch.clone())
+            .filter(|name| !name.trim().is_empty())
+            .ok_or_else(|| {
+                crate::cli::input::required("--base (the server did not provide a default branch)")
+            })?,
     };
 
     if request.detect_existing {
@@ -66,28 +83,28 @@ pub(in crate::cli::pr) async fn create(
         }
     }
 
-    let title = match request.title {
-        Some(t) => t,
-        None => crate::cancel::prompt(|| Input::new().with_prompt("Title").interact_text()).await?,
-    };
-
-    let body_text = match request.body {
-        Some(b) => Some(b),
-        None => {
-            let b: String = crate::cancel::prompt(|| {
-                Input::new()
-                    .with_prompt("Body (optional)")
-                    .allow_empty(true)
-                    .interact_text()
-            })
-            .await?;
-            if b.is_empty() {
-                None
-            } else {
-                Some(b)
+    let title = crate::cli::input::title(request.title).await?;
+    let body_text = crate::cli::input::optional_body(request.body).await?;
+    if inferred_head {
+        let repo = if head_owner == ctx.owner {
+            target_repo.expect("inferred head resolves the target repository")
+        } else {
+            let repo = ctx.client.get_repo(&head_owner, &ctx.repo).await?;
+            if repo.full_name != format!("{head_owner}/{}", ctx.repo) {
+                return Err(GbError::Other(
+                    "Repository lookup returned a different head repository.".into(),
+                ));
             }
+            repo
+        };
+        let (sha, dirty) = crate::git::published::verify(&ctx.git_auth, &repo, &head_branch)?;
+        eprintln!("Notice: Local HEAD matches published {head} at {sha}; base is {base}.");
+        if dirty {
+            eprintln!(
+                "Notice: Uncommitted changes are excluded from the PR. No push was attempted."
+            );
         }
-    };
+    }
 
     let create_body = CreatePullRequest {
         title,
@@ -173,7 +190,12 @@ fn print_pr_create_result(
         return output::print_json(pr);
     }
 
-    println!("✓ {} pull request #{}: {}", verb, pr.number, pr.title);
+    println!(
+        "✓ {} pull request #{}: {}",
+        verb,
+        pr.number,
+        crate::output::single_line(&pr.title)
+    );
     print_pr_refs(pr);
     println!("URL: {}", pr_url(client, owner, repo, pr));
     Ok(())

@@ -79,3 +79,4 @@ pub enum Commands {
     /// Open the repository in a web browser
     Browse,
 }
+pub(crate) mod input;

@@ -23,9 +23,12 @@ pub enum AuthCommand {
         /// GitBucket host or base URL
         #[arg(long, short = 'H', value_name = "HOST_OR_URL")]
         hostname: Option<String>,
-        /// Personal access token (prompts when omitted)
-        #[arg(long, short, value_name = "TOKEN")]
+        /// Personal access token (legacy argv input; prefer --with-token)
+        #[arg(long, short, value_name = "TOKEN", conflicts_with = "with_token")]
         token: Option<String>,
+        /// Read a single personal access token from stdin
+        #[arg(long)]
+        with_token: bool,
         /// Protocol for bare hosts
         #[arg(long, default_value = "https", value_parser = ["https", "http"])]
         protocol: String,
@@ -67,12 +70,17 @@ pub async fn run(
         AuthCommand::Login {
             hostname,
             token,
+            with_token,
             protocol,
         } => {
             login(
                 hostname.as_ref().or(cli_hostname.as_ref()),
                 &scope,
-                token,
+                if with_token {
+                    Some(super::input::token_stdin().await?)
+                } else {
+                    token
+                },
                 protocol,
             )
             .await
@@ -105,6 +113,7 @@ async fn login(
 ) -> Result<()> {
     let hostname = match hostname {
         Some(h) => h.clone(),
+        None if !super::input::interactive() => return Err(super::input::required("--hostname")),
         None => crate::cancel::prompt(|| {
             Input::new()
             .with_prompt(
@@ -116,6 +125,9 @@ async fn login(
 
     let token = match token {
         Some(t) => t,
+        None if !super::input::interactive() => {
+            return Err(super::input::required("--with-token or --token"))
+        }
         None => {
             crate::cancel::prompt(|| {
                 Password::new()

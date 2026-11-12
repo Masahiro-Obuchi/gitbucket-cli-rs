@@ -64,20 +64,26 @@ pub enum PrCommand {
         no_pager: bool,
     },
     /// Create a pull request
+    #[command(
+        after_help = "Omitted --base uses the target repository's default_branch, without a prompt or a main fallback. An inferred local head must match the live published ref; no push is performed. Explicit --head selects a published branch without checking local commits. Non-terminal input requires --title; an omitted body is optional. --body-file - reads stdin. See docs/INPUT_DISPLAY.md."
+    )]
     Create {
         /// PR title (prompts when omitted)
         #[arg(long, short)]
         title: Option<String>,
-        /// PR body (prompts when omitted)
+        /// PR body (optional without a terminal)
         #[arg(long, short)]
         body: Option<String>,
-        /// Head branch (defaults to current branch). For cross-repo PRs, use OWNER:BRANCH or pass --head-owner.
+        /// Read UTF-8 body from a file, or - for stdin
+        #[arg(long, conflicts_with = "body", value_name = "FILE|-")]
+        body_file: Option<std::path::PathBuf>,
+        /// Published head branch (default: verify and use current branch). Cross-repo: OWNER:BRANCH or --head-owner.
         #[arg(long)]
         head: Option<String>,
         /// Owner for the head branch; sends the head as OWNER:BRANCH
         #[arg(long = "head-owner")]
         head_owner: Option<String>,
-        /// Base branch (prompts with main as the default when omitted)
+        /// Base branch (defaults to the target repository default branch)
         #[arg(long, short = 'B')]
         base: Option<String>,
         /// Output the created pull request as JSON
@@ -100,6 +106,9 @@ pub enum PrCommand {
         /// New PR body
         #[arg(long, short)]
         body: Option<String>,
+        /// Read UTF-8 body from a file, or - for stdin
+        #[arg(long, conflicts_with = "body", value_name = "FILE|-")]
+        body_file: Option<std::path::PathBuf>,
         /// Add assignee username (repeatable or comma-separated)
         #[arg(long = "add-assignee", value_delimiter = ',')]
         add_assignee: Vec<String>,
@@ -168,7 +177,7 @@ pub struct PrCommentArgs {
     /// Comment body (prompts when omitted)
     #[arg(long, short)]
     pub body: Option<String>,
-    /// Read UTF-8 body from a file
+    /// Read UTF-8 body from a file, or - for stdin
     #[arg(long, conflicts_with = "body")]
     pub body_file: Option<std::path::PathBuf>,
     /// Exact path in the saved PR diff (destination path for renames)
@@ -205,7 +214,8 @@ pub enum PrCommentCommand {
         target: ReviewTargetArgs,
         #[arg(long, short, conflicts_with = "body_file")]
         body: Option<String>,
-        #[arg(long)]
+        /// Read UTF-8 body from a file, or - for stdin
+        #[arg(long, conflicts_with = "body", value_name = "FILE|-")]
         body_file: Option<std::path::PathBuf>,
     },
     /// Add at the selected current position group; no persistent parent-ID relation
@@ -214,7 +224,8 @@ pub enum PrCommentCommand {
         target: ReviewTargetArgs,
         #[arg(long, short, conflicts_with = "body_file")]
         body: Option<String>,
-        #[arg(long)]
+        /// Read UTF-8 body from a file, or - for stdin
+        #[arg(long, conflicts_with = "body", value_name = "FILE|-")]
         body_file: Option<std::path::PathBuf>,
         #[arg(long)]
         request_id: Option<String>,
@@ -296,6 +307,7 @@ pub async fn run(
         PrCommand::Create {
             title,
             body,
+            body_file,
             head,
             head_owner,
             base,
@@ -308,7 +320,7 @@ pub async fn run(
                 cli_profile,
                 write::CreateRequest {
                     title,
-                    body,
+                    body: super::input::body(body, body_file).await?,
                     head,
                     head_owner,
                     base,
@@ -322,6 +334,7 @@ pub async fn run(
             number,
             title,
             body,
+            body_file,
             add_assignee,
             remove_assignee,
             state,
@@ -334,7 +347,7 @@ pub async fn run(
                 write::EditRequest {
                     number,
                     title,
-                    body,
+                    body: super::input::body(body, body_file).await?,
                     add_assignees: normalize_str_vec(add_assignee),
                     remove_assignees: normalize_str_vec(remove_assignee),
                     state,
@@ -445,7 +458,7 @@ pub async fn run(
                     )
                     .await;
                 }
-                let body = review_write::body_file(args.body, args.body_file)?;
+                let body = super::input::body(args.body, args.body_file).await?;
                 write::comment(
                     cli_hostname,
                     cli_repo,

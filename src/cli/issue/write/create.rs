@@ -1,5 +1,3 @@
-use dialoguer::Input;
-
 use crate::cli::common::RepoContext;
 use crate::error::Result;
 use crate::models::issue::CreateIssue;
@@ -15,28 +13,8 @@ pub(in crate::cli::issue) async fn create(
 ) -> Result<()> {
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
-    let title = match title {
-        Some(title) => title,
-        None => crate::cancel::prompt(|| Input::new().with_prompt("Title").interact_text()).await?,
-    };
-
-    let body_text = match body {
-        Some(body) => Some(body),
-        None => {
-            let body: String = crate::cancel::prompt(|| {
-                Input::new()
-                    .with_prompt("Body (optional)")
-                    .allow_empty(true)
-                    .interact_text()
-            })
-            .await?;
-            if body.is_empty() {
-                None
-            } else {
-                Some(body)
-            }
-        }
-    };
+    let title = crate::cli::input::title(title).await?;
+    let body_text = crate::cli::input::optional_body(body).await?;
 
     let create_body = CreateIssue {
         title,
@@ -58,7 +36,11 @@ pub(in crate::cli::issue) async fn create(
         .client
         .create_issue(&ctx.owner, &ctx.repo, &create_body)
         .await?;
-    println!("✓ Created issue #{}: {}", issue.number, issue.title);
+    println!(
+        "✓ Created issue #{}: {}",
+        issue.number,
+        crate::output::single_line(&issue.title)
+    );
     if let Some(url) = &issue.html_url {
         println!("{}", url);
     }

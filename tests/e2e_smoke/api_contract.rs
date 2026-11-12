@@ -7,6 +7,138 @@ use serde_json::{json, Value};
 use std::time::Duration;
 use tempfile::tempdir;
 
+#[tokio::test]
+#[ignore = "requires the pinned Docker GitBucket fixture"]
+async fn contract_cli_default_base_published_head_and_multiline_input() {
+    use std::{io::Write, process::Stdio};
+    let temp = tempdir().unwrap();
+    let mut login = gb_command();
+    let mut child = login
+        .current_dir(temp.path())
+        .env("GB_CONFIG_DIR", temp.path())
+        .args([
+            "auth",
+            "login",
+            "--hostname",
+            &required_env("GB_E2E_HOST"),
+            "--protocol",
+            &optional_env("GB_E2E_PROTOCOL", "http"),
+            "--with-token",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(required_env("GB_E2E_TOKEN").as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let client = client();
+    let name = format!("input-{}", unique_suffix());
+    let repo = format!("{}/{}", required_env("GB_E2E_USER"), name);
+    let created = success(
+        request(
+            &client,
+            Method::POST,
+            "user/repos",
+            Some(json!({"name":name,"auto_init":true})),
+        )
+        .await,
+    )
+    .await;
+    let base = created["default_branch"].as_str().unwrap();
+    let work = temp.path().join("work");
+    clone_repo_to(temp.path(), &repo, &work);
+    configure_git_identity(&work);
+    run_git(&work, &["checkout", "-b", "input-topic"]);
+    std::fs::write(work.join("input.txt"), "input fixture\n").unwrap();
+    run_git(&work, &["add", "input.txt"]);
+    run_git(&work, &["commit", "-m", "Add input fixture"]);
+    run_git(&work, &["push", "-u", "origin", "input-topic"]);
+    let markdown = "## 日本語 👩‍💻\n\n```rust\nlet x = 1;\n```\n";
+    let file = temp.path().join("body.md");
+    std::fs::write(&file, markdown).unwrap();
+    let cli = |args: &[&str]| {
+        let mut command = gb_command();
+        command.current_dir(&work).args(args);
+        for (key, value) in e2e_env(temp.path()) {
+            command.env(key, value);
+        }
+        command.env("GB_REPO", &repo);
+        command
+    };
+    let pr: Value = serde_json::from_str(&run_and_assert_success(&mut cli(&[
+        "pr",
+        "create",
+        "--title",
+        "Input PR",
+        "--body-file",
+        file.to_str().unwrap(),
+        "--json",
+    ])))
+    .unwrap();
+    assert_eq!(pr["base"]["ref"], base);
+    assert_eq!(pr["body"], markdown);
+    let number = pr["number"].as_u64().unwrap().to_string();
+    let mut command = cli(&["pr", "comment", &number, "--body-file", "-", "--json"]);
+    let mut child = command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(markdown.as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&output.stdout).unwrap()["body"],
+        markdown
+    );
+    let issue_out = run_and_assert_success(&mut cli(&[
+        "issue",
+        "create",
+        "--title",
+        "Input Issue",
+        "--body-file",
+        file.to_str().unwrap(),
+    ]));
+    let issue = parse_issue_number(&issue_out);
+    let issue: Value = serde_json::from_str(&run_and_assert_success(&mut cli(&[
+        "issue",
+        "view",
+        &issue.to_string(),
+        "--json",
+    ])))
+    .unwrap();
+    assert_eq!(issue["body"], markdown);
+    std::fs::write(work.join("input.txt"), "unpublished\n").unwrap();
+    run_git(&work, &["commit", "-am", "Keep this commit local"]);
+    let refs_before = git_output(&work, &["show-ref"]);
+    let error = run_and_assert_failure(&mut cli(&["pr", "create", "--title", "Must not create"]));
+    assert!(error.contains("No PR was created"), "{error}");
+    assert_eq!(git_output(&work, &["show-ref"]), refs_before);
+    // 4.44 repository deletion uses the verified Web fallback.
+    run_and_assert_success(&mut cli(&["repo", "delete", &repo, "--yes"]));
+}
+
 #[test]
 #[ignore = "requires the pinned Docker GitBucket fixture"]
 fn contract_cli_inline_create_edit_reply_delete_and_retry() {

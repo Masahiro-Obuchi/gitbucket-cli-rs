@@ -275,6 +275,26 @@ The skill keeps agent-facing workflow guidance separate from the full user docum
 `gb issue list`, `gb pr list`, and `gb milestone list` support `--state open`, `--state closed`, and `--state all`.
 Invalid values are rejected before the API call is made.
 
+## Text Input and Display
+
+Issue/PR create, edit and comment commands accept `--body-file FILE` or
+`--body-file -` for UTF-8 stdin, mutually exclusive with `--body`. Descriptions
+may be empty; comments must contain text. REST input retains newlines and spaces.
+Noninteractive creation requires `--title` and treats an omitted body as optional.
+Missing required input returns `input_required` without starting a prompt.
+Use `auth login --with-token < token.txt` for token input without token argv.
+
+`pr create` defaults to the target repository's `default_branch`. When head is
+inferred from the local branch, its commit must match the live published branch;
+unpublished or different commits stop creation. No automatic push occurs.
+Explicit `--head` deliberately uses a published branch without a local check.
+
+Tables use Unicode display width and preserve whole emoji/combining clusters
+when truncated. Human display escapes line breaks in table cells and unsafe
+terminal controls; multiline bodies retain LF/tabs. JSON and raw patches retain
+original data. See [input and display contracts](docs/INPUT_DISPLAY.md) for
+examples, allowed decorations, Web trimming and concurrency limits.
+
 ## Complete Issue, PR and Comment Lists
 
 Issue and PR lists fetch all pages and sort by number descending. Ordinary
