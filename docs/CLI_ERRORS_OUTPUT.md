@@ -31,6 +31,8 @@ bounded and redact configured environment credentials and an explicit login
 token. Transport/Git adapters keep their existing additional redaction. Invalid
 configuration TOML is reported without echoing source lines. Original API data
 on successful stdout is not filtered or rewritten by error redaction.
+Login tokens from argv, stdin or prompts are available to the final reporter;
+known credentials are also redacted from runtime errors in normal text mode.
 
 ## Prompts, subprocesses and exit status
 

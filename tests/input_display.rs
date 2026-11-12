@@ -291,6 +291,52 @@ fn token_stdin_verifies_and_stores_without_echoing_the_secret() {
 }
 
 #[test]
+fn login_tokens_are_redacted_from_error_context_for_stdin_and_argv() {
+    let secret = "private-login-value";
+    for status in ["401 Unauthorized", "404 Not Found"] {
+        for json_errors in [true, false] {
+            for with_token in [false, true] {
+                let env = GbTestEnv::new();
+                // The transport already redacts its request context. The
+                // login command adds the configured URL to the final error.
+                let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
+                    &format!("GET /{secret}/api/v3/user HTTP/1.1"),
+                    status,
+                    r#"{"message":"rejected"}"#,
+                )]);
+                let host = format!("http://127.0.0.1:{port}/{secret}");
+                let mut command = env.command();
+                command
+                    .env_remove("GB_JSON_ERRORS")
+                    .args(["auth", "login", "--hostname", &host]);
+                if json_errors {
+                    command.arg("--json-errors");
+                }
+                let output = if with_token {
+                    stdin(command.arg("--with-token"), secret.as_bytes())
+                } else {
+                    command.args(["--token", secret]).output().unwrap()
+                };
+                assert_failure(&output);
+                assert_eq!(server.join().unwrap().len(), 1);
+                assert!(
+                    !String::from_utf8_lossy(&output.stderr).contains(secret),
+                    "stdin={with_token} json={json_errors}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                assert!(!String::from_utf8_lossy(&output.stdout).contains(secret));
+                if json_errors {
+                    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+                    assert_eq!(error["error"]["code"], "auth_error");
+                    assert_eq!(error["error"]["exit_code"], 1);
+                }
+                assert!(!env.path().join("config.toml").exists());
+            }
+        }
+    }
+}
+
+#[test]
 fn default_base_uses_server_metadata_and_never_guesses_main() {
     for base in [Some("master"), Some("develop"), None] {
         let env = GbTestEnv::new();

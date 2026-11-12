@@ -19,6 +19,9 @@ pub struct AuthArgs {
 #[derive(Subcommand)]
 pub enum AuthCommand {
     /// Authenticate with a GitBucket instance
+    #[command(
+        after_help = "Login tokens supplied by argv, stdin or prompts are redacted from final runtime errors in both text and JSON modes."
+    )]
     Login {
         /// GitBucket host or base URL
         #[arg(long, short = 'H', value_name = "HOST_OR_URL")]
@@ -63,6 +66,7 @@ pub async fn run(
     args: AuthArgs,
     cli_hostname: &Option<String>,
     cli_profile: &Option<String>,
+    diagnostic_token: &mut Option<String>,
 ) -> Result<()> {
     let config = AuthConfig::load()?;
     let scope = config.scope(cli_profile.as_deref(), args.global)?;
@@ -82,6 +86,7 @@ pub async fn run(
                     token
                 },
                 protocol,
+                diagnostic_token,
             )
             .await
         }
@@ -110,6 +115,7 @@ async fn login(
     scope: &Scope,
     token: Option<String>,
     protocol: String,
+    diagnostic_token: &mut Option<String>,
 ) -> Result<()> {
     let hostname = match hostname {
         Some(h) => h.clone(),
@@ -138,6 +144,9 @@ async fn login(
         }
     };
 
+    // Stdin and prompted tokens need the same final-error redaction as argv
+    // tokens, including context added after the transport has cleaned an error.
+    *diagnostic_token = Some(token.clone());
     let instance = instance_key(&hostname, &protocol)?;
     let protocol = url::Url::parse(&instance)?.scheme().to_string();
 

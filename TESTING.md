@@ -697,6 +697,9 @@ dirty, ahead, behind, diverged and missing). Local/tracking and remote refs
 are compared before/after to catch unintended fetch/push updates. The suite
 runs on Linux/macOS/Windows. Existing detached-head and target validation
 regressions remain; required noninteractive input now fails before lookup.
+Login-error regressions compare stdin and argv token sources in text and JSON
+modes, including HTTP 401/404 URL context containing the token, and assert that
+neither diagnostics nor a rejected login's configuration expose the credential.
 
 Output unit cases cover CJK, combining marks, ZWJ/skin-tone/flag emoji,
 SGR widths and dangerous CSI/OSC/C1/bidi controls. CLI view/list cases compare

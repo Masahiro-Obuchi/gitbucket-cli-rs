@@ -283,6 +283,8 @@ may be empty; comments must contain text. REST input retains newlines and spaces
 Noninteractive creation requires `--title` and treats an omitted body as optional.
 Missing required input returns `input_required` without starting a prompt.
 Use `auth login --with-token < token.txt` for token input without token argv.
+Login tokens from stdin, prompts or argv are redacted from final runtime-error
+diagnostics in both text and JSON modes.
 
 `pr create` defaults to the target repository's `default_branch`. When head is
 inferred from the local branch, its commit must match the live published branch;

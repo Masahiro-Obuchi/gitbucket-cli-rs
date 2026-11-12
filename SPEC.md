@@ -81,6 +81,10 @@ Behavior:
 2. Validate credentials by calling `GET /user`.
 3. Save a normalized full base-URL key and actual protocol on success, preserving an existing unique legacy key on re-login. Set the selected scope default host to the normalized URL.
 
+The selected login token is retained for final runtime-error redaction regardless
+of argv, stdin or prompt input. Text and JSON diagnostics both redact it,
+including URL context added by the login command after a transport failure.
+
 Examples:
 
 ```bash
