@@ -147,6 +147,73 @@ fn non_pipe_stdout_errors_are_reported_without_panicking() {
     assert_eq!(error["error"]["exit_code"], 1);
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn auth_status_preserves_probe_errors_when_stdout_also_fails() {
+    use support::mock_http::{spawn_scripted_server, ScriptedResponse};
+    for json in [false, true] {
+        for rejected in [false, true] {
+            let env = GbTestEnv::new();
+            let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
+                "GET /api/v3/user HTTP/1.1",
+                if rejected {
+                    "401 Unauthorized"
+                } else {
+                    "200 OK"
+                },
+                if rejected {
+                    r#"{"message":"rejected"}"#
+                } else {
+                    r#"{"login":"alice"}"#
+                },
+            )]);
+            let full = std::fs::OpenOptions::new()
+                .write(true)
+                .open("/dev/full")
+                .unwrap();
+            let mut command = env.api_command(format!("127.0.0.1:{port}"));
+            command
+                .env_remove("GB_PROFILE")
+                .args(["--json-errors", "auth", "status"])
+                .stdout(full);
+            if json {
+                command.arg("--json");
+            }
+            let out = command.output().unwrap();
+            assert_eq!(server.join().unwrap().len(), 1);
+            let error = json_error(&out, 1);
+            if rejected {
+                assert_eq!(error["error"]["code"], "api_error", "{error}");
+                assert_eq!(error["error"]["status"], 401);
+            } else {
+                assert_eq!(error["error"]["code"], "io_error");
+                assert!(error["error"]["status"].is_null());
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn missing_authentication_is_not_hidden_by_status_json_write_failure() {
+    let env = GbTestEnv::new();
+    let full = std::fs::OpenOptions::new()
+        .write(true)
+        .open("/dev/full")
+        .unwrap();
+    let out = env
+        .command()
+        .env_remove("GB_HOST")
+        .env_remove("GB_TOKEN")
+        .env_remove("GB_PROFILE")
+        .args(["--json-errors", "auth", "status", "--json"])
+        .stdout(full)
+        .output()
+        .unwrap();
+    let error = json_error(&out, 1);
+    assert_eq!(error["error"]["code"], "not_authenticated");
+}
+
 #[test]
 fn json_mode_accepts_boolish_environment_values_and_suppresses_noninteractive_prompts() {
     for value in ["true", "1", "yes", "on"] {

@@ -466,7 +466,8 @@ gb completion bash | head -n 5
 
 Closing a stdout consumer is a normal pipeline exit, without a BrokenPipe panic.
 Other output failures and nonzero pager exits return 1. Pager errors also report
-`child_exit_code` when available. See the
+`child_exit_code` when available. An existing command failure keeps its original
+error if writing status data also fails. See the
 [error, prompt and output contracts](docs/CLI_ERRORS_OUTPUT.md) for JSON examples,
 redaction, compatibility changes and pager lifecycle details.
 

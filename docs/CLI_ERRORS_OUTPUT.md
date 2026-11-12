@@ -59,6 +59,16 @@ Status JSON may coexist with unsuccessful runtime status (for example auth statu
 prints its record before a failed authentication probe). Mutation metadata still
 distinguishes confirmed, failed, unverified and unattempted effects. A closed
 stdout never turns an existing runtime or argument failure into success.
+If writing auth status JSON fails after a rejected probe or missing credentials,
+the original authentication error takes precedence over that output error.
+When authentication succeeds, a non-pipe stdout failure still reports io_error.
+
+For example, on Linux, if the selected token is rejected with HTTP 401:
+
+```sh
+gb --json-errors auth status --json > /dev/full
+# stderr retains error.code=api_error, error.status=401 and error.exit_code=1
+```
 
 ## Output and pager lifecycle
 

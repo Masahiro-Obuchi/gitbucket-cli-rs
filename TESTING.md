@@ -658,8 +658,11 @@ flag, boolish environment values, option-value/terminator false positives,
 help/version, secret omission, malformed config and runtime child failures.
 Closing completion/table/JSON stdout must exit normally without a panic; an
 existing runtime error retains exit 1. Linux /dev/full checks non-pipe write
-failure as one JSON io_error. Unix PTYs verify that JSON-error mode never starts
-a prompt and that pager stderr cannot corrupt the record. Consuming/early-exit,
+failure as one JSON io_error. Auth status /dev/full
+regressions retain an existing HTTP 401 or missing-credentials error in JSON;
+successful authentication still exposes the stdout I/O failure. Unix PTYs verify
+that JSON-error mode never starts a prompt and that pager stderr cannot corrupt
+the record. Consuming/early-exit,
 failed and missing pagers are checked for stdin closure, status and child reaping.
 macOS/Windows CI includes this integration target (platform cases are gated).
 

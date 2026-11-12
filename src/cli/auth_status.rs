@@ -166,18 +166,21 @@ pub(crate) async fn print_status(
         },
         profiles,
     };
-    if json {
-        crate::output::print_json(&output)?;
+    // Status data is also emitted after a failed probe. Preserve that earlier
+    // authentication error if writing the status record fails as well.
+    let written = if json {
+        crate::output::print_json(&output)
     } else {
         print_text(&output);
-    }
+        Ok(())
+    };
     if let Some(error) = failure {
         return Err(error);
     }
     if !offline && output.effective_actor.is_none() {
         return Err(GbError::NotAuthenticated);
     }
-    Ok(())
+    written
 }
 
 fn print_text(output: &AuthStatusOutput) {

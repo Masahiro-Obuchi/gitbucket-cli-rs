@@ -1556,7 +1556,8 @@ is retained, with redaction of diagnostic strings. A pager nonzero exit reports
 pager_failed and optional child_exit_code; this is distinct from CLI exit_code 1.
 Text, tables, JSON, completion and streaming share stdout error handling.
 BrokenPipe is normal for successful commands, other I/O errors are io_error;
-existing command failures keep their nonzero status. Pager stdin is closed and
+existing command failures keep their original error metadata and nonzero status,
+including when writing auth status JSON also fails. Pager stdin is closed and
 the child is reaped on normal/early exit, failure or cancellation. Raw pager/Git
 stderr is suppressed in JSON-error mode. Missing pager fallback remains direct
 output. See [full CLI error/output contracts](docs/CLI_ERRORS_OUTPUT.md).

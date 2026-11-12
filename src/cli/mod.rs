@@ -52,7 +52,7 @@ pub struct Cli {
 
     /// Print argument/runtime failures as JSON on stderr; disable interactive prompts
     #[arg(long, global = true, env = "GB_JSON_ERRORS", value_parser = clap::builder::BoolishValueParser::new(),
-        long_help = "Print one JSON error on stderr: argument errors exit 2 and runtime errors exit 1. Help/version remain normal successful output. Interactive prompts are disabled; supply options and confirmations explicitly. Explicit stdin input remains available. Successful output is unchanged; use --json where supported to select JSON data.")]
+        long_help = "Print one JSON error on stderr: argument errors exit 2 and runtime errors exit 1. Help/version remain normal successful output. Interactive prompts are disabled; supply options and confirmations explicitly. Explicit stdin input remains available. Command failures take precedence over later stdout errors. Successful output is unchanged; use --json where supported to select JSON data.")]
     pub json_errors: bool,
 }
 
