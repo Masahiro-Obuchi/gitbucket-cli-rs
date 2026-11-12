@@ -73,7 +73,7 @@ impl Secrets {
         Self(secrets)
     }
 
-    pub fn clean(&self, text: &str) -> String {
+    pub fn redact(&self, text: &str) -> String {
         let mut text = text.to_owned();
         for secret in &self.0 {
             for value in [
@@ -91,7 +91,12 @@ impl Secrets {
                 }
             }
         }
-        let text: String = text
+        text
+    }
+
+    pub fn clean(&self, text: &str) -> String {
+        let text: String = self
+            .redact(text)
             .chars()
             .map(|ch| {
                 if ch.is_control() && ch != '\n' && ch != '\t' {

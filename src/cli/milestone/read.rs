@@ -58,7 +58,7 @@ pub(super) async fn view(
 
     println!(
         "{} {}",
-        milestone.title.bold(),
+        output::single_line(&milestone.title).bold(),
         format!("#{}", milestone.number).dimmed()
     );
     println!("{}", format_state(&milestone.state));

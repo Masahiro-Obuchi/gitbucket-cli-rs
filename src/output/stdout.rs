@@ -44,7 +44,11 @@ pub fn stdout_write(args: fmt::Arguments<'_>) {
         return;
     }
     let mut stdout = io::stdout().lock();
-    if let Err(GbError::Io(error)) = written(stdout.write_fmt(args).and_then(|_| stdout.flush())) {
+    if let Err(GbError::Io(error)) = written(
+        stdout
+            .write_all(super::text::human(&args.to_string()).as_bytes())
+            .and_then(|_| stdout.flush()),
+    ) {
         let mut failure = FAILURE.lock().unwrap_or_else(|e| e.into_inner());
         if failure.is_none() {
             *failure = Some(error);

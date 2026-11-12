@@ -171,7 +171,11 @@ pub(in crate::cli::issue) async fn edit(
             })
             .await?;
     }
-    println!("✓ Updated issue #{}: {}", stored.number, stored.title);
+    println!(
+        "✓ Updated issue #{}: {}",
+        stored.number,
+        crate::output::single_line(&stored.title)
+    );
     Ok(())
 }
 

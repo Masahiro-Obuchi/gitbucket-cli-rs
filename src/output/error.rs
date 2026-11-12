@@ -27,11 +27,15 @@ struct ErrorBody {
 }
 
 pub(crate) fn report_error(error: &error::GbError, json: bool, token: Option<&str>) {
+    let secrets = api::transport::Secrets::new(&[token.unwrap_or_default()]);
     if !json {
-        let _ = writeln!(std::io::stderr().lock(), "Error: {error}");
+        let _ = writeln!(
+            std::io::stderr().lock(),
+            "Error: {}",
+            super::text::human(&secrets.redact(&error.to_string()))
+        );
         return;
     }
-    let secrets = api::transport::Secrets::new(&[token.unwrap_or_default()]);
     print_error_record(runtime_error(error, &secrets));
 }
 

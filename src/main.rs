@@ -77,7 +77,7 @@ async fn run_cli() {
             std::process::exit(2);
         }
     };
-    let token = match &cli.command {
+    let mut token = match &cli.command {
         Commands::Auth(cli::auth::AuthArgs {
             command: cli::auth::AuthCommand::Login { token, .. },
             ..
@@ -94,7 +94,7 @@ async fn run_cli() {
 
     let result = match cli.command {
         Commands::Api(args) => cli::api::run(args, &cli.hostname, &cli.profile).await,
-        Commands::Auth(args) => cli::auth::run(args, &cli.hostname, &cli.profile).await,
+        Commands::Auth(args) => cli::auth::run(args, &cli.hostname, &cli.profile, &mut token).await,
         Commands::Repo(args) => cli::repo::run(args, &cli.hostname, &cli.repo, &cli.profile).await,
         Commands::Config(args) => cli::config::run(args, &cli.profile).await,
         Commands::Completion(args) => cli::completion::run(args).await,

@@ -51,6 +51,13 @@ where
     }
 }
 
+pub fn can_prompt() -> bool {
+    use std::io::IsTerminal;
+    !crate::output::suppress_stderr()
+        && std::io::stdin().is_terminal()
+        && std::io::stderr().is_terminal()
+}
+
 pub async fn prompt<T, E>(
     read: impl FnOnce() -> std::result::Result<T, E> + Send + 'static,
 ) -> crate::error::Result<T>
@@ -58,7 +65,7 @@ where
     T: Send + 'static,
     E: Into<crate::error::GbError> + Send + 'static,
 {
-    if crate::output::suppress_stderr() {
+    if !can_prompt() {
         return Err(crate::error::GbError::InputRequired);
     }
     input(read).await

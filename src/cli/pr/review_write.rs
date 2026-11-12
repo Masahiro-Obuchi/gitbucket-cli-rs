@@ -67,14 +67,6 @@ impl Request {
         })
     }
 }
-pub(super) fn body_file(body: Option<String>, file: Option<PathBuf>) -> Result<Option<String>> {
-    match (body, file) {
-        (Some(_), Some(_)) => Err(invalid("Choose --body or --body-file.")),
-        (None, Some(file)) => Ok(Some(std::fs::read_to_string(file)?)),
-        (body, None) => Ok(body),
-    }
-}
-
 pub(super) async fn run(
     host: &Option<String>,
     repo: &Option<String>,
@@ -84,17 +76,10 @@ pub(super) async fn run(
     let body = if request.action == Action::Delete {
         None
     } else {
-        let text = match body_file(request.body, request.body_file)? {
-            Some(text) => text,
-            None => {
-                crate::cancel::prompt(|| {
-                    dialoguer::Input::<String>::new()
-                        .with_prompt("Inline review body")
-                        .interact_text()
-                })
-                .await?
-            }
-        };
+        let text = crate::cli::input::comment(
+            crate::cli::input::body(request.body, request.body_file).await?,
+        )
+        .await?;
         Some(normalized_body(&text)?)
     };
     let ctx = RepoContext::resolve(host, repo, profile)?;

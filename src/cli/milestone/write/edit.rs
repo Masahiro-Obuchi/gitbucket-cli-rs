@@ -74,7 +74,11 @@ pub(in crate::cli::milestone) async fn edit(
     }
     // Repeating a state-only request needs neither replacement nor Web auth.
     if !changes.edits_content() && changes.state.as_deref() == Some(current.state.as_str()) {
-        println!("✓ Updated milestone #{}: {}", current.number, current.title);
+        println!(
+            "✓ Updated milestone #{}: {}",
+            current.number,
+            crate::output::single_line(&current.title)
+        );
         return Ok(());
     }
     let body = changes.merge(&current);
@@ -120,7 +124,8 @@ pub(in crate::cli::milestone) async fn edit(
     };
     println!(
         "✓ Updated milestone #{}: {}",
-        milestone.number, milestone.title
+        milestone.number,
+        crate::output::single_line(&milestone.title)
     );
     Ok(())
 }

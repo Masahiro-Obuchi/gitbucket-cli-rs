@@ -19,7 +19,7 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "gb",
     about = "GitBucket CLI - Work seamlessly with GitBucket from the command line",
-    after_help = "Run `gb <command> --help` for command-specific options. Deadlines in seconds: GB_HTTP_CONNECT_TIMEOUT (10), GB_HTTP_READ_TIMEOUT (30), GB_HTTP_TIMEOUT (120), GB_GIT_TIMEOUT (300). Ctrl+C also cancels interactive prompts and input reads.",
+    after_help = "Run `gb <command> --help` for command-specific options. Deadlines in seconds: GB_HTTP_CONNECT_TIMEOUT (10), GB_HTTP_READ_TIMEOUT (30), GB_HTTP_TIMEOUT (120), GB_GIT_TIMEOUT (300). Ctrl+C also cancels interactive prompts and input reads. Human titles escape embedded newlines/tabs; JSON, completion and raw diffs retain original data.",
     version
 )]
 pub struct Cli {
@@ -79,3 +79,4 @@ pub enum Commands {
     /// Open the repository in a web browser
     Browse,
 }
+pub(crate) mod input;

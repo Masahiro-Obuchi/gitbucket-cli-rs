@@ -71,14 +71,19 @@ gb auth login [OPTIONS]
 | Option | Short | Default | Description |
 | --- | --- | --- | --- |
 | `--hostname <HOST>` | `-H` | interactive prompt | Hostname or base URL |
-| `--token <TOKEN>` | `-t` | interactive prompt | Personal access token |
+| `--token <TOKEN>` | `-t` | interactive prompt | Legacy argv token; conflicts with --with-token |
+| `--with-token` | — | false | Read one token from UTF-8 stdin, optional final LF/CRLF |
 | `--protocol <PROTOCOL>` | — | `https` | `https` or `http` |
 
 Behavior:
 
-1. Prompt for hostname/token when omitted.
+1. Prompt for hostname/token when omitted only with terminal stdin/stderr. Otherwise return input_required with an option hint. --with-token reads stdin explicitly, without echoing it; blank, multiline, whitespace/control-containing or oversized (>64 KiB) tokens fail before HTTP.
 2. Validate credentials by calling `GET /user`.
 3. Save a normalized full base-URL key and actual protocol on success, preserving an existing unique legacy key on re-login. Set the selected scope default host to the normalized URL.
+
+The selected login token is retained for final runtime-error redaction regardless
+of argv, stdin or prompt input. Text and JSON diagnostics both redact it,
+including URL context added by the login command after a transport failure.
 
 Examples:
 
@@ -734,6 +739,13 @@ Comments are hidden by default; pass `--comments` to include them. With `--json`
 ordinary comments are added as `comment_details`; `comments` keeps its original
 API count, null or absence. No count is invented. See [JSON contracts](docs/JSON_OUTPUT.md).
 
+Issue/PR create/edit/comment support explicit UTF-8 body-file/stdin input.
+Noninteractive create requires --title and omits an unspecified optional body;
+required comment bodies produce input_required before prompting. Empty
+descriptions are allowed and edits clear them; blank comments are refused.
+REST bodies preserve whitespace and line endings. Inline Web form trimming
+retains its existing contract. See [input/display contracts](docs/INPUT_DISPLAY.md).
+
 #### `gb issue create`
 
 Create an issue.
@@ -746,6 +758,7 @@ gb issue create [OPTIONS]
 | --- | --- | --- |
 | `--title <TEXT>` | `-t` | Issue title (prompted when omitted) |
 | `--body <TEXT>` | `-b` | Issue body |
+| `--body-file <FILE>` | — | UTF-8 file or stdin; conflicts with --body |
 | `--label <LABEL>` | `-l` | Repeatable or comma-separated label option |
 | `--assignee <USER>` | `-a` | Repeatable or comma-separated assignee option |
 
@@ -761,6 +774,7 @@ gb issue edit <NUMBER> [OPTIONS]
 | --- | --- |
 | `--title <TEXT>` | Updated title |
 | `--body <TEXT>` | Updated body |
+| `--body-file <FILE>` | UTF-8 file or stdin; conflicts with --body |
 | `--add-label <LABEL>` | Add a label; repeatable or comma-separated |
 | `--remove-label <LABEL>` | Remove a label; repeatable or comma-separated |
 | `--add-assignee <USER>` | Add an assignee; repeatable or comma-separated |
@@ -812,6 +826,7 @@ gb issue comment <NUMBER> [OPTIONS]
 | Option | Short | Description |
 | --- | --- | --- |
 | `--body <TEXT>` | `-b` | Comment body (prompted when omitted) |
+| `--body-file <FILE>` | — | UTF-8 file or stdin; conflicts with --body |
 | `--edit-last` | — | Edit your last ordinary discussion comment instead of adding a new one |
 
 ---
@@ -885,11 +900,19 @@ gb pr create [OPTIONS]
 | --- | --- | --- |
 | `--title <TEXT>` | `-t` | PR title (prompted when omitted) |
 | `--body <TEXT>` | `-b` | PR body |
+| `--body-file <FILE>` | — | UTF-8 file or stdin; conflicts with --body |
 | `--head <BRANCH>` | — | Head branch (uses current git branch when omitted). For cross-repo PRs, pass `OWNER:BRANCH` or use `--head-owner OWNER --head BRANCH` |
 | `--head-owner <OWNER>` | — | Owner for the head branch; sends the head as `OWNER:BRANCH` |
-| `--base <BRANCH>` | `-B` | Base branch (prompts, default `main`) |
+| `--base <BRANCH>` | `-B` | Target repository default_branch when omitted; missing metadata requires explicit --base |
 | `--json` | — | Print the created pull request as JSON |
 | `--detect-existing` | — | Return an existing open PR for the same head/base instead of creating a duplicate |
+
+Omitted base is resolved from repository metadata without prompting or guessing.
+An inferred local head must match the live published head commit (scoped
+ls-remote, no fetch/push). Missing, ahead, behind or diverged commits fail before
+creation; dirty files are excluded with a notice. Detached HEAD requires explicit
+--head. Explicit --head selects published content without a local check.
+No refs/worktree/index are changed. This is not an atomic server head guard.
 
 On normal text output, `gb pr create` prints the created PR number/title, resolved `Head:` and `Base:` repository refs when the API returns them, and a canonical browser URL using `/pull/{number}`.
 With `--detect-existing`, `gb` checks open pull requests for a matching head/base before prompting for title/body or creating a new PR. The search completes all open PR pages and verifies possible branch/base candidates
@@ -921,6 +944,7 @@ gb pr edit <NUMBER> [OPTIONS]
 | --- | --- | --- |
 | `--title <TEXT>` | `-t` | New PR title |
 | `--body <TEXT>` | `-b` | New PR body |
+| `--body-file <FILE>` | — | UTF-8 file or stdin; conflicts with --body |
 | `--add-assignee <USER>` | — | Add an assignee; repeatable or comma-separated |
 | `--remove-assignee <USER>` | — | Remove an assignee; repeatable or comma-separated |
 | `--state <STATE>` | — | Update PR state: `open` or `closed` |
@@ -1092,13 +1116,14 @@ gb pr comment delete <NUMBER> --kind inline --id <ID> --web [OPTIONS]
 | Option | Short | Description |
 | --- | --- | --- |
 | `--body <TEXT>` | `-b` | Comment body (prompted when omitted) |
+| `--body-file <FILE>` | — | UTF-8 file or stdin; conflicts with --body |
 | `--edit-last` | — | Edit your last ordinary discussion comment instead of adding a new one |
 | `--json` | — | Print the ordinary API comment or verified inline write result as JSON |
 | `--no-pager` | — | Do not use a pager for `gb pr comment list` |
 
 On normal text output, `gb pr comment` prints the comment ID. If the API returns `html_url`, it also prints the comment URL.
 
-`--body-file <PATH>` reads UTF-8 text and conflicts with --body. For line-based
+`--body-file <PATH>` (or - for stdin) reads UTF-8 text and conflicts with --body. For line-based
 inline posting, require `--file <PATH> --line <N> --side old|new --web`; file
 conflicts with --edit-last. Optional `--commit <FULL_SHA>` must match the saved
 head, otherwise the head is fixed at start. Optional `--request-id <KEY>` binds
@@ -1341,9 +1366,19 @@ origin targets fail with an explicit target-selection error.
 
 ### 6.1 Table output (default)
 
+Human tables/scalar fields escape embedded row breaks and unsafe terminal
+controls. Width uses Unicode display columns; truncation keeps whole grapheme
+clusters. Body LF/tabs remain readable. Only basic color/bold/dim SGR and resets
+are allowed; cursor/OSC/conceal/bidi controls are displayed literally, including
+without a TTY. JSON, completion and raw PR diffs preserve original content.
+See [input/display contracts](docs/INPUT_DISPLAY.md) for exact permitted SGR.
+Issue edit confirmations and Milestone view/create/edit output keep titles on
+one line, including state-only no-ops. This display escaping never changes
+request payloads or multiline descriptions.
+
 - Human-readable columns with auto width.
 - ANSI-aware width calculations.
-- Unicode-safe truncation for long text fields.
+- Unicode display-width truncation without splitting grapheme clusters.
 - Colored states:
   - `OPEN` (green)
   - `CLOSED` (red)
@@ -1620,6 +1655,7 @@ src/
 | `toml` | Config encoding |
 | `dialoguer` | Interactive prompts |
 | `colored` | Colorized terminal output |
+| `unicode-width` / `unicode-segmentation` | Unicode display columns and grapheme-safe truncation |
 | `open` | Browser launching |
 | `url` | URL parsing |
 | `thiserror` | Error definitions |

@@ -19,13 +19,19 @@ pub struct AuthArgs {
 #[derive(Subcommand)]
 pub enum AuthCommand {
     /// Authenticate with a GitBucket instance
+    #[command(
+        after_help = "Login tokens supplied by argv, stdin or prompts are redacted from final runtime errors in both text and JSON modes."
+    )]
     Login {
         /// GitBucket host or base URL
         #[arg(long, short = 'H', value_name = "HOST_OR_URL")]
         hostname: Option<String>,
-        /// Personal access token (prompts when omitted)
-        #[arg(long, short, value_name = "TOKEN")]
+        /// Personal access token (legacy argv input; prefer --with-token)
+        #[arg(long, short, value_name = "TOKEN", conflicts_with = "with_token")]
         token: Option<String>,
+        /// Read a single personal access token from stdin
+        #[arg(long)]
+        with_token: bool,
         /// Protocol for bare hosts
         #[arg(long, default_value = "https", value_parser = ["https", "http"])]
         protocol: String,
@@ -60,6 +66,7 @@ pub async fn run(
     args: AuthArgs,
     cli_hostname: &Option<String>,
     cli_profile: &Option<String>,
+    diagnostic_token: &mut Option<String>,
 ) -> Result<()> {
     let config = AuthConfig::load()?;
     let scope = config.scope(cli_profile.as_deref(), args.global)?;
@@ -67,13 +74,19 @@ pub async fn run(
         AuthCommand::Login {
             hostname,
             token,
+            with_token,
             protocol,
         } => {
             login(
                 hostname.as_ref().or(cli_hostname.as_ref()),
                 &scope,
-                token,
+                if with_token {
+                    Some(super::input::token_stdin().await?)
+                } else {
+                    token
+                },
                 protocol,
+                diagnostic_token,
             )
             .await
         }
@@ -102,9 +115,11 @@ async fn login(
     scope: &Scope,
     token: Option<String>,
     protocol: String,
+    diagnostic_token: &mut Option<String>,
 ) -> Result<()> {
     let hostname = match hostname {
         Some(h) => h.clone(),
+        None if !super::input::interactive() => return Err(super::input::required("--hostname")),
         None => crate::cancel::prompt(|| {
             Input::new()
             .with_prompt(
@@ -116,6 +131,9 @@ async fn login(
 
     let token = match token {
         Some(t) => t,
+        None if !super::input::interactive() => {
+            return Err(super::input::required("--with-token or --token"))
+        }
         None => {
             crate::cancel::prompt(|| {
                 Password::new()
@@ -126,6 +144,9 @@ async fn login(
         }
     };
 
+    // Stdin and prompted tokens need the same final-error redaction as argv
+    // tokens, including context added after the transport has cleaned an error.
+    *diagnostic_token = Some(token.clone());
     let instance = instance_key(&hostname, &protocol)?;
     let protocol = url::Url::parse(&instance)?.scheme().to_string();
 

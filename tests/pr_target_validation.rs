@@ -21,7 +21,8 @@ fn numbered_pr_operations_validate_the_target_before_using_issue_subresources() 
         vec!["pr", "reopen", "5"],
         vec!["pr", "merge", "5"],
         vec!["pr", "comment", "list", "5", "--json"],
-        vec!["pr", "comment", "5"],
+        // Missing noninteractive input is rejected before lookup; input_display
+        // covers that preflight. Valid writes still verify the PR target here.
         vec!["pr", "comment", "5", "--body", "must not post"],
         vec![
             "pr",

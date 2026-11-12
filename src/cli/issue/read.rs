@@ -115,7 +115,11 @@ pub(super) async fn view(
                     .map(|user| user.login.as_str())
                     .unwrap_or("unknown");
                 let date = comment.created_at.as_deref().unwrap_or("");
-                output.push_str(&format!("\n{} ({})\n", author.bold(), date.dimmed()));
+                output.push_str(&format!(
+                    "\n{} ({})\n",
+                    output::single_line(author).bold(),
+                    output::single_line(date).dimmed()
+                ));
                 if let Some(body) = &comment.body {
                     output.push_str(body);
                     output.push('\n');
@@ -132,39 +136,40 @@ fn format_issue_view(issue: &Issue) -> String {
     let mut output = String::new();
     output.push_str(&format!(
         "{} {}\n",
-        issue.title.bold(),
+        output::single_line(&issue.title).bold(),
         format!("#{}", issue.number).dimmed()
     ));
     output.push_str(&format!("{}\n\n", format_state(&issue.state)));
 
     if let Some(user) = &issue.user {
-        output.push_str(&format!("Author: {}  ", user.login));
+        output.push_str(&format!("Author: {}  ", output::single_line(&user.login)));
     }
     if let Some(created) = &issue.created_at {
-        output.push_str(&format!("Created: {}", created));
+        output.push_str(&format!("Created: {}", output::single_line(created)));
     }
     output.push('\n');
 
     if !issue.labels.is_empty() {
-        let labels: Vec<&str> = issue
+        let labels: Vec<String> = issue
             .labels
             .iter()
-            .map(|label| label.name.as_str())
+            .map(|label| output::single_line(&label.name))
             .collect();
         output.push_str(&format!("Labels: {}\n", labels.join(", ")));
     }
     if !issue.assignees.is_empty() {
-        let assignees: Vec<&str> = issue
+        let assignees: Vec<String> = issue
             .assignees
             .iter()
-            .map(|assignee| assignee.login.as_str())
+            .map(|assignee| output::single_line(&assignee.login))
             .collect();
         output.push_str(&format!("Assignees: {}\n", assignees.join(", ")));
     }
     if let Some(milestone) = issue.milestone.as_ref() {
         output.push_str(&format!(
             "Milestone: {} (#{})\n",
-            milestone.title, milestone.number
+            output::single_line(&milestone.title),
+            milestone.number
         ));
     }
 

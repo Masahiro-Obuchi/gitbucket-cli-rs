@@ -42,6 +42,8 @@ serde_json = { version = "1", features = ["arbitrary_precision"] }
 dirs = "6"
 thiserror = "2"
 colored = "3"
+unicode-width = "0.2"
+unicode-segmentation = "1"
 dialoguer = "0.11"
 toml = "0.8"
 open = "5"
