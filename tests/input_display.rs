@@ -337,6 +337,95 @@ fn login_tokens_are_redacted_from_error_context_for_stdin_and_argv() {
 }
 
 #[test]
+fn edited_issue_titles_remain_one_status_line_without_changing_the_payload() {
+    let env = GbTestEnv::new();
+    let title = "title\nforged\tfield\r\x1b[2J";
+    let before = json!({"number":1,"title":"before","state":"open"});
+    let after = json!({"number":1,"title":title,"state":"open"});
+    let path = "repos/alice/project/issues/1";
+    let (port, server) = spawn_scripted_server(vec![
+        response("GET", path, before),
+        response("PATCH", path, after.clone()),
+        response("GET", path, after),
+    ]);
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
+        .args(["issue", "edit", "1", "--title", title])
+        .output()
+        .unwrap();
+    assert_success(&output);
+    let requests = server.join().unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&requests[1].body).unwrap()["title"],
+        title
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(text.lines().count(), 1, "{text:?}");
+    assert!(text.contains("title\\nforged\\tfield\\r"));
+    assert!(!text.contains(['\r', '\t', '\x1b']));
+}
+
+#[test]
+fn milestone_view_create_edit_and_noop_titles_cannot_inject_lines() {
+    for action in ["view", "create", "edit", "noop"] {
+        let env = GbTestEnv::new();
+        let title = "title\nforged\tfield\r\x1b[2J";
+        let body = "first\n\tcode\n";
+        let item = json!({"number":1,"title":title,"state":"open","description":body});
+        let path = "repos/alice/project/milestones/1";
+        let frames = match action {
+            "create" => vec![response("POST", "repos/alice/project/milestones", item)],
+            "edit" => vec![
+                response("GET", path, item.clone()),
+                response("PATCH", path, item),
+            ],
+            _ => vec![response("GET", path, item)],
+        };
+        let (port, server) = spawn_scripted_server(frames);
+        let mut command = env.repo_api_command(format!("127.0.0.1:{port}"), "alice/project");
+        command.args(["milestone", if action == "noop" { "edit" } else { action }]);
+        if action == "create" {
+            command.arg(title);
+        } else {
+            command.arg("1");
+        }
+        if action == "edit" {
+            command.args(["--description", body]);
+        } else if action == "noop" {
+            command.args(["--state", "open"]);
+        }
+        let output = command.output().unwrap();
+        assert_success(&output);
+        let requests = server.join().unwrap();
+        let text = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            text.lines()
+                .next()
+                .unwrap()
+                .contains("title\\nforged\\tfield\\r"),
+            "{action}: {text:?}"
+        );
+        assert!(!text.contains(['\r', '\x1b']));
+        if action == "view" {
+            assert!(text.contains(body));
+        } else {
+            assert_eq!(text.lines().count(), 1);
+            assert!(!text.contains('\t'));
+        }
+        if matches!(action, "create" | "edit") {
+            let request = requests
+                .iter()
+                .find(|request| matches!(request.method.as_str(), "POST" | "PATCH"))
+                .unwrap();
+            assert_eq!(
+                serde_json::from_str::<Value>(&request.body).unwrap()["title"],
+                title
+            );
+        }
+    }
+}
+
+#[test]
 fn default_base_uses_server_metadata_and_never_guesses_main() {
     for base in [Some("master"), Some("develop"), None] {
         let env = GbTestEnv::new();

@@ -296,6 +296,8 @@ when truncated. Human display escapes line breaks in table cells and unsafe
 terminal controls; multiline bodies retain LF/tabs. JSON and raw patches retain
 original data. See [input and display contracts](docs/INPUT_DISPLAY.md) for
 examples, allowed decorations, Web trimming and concurrency limits.
+Issue edit confirmations and Milestone view/create/edit titles also render
+embedded newlines and tabs as visible escapes, including unchanged-state replies.
 
 ## Complete Issue, PR and Comment Lists
 

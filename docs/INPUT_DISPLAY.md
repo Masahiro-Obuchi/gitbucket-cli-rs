@@ -74,6 +74,15 @@ Tables measure Unicode display columns. Truncation preserves whole grapheme
 clusters, including combining marks and emoji sequences. Table cells escape
 newlines/tabs, CR, C0/C1 controls and bidi formatting controls as visible text.
 Scalar titles also escape line breaks; multiline bodies preserve LF and tabs.
+This includes Issue edit confirmations and Milestone view/create/edit output,
+including a repeated state change that needs no mutation. For example, a title
+containing a newline and a tab appears as:
+
+```text
+✓ Updated issue #1: title\nforged\tfield
+```
+
+Only the displayed title is escaped; request payloads retain the original value.
 
 Human stdout/stderr and pager text allow only basic ANSI colors, bold/dim and
 their resets (SGR 0–2, 22, 30–37, 39, 40–47, 49, 90–97, 100–107).

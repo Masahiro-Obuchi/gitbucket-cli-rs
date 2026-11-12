@@ -79,7 +79,8 @@ pub(in crate::cli::milestone) async fn create(
     };
     println!(
         "✓ Created milestone #{}: {}",
-        milestone.number, milestone.title
+        milestone.number,
+        crate::output::single_line(&milestone.title)
     );
     Ok(())
 }

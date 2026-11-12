@@ -704,6 +704,9 @@ neither diagnostics nor a rejected login's configuration expose the credential.
 Output unit cases cover CJK, combining marks, ZWJ/skin-tone/flag emoji,
 SGR widths and dangerous CSI/OSC/C1/bidi controls. CLI view/list cases compare
 human escaping with exact JSON values. Raw patch and broken-pipe tests remain.
+Issue edit and Milestone view/create/edit/no-op regressions check that titles
+cannot add status lines or columns, while descriptions retain LF/tab and mutation
+payloads retain their original title values.
 The live `contract_cli_default_base_published_head_and_multiline_input` case
 verifies token stdin, the actual default branch, inferred published head,
 multiline file/stdin storage and an unpublished commit refusal in an isolated

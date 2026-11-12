@@ -1372,6 +1372,9 @@ clusters. Body LF/tabs remain readable. Only basic color/bold/dim SGR and resets
 are allowed; cursor/OSC/conceal/bidi controls are displayed literally, including
 without a TTY. JSON, completion and raw PR diffs preserve original content.
 See [input/display contracts](docs/INPUT_DISPLAY.md) for exact permitted SGR.
+Issue edit confirmations and Milestone view/create/edit output keep titles on
+one line, including state-only no-ops. This display escaping never changes
+request payloads or multiline descriptions.
 
 - Human-readable columns with auto width.
 - ANSI-aware width calculations.
