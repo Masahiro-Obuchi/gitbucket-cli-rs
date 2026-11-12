@@ -276,7 +276,7 @@ fn json_errors_do_not_emit_prompt_control_sequences_even_on_a_terminal() {
         .command()
         .args(["--json-errors", "auth", "login"])
         .stdin(slave.try_clone().unwrap())
-        .stderr(slave)
+        .stderr(slave.try_clone().unwrap())
         .stdout(Stdio::piped())
         .spawn()
         .unwrap();
@@ -292,6 +292,9 @@ fn json_errors_do_not_emit_prompt_control_sequences_even_on_a_terminal() {
         }
         stderr.extend_from_slice(&bytes[..count]);
     }
+    // Retain a parent slave until draining is complete: closing the last slave
+    // at child exit can discard unread PTY output on the macOS CI runner.
+    drop(slave);
     let error: Value = serde_json::from_slice(&stderr).unwrap();
     assert_eq!(error["error"]["code"], "input_required");
 }
