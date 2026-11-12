@@ -1,5 +1,3 @@
-use std::io;
-
 use clap::{Args, CommandFactory, ValueEnum};
 use clap_complete::{
     generate,
@@ -29,7 +27,9 @@ pub enum CompletionShell {
 pub async fn run(args: CompletionArgs) -> Result<()> {
     let mut command = Cli::command();
     let bin_name = command.get_name().to_string();
-    let mut stdout = io::stdout();
+    // The generator expects infallible writes. Buffer first so a closed CLI
+    // stdout cannot turn its internal write assertion into a panic.
+    let mut stdout = Vec::new();
 
     match args.shell {
         CompletionShell::Bash => generate(Bash, &mut command, &bin_name, &mut stdout),
@@ -38,5 +38,5 @@ pub async fn run(args: CompletionArgs) -> Result<()> {
         CompletionShell::PowerShell => generate(PowerShell, &mut command, &bin_name, &mut stdout),
     }
 
-    Ok(())
+    crate::output::write_stdout(&stdout)
 }

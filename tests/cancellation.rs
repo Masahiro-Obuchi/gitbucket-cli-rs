@@ -52,7 +52,7 @@ fn signals_and_ctrl_c_cancel_hostname_and_password_prompts() {
             (File::from_raw_fd(master), File::from_raw_fd(slave))
         };
         let mut command = env.command();
-        command.args(["--json-errors", "auth", "login"]);
+        command.env_remove("GB_JSON_ERRORS").args(["auth", "login"]);
         if password {
             command.args(["--hostname", "example.invalid"]);
         }
@@ -98,7 +98,7 @@ fn signals_and_ctrl_c_cancel_hostname_and_password_prompts() {
             }
             output.push_str(&String::from_utf8_lossy(&bytes[..count]));
         }
-        assert!(output.contains("\"code\":\"cancelled\""), "{output}");
+        assert!(output.contains("Operation cancelled"), "{output}");
         assert!(!output.contains("\"outcome\""), "{output}");
         assert!(!child.wait().unwrap().success());
     }

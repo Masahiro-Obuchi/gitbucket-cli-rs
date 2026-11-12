@@ -9,6 +9,7 @@ pub mod issue;
 pub mod issue_like;
 pub mod label;
 pub mod milestone;
+pub(crate) mod parse;
 pub mod pr;
 pub mod repo;
 
@@ -49,8 +50,9 @@ pub struct Cli {
     #[arg(long, global = true, env = "GB_PROFILE", value_name = "NAME")]
     pub profile: Option<String>,
 
-    /// Print failures as JSON on stderr, including available operation outcomes
-    #[arg(long, global = true, env = "GB_JSON_ERRORS")]
+    /// Print argument/runtime failures as JSON on stderr; disable interactive prompts
+    #[arg(long, global = true, env = "GB_JSON_ERRORS", value_parser = clap::builder::BoolishValueParser::new(),
+        long_help = "Print one JSON error on stderr: argument errors exit 2 and runtime errors exit 1. Help/version remain normal successful output. Interactive prompts are disabled; supply options and confirmations explicitly. Explicit stdin input remains available. Command failures take precedence over later stdout errors. Successful output is unchanged; use --json where supported to select JSON data.")]
     pub json_errors: bool,
 }
 

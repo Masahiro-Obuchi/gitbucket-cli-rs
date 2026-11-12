@@ -2,6 +2,10 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum GbError {
+    #[error("Interactive input is disabled with --json-errors. Supply all required options or explicit confirmation flags.")]
+    InputRequired,
+    #[error("Pager exited unsuccessfully (status {status:?})")]
+    Pager { status: Option<i32> },
     #[error("Inline review write unavailable: {message}")]
     ReviewWrite {
         cause: &'static str,
@@ -95,8 +99,19 @@ pub enum GbError {
 }
 
 impl GbError {
+    pub fn child_exit_code(&self) -> Option<i32> {
+        match self {
+            Self::Pager { status } => *status,
+            Self::Context { source, .. }
+            | Self::Operation { source, .. }
+            | Self::Unverified { source } => source.child_exit_code(),
+            _ => None,
+        }
+    }
     pub fn code(&self) -> &'static str {
         match self {
+            GbError::InputRequired => "input_required",
+            GbError::Pager { .. } => "pager_failed",
             GbError::ReviewWrite { .. } => "review_write_unavailable",
             GbError::ReviewUnavailable { .. } => "review_comments_unavailable",
             GbError::Pagination { .. } => "pagination_incomplete",
@@ -132,6 +147,8 @@ impl GbError {
 
     pub fn cause_code(&self) -> Option<&'static str> {
         match self {
+            GbError::InputRequired => Some("interactive_input_disabled"),
+            GbError::Pager { .. } => Some("nonzero_exit"),
             GbError::ReviewWrite { cause, .. } => Some(cause),
             GbError::ReviewUnavailable { cause, .. } => Some(cause),
             GbError::Pagination { cause, .. } => Some(cause),

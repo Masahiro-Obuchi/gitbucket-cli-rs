@@ -39,7 +39,7 @@ pub(in crate::cli::pr) async fn create(
     let base = match request.base {
         Some(b) => b,
         None => {
-            crate::cancel::input(|| {
+            crate::cancel::prompt(|| {
                 Input::new()
                     .with_prompt("Base branch")
                     .default("main".to_string())
@@ -68,13 +68,13 @@ pub(in crate::cli::pr) async fn create(
 
     let title = match request.title {
         Some(t) => t,
-        None => crate::cancel::input(|| Input::new().with_prompt("Title").interact_text()).await?,
+        None => crate::cancel::prompt(|| Input::new().with_prompt("Title").interact_text()).await?,
     };
 
     let body_text = match request.body {
         Some(b) => Some(b),
         None => {
-            let b: String = crate::cancel::input(|| {
+            let b: String = crate::cancel::prompt(|| {
                 Input::new()
                     .with_prompt("Body (optional)")
                     .allow_empty(true)

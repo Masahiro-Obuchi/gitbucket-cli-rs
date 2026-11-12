@@ -1,4 +1,15 @@
 #[macro_export]
+macro_rules! println {
+    () => { $crate::output::stdout_line(format_args!("")) };
+    ($($arg:tt)*) => { $crate::output::stdout_line(format_args!($($arg)*)) };
+}
+
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => { $crate::output::stdout_write(format_args!($($arg)*)) };
+}
+
+#[macro_export]
 macro_rules! eprintln {
     () => {
         $crate::output::stderr_line(format_args!(""))
@@ -34,7 +45,6 @@ mod test_support;
 
 use clap::Parser;
 use cli::{Cli, Commands};
-use serde::Serialize;
 
 fn main() {
     if git::run_credential_helper() {
@@ -45,16 +55,40 @@ fn main() {
 
 #[tokio::main]
 async fn run_cli() {
-    let cli = Cli::parse();
+    let args: Vec<_> = std::env::args_os().collect();
+    let requested_json = cli::parse::json_errors_requested(&args);
+    let cli = match Cli::try_parse_from(&args) {
+        Ok(cli) => cli,
+        Err(error) => {
+            if error.exit_code() == 0 {
+                if let Err(error) = error.print() {
+                    if error.kind() != std::io::ErrorKind::BrokenPipe {
+                        output::report_error(&error::GbError::Io(error), requested_json, None);
+                        std::process::exit(1);
+                    }
+                }
+                return;
+            }
+            if requested_json {
+                output::argument_error(&error.kind().to_string(), cli::parse::cause(error.kind()));
+            } else {
+                let _ = error.print();
+            }
+            std::process::exit(2);
+        }
+    };
+    let token = match &cli.command {
+        Commands::Auth(cli::auth::AuthArgs {
+            command: cli::auth::AuthCommand::Login { token, .. },
+            ..
+        }) => token.clone(),
+        _ => None,
+    };
     output::set_suppress_stderr(cli.json_errors);
 
     if let Err(err) = cancel::install() {
         let err = error::GbError::Io(err);
-        if cli.json_errors {
-            print_json_error(&err);
-        } else {
-            std::eprintln!("Error: {err}");
-        }
+        output::report_error(&err, cli.json_errors, token.as_deref());
         std::process::exit(1);
     }
 
@@ -77,52 +111,9 @@ async fn run_cli() {
         Commands::Browse => browse(&cli.hostname, &cli.repo, &cli.profile).await,
     };
 
-    if let Err(e) = result {
-        if cli.json_errors {
-            print_json_error(&e);
-        } else {
-            std::eprintln!("Error: {}", e);
-        }
+    if let Err(e) = output::finish(result) {
+        output::report_error(&e, cli.json_errors, token.as_deref());
         std::process::exit(1);
-    }
-}
-
-#[derive(Serialize)]
-struct ErrorOutput {
-    error: ErrorBody,
-}
-
-#[derive(Serialize)]
-struct ErrorBody {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    outcome: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    operations: Option<Vec<operation::Operation>>,
-    code: &'static str,
-    message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    cause: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    status: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    exit_code: Option<i32>,
-}
-
-fn print_json_error(error: &error::GbError) {
-    let output = ErrorOutput {
-        error: ErrorBody {
-            outcome: error.outcome(),
-            operations: error.operations().map(<[_]>::to_vec),
-            code: error.code(),
-            message: error.to_string(),
-            cause: error.cause_code(),
-            status: error.status(),
-            exit_code: Some(1),
-        },
-    };
-    match serde_json::to_string(&output) {
-        Ok(json) => std::eprintln!("{json}"),
-        Err(_) => std::eprintln!("Error: {}", error),
     }
 }
 

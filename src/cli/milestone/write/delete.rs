@@ -17,7 +17,7 @@ pub(in crate::cli::milestone) async fn delete(
             "Are you sure you want to delete milestone #{} from {}/{}?",
             number, ctx.owner, ctx.repo
         );
-        let confirmed = crate::cancel::input(move || {
+        let confirmed = crate::cancel::prompt(move || {
             Confirm::new().with_prompt(prompt).default(false).interact()
         })
         .await?;

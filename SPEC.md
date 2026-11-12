@@ -52,7 +52,7 @@ Available on all commands:
 | `--hostname <HOST>` | `-H` | `GB_HOST` | GitBucket host or base URL (e.g. `gitbucket.example.com` or `https://gitbucket.example.com/gitbucket`) |
 | `--repo <OWNER/REPO>` | `-R` | `GB_REPO` | Target repository |
 | `--profile <NAME>` | — | `GB_PROFILE` | Configuration profile |
-| `--json-errors` | — | `GB_JSON_ERRORS` | Print command failures as structured JSON on stderr |
+| `--json-errors` | — | `GB_JSON_ERRORS` | Print argument/runtime failures as JSON on stderr; disable interactive prompts |
 | `--help` | `-h` | — | Show help |
 | `--version` | `-V` | — | Show version |
 
@@ -1538,10 +1538,31 @@ not network deadlines. Unrelated background work is not cancelled.
 
 ### 8.2 Exit codes
 
-- `0`: Success
-- `1`: Error (`main` prints `Error: ...` and exits with code 1)
+- `0`: Success, help/version, or an otherwise successful stdout pipeline closed early.
+- `1`: Runtime/authentication/cancellation/output/pager failure.
+- `2`: Argument parsing/validation failure.
 
-Pass global `--json-errors` (or set `GB_JSON_ERRORS=true`) to print failures as a single JSON object on stderr:
+Pass global `--json-errors` (or set `GB_JSON_ERRORS=true`, also 1/yes/on) to print
+argument and runtime failures as one JSON error record on stderr. A standalone
+flag is recognized before -- even after invalid arguments; embedded text,
+attached option values and positional data after -- do not enable it. False
+boolean environment values disable the environment default. Help/version remain
+normal successful stdout output. Argument errors use invalid_arguments and a
+kind-specific cause without echoing raw argument values.
+
+JSON-error mode returns input_required before interactive prompts; explicit
+stdin reading remains supported. Existing partial/unverified operation metadata
+is retained, with redaction of diagnostic strings. A pager nonzero exit reports
+pager_failed and optional child_exit_code; this is distinct from CLI exit_code 1.
+Text, tables, JSON, completion and streaming share stdout error handling.
+BrokenPipe is normal for successful commands, other I/O errors are io_error;
+existing command failures keep their original error metadata and nonzero status,
+including when writing auth status JSON also fails. Pager stdin is closed and
+the child is reaped on normal/early exit, failure or cancellation. Raw pager/Git
+stderr is suppressed in JSON-error mode. Missing pager fallback remains direct
+output. See [full CLI error/output contracts](docs/CLI_ERRORS_OUTPUT.md).
+
+Example runtime error:
 
 ```json
 {"error":{"code":"diff_unavailable","message":"Diff unavailable for pull request #9: ...","cause":"head_object_unavailable","exit_code":1}}
