@@ -1,6 +1,7 @@
 # Testing Guide
 
-Last updated: 2026-05-02
+Coverage notes for the merged refactor series: [status register](docs/REFACTOR_STATUS.md).
+Per-PR counts below are historical observations of the named revisions.
 
 ## Purpose
 
@@ -103,7 +104,7 @@ These execute the real CLI binary as a subprocess.
 - `tests/pr_edit_flows.rs`
   PR title/body/state/assignee edits and explicit web fallback behavior
 - `tests/pr_list_state_comment_flows.rs`
-  PR list state recovery, close/merge/comment flows, comment JSON, and comment editing
+  PR list state hydration, close/verified-merge/comment flows, comment JSON, and comment editing
 - `tests/pr_command.rs` and `tests/issue_command.rs`
   help text and structured JSON error behavior for representative commands
 - `tests/view_flows.rs`

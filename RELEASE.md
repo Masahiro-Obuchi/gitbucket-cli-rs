@@ -1,79 +1,121 @@
 # Release Process
 
-This project publishes the `gitbucket-cli` crate to crates.io and prebuilt `gb` binaries to GitHub Releases from version tags.
+The `gitbucket-cli` crate is published to crates.io by an explicit maintainer
+command. Pushing a version tag runs the GitHub `Release` workflow, which builds
+and publishes binary artifacts; it does **not** publish the crate. These are
+separate publishing actions.
+
+The refactor series through PR #56 is merged, but this document does not choose
+or publish its next version. Read [the delivered work, upgrade notes and remaining
+requirements](docs/REFACTOR_STATUS.md) before preparing a release. A manifest
+version of `0.6.1` does not imply that an existing `v0.6.1` binary contains later
+refactor commits.
 
 ## Versioning
 
-Use SemVer-style tags with a leading `v`, such as `v0.6.0`.
+Use a new SemVer-style tag with a leading `v`. Its version must match both
+`Cargo.toml` and the root package entry in `Cargo.lock`. For illustration, package
+version `1.2.3` requires tag `v1.2.3`; this is not a selected release version.
+The refactor changes authentication scope/status, JSON absence/augmentation,
+noninteractive input, PR defaults and merge verification. Review those
+[upgrade-sensitive behaviors](docs/REFACTOR_STATUS.md#upgrade-notes-to-carry-into-the-next-release)
+when selecting a version and writing release notes.
 
-The tag version must match the package version in `Cargo.toml`. For example:
+Use the stable toolchain tested by CI. An MSRV has not been established; do not
+describe Rust 1.70+ or another minimum as supported without testing it. Defining
+an MSRV and a matching CI job is follow-up C2 in the status register.
 
-```toml
-version = "0.6.0"
-```
+## Preparation gates
 
-matches:
+Prepare from a clean checkout of the intended release commit. Local `.tmp/`
+fixtures, credentials and review notes are not release material. The current
+manifest does not explicitly exclude `review/`: an offline listing with
+`--allow-dirty` in the development worktree included its five untracked review
+files. Package-policy hardening remains follow-up C1. Do not use `--allow-dirty`
+as a substitute for reviewing what will be shipped.
 
-```text
-v0.6.0
-```
+Before any publication:
 
-## Release Checklist
+1. Select the version and release commit, update the manifest/lockfile and
+   prepare release notes that distinguish delivered features from server and
+   deployment limits. Keep the worktree clean after committing those changes.
+2. Inspect the **source crate** contents from that checkout:
 
-1. Choose the next version.
-2. Update `Cargo.toml` and refresh `Cargo.lock` if the package version changed.
-3. Update user-facing release notes or README content when behavior changed.
-4. Run the crates.io package validation:
+   ```sh
+   cargo package --list --locked
+   ```
 
-```bash
-cargo publish --dry-run
-```
+   Confirm that no `review/`, `.tmp/`, `.codex`, token files or session artifacts
+   are included. This command lists files; it does not upload a package.
+3. Run the locked ordinary validation:
 
-5. Commit all version and documentation changes:
+   ```sh
+   cargo fmt --all -- --check
+   cargo check --locked
+   cargo test --locked
+   cargo clippy --locked --all-targets --all-features -- -D warnings
+   ```
 
-```bash
-git add Cargo.toml Cargo.lock README.md  # include any other updated files
-git commit -m "chore: release v0.6.0"
-```
+4. Confirm the **full** pinned GitBucket 4.44.0 E2E suite at root and `/gitbucket`
+   on the release revision, plus relevant private/Git authentication and
+   Linux/macOS/Windows checks. Follow [TESTING.md](TESTING.md). Ordinary tests
+   ignore Docker cases; neither `release-tag.sh` nor the Release preflight job
+   substitutes for this server validation. Record any intended-deployment
+   checks separately; the pinned fixture does not prove arbitrary plugin/SSO
+   or business-server compatibility.
+5. Validate the exact source package without publishing:
 
-6. Publish the crate:
+   ```sh
+   cargo publish --dry-run --locked
+   ```
 
-```bash
-cargo publish
-```
+6. Record commit, version, toolchain/targets, package inventory and test results.
+   Preview binary-archive contents separately from the source crate. Resolve
+   failures or retain them as open release work; an unverified check is not a
+   passed gate.
 
-7. Create the release tag with the helper script:
+The historical PR-17 record is 536 ordinary tests, 47 Docker cases ignored by
+ordinary tests, and five related live cases per layout locally; PR CI ran
+full E2E suites. Re-run and record the totals for the chosen release commit
+rather than copying that historical evidence as a new release validation.
 
-```bash
-scripts/release-tag.sh v0.6.0
-```
+## Publication
 
-This command validates the tag format, checks the Cargo version, verifies a clean working tree, runs the release checks, and creates the local tag.
+After the gates pass and the maintainer chooses to publish:
 
-8. Push the release tag:
+1. Publish the chosen crate with `cargo publish --locked`.
+2. Run `scripts/release-tag.sh` with the chosen **new** tag. The helper checks
+   tag syntax/version, a clean worktree, existing local tags and ordinary release
+   validation, then creates the tag locally. It does not push or publish by itself.
+3. Push only that new release tag to origin. The tag-push `Release` workflow
+   publishes a **non-draft** GitHub Release after its preflight/build jobs succeed.
 
-```bash
-git push origin v0.6.0
-```
-
-The `Release` workflow validates the tag, builds release binaries for Linux, macOS Intel, macOS Apple Silicon, and Windows, generates `SHA256SUMS`, and publishes a GitHub Release.
-
-Do not move a published release tag for a normal release. If a tag was pushed before the Cargo package version was updated, update `Cargo.toml` and `Cargo.lock`, commit the fix, and then either create the next patch tag or deliberately force-update the failed tag before any release artifacts are consumed.
+Do not move a published/consumed release tag. If an attempted release used the
+wrong version or failed after part of publication, record which artifacts already
+exist and choose a new version/tag for the correction. Reconcile crate and binary
+publication states before continuing; one successful publication does not prove
+that the other completed.
 
 ## Re-running a Release
 
-Use the `Release` workflow's manual dispatch with an existing tag when the release job needs to be re-run without creating a new tag.
-
-Manual dispatch can create or update the GitHub Release as a draft. Tag pushes publish non-draft releases.
+The `Release` workflow's manual dispatch uses an existing tag to build or update
+GitHub binary artifacts. Its `draft` input controls the GitHub Release only;
+tag pushes publish non-draft releases. It does not publish a crate or re-run the
+dedicated E2E workflow automatically. Inspect existing artifacts and the chosen
+tag before dispatching a repeat build.
 
 ## Artifacts
 
-Each release includes:
+The current workflow builds:
 
 - `gb-<tag>-x86_64-unknown-linux-gnu.tar.gz`
 - `gb-<tag>-x86_64-apple-darwin.tar.gz`
 - `gb-<tag>-aarch64-apple-darwin.tar.gz`
 - `gb-<tag>-x86_64-pc-windows-msvc.zip`
-- `SHA256SUMS`
+- `SHA256SUMS` over those archives
 
-Each archive contains the `gb` binary plus `README.md` and `LICENSE`.
+Each binary archive currently contains the `gb` binary, `README.md` and `LICENSE`.
+The linked `docs/` pages are not bundled. Read documentation at the matching tag
+in the source repository; bundling/navigation from extracted archives remains
+follow-up C4. A Cargo source package has its own manifest-driven file inventory
+and is not validated merely by inspecting the binary archives.

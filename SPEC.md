@@ -981,8 +981,10 @@ gb pr edit <NUMBER> [OPTIONS]
   fields and possibly partial assignee changes, with inspection-before-retry
   guidance. There is no destructive rollback or automatic retry.
 - Content pairing uses a read snapshot, and combined REST/Web edits are not atomic.
-  The existing shared sign-in helper's principal verification and a generic
-  mutation-result schema are follow-up work, not guarantees of this adapter.
+  The shared sign-in helper verifies REST and cookie principals before Web writes;
+  a different actor requires explicit GB_WEB_USER. Shared operation records retain
+  succeeded/failed/unverified/not_attempted status and the Web actor. See
+  [Web verification](docs/WEB_OPERATIONS.md).
 
 #### `gb pr close`
 
@@ -1222,8 +1224,10 @@ The repository is resolved from:
 
 ### 4.1 Authentication method
 
-- Personal Access Token (PAT) only.
-- Stored per host.
+- REST authentication uses a Personal Access Token (PAT).
+- Password/Cookie Web sessions are separate and verify the requested principal;
+  interactive SSO/OIDC is not implemented. See section 6.4.
+- Stored per normalized instance and selected profile/global scope.
 - Verified during login via `GET /user`.
 - Successful login updates the saved `default_host`.
 - When a profile is selected, successful login writes the host entry under that profile and updates the profile's `default_host`.
@@ -1251,16 +1255,18 @@ user = "alice"
 protocol = "https"
 
 [profiles.work]
-default_host = "gitbucket.example.com"
+default_host = "https://gitbucket.example.com/gitbucket"
 default_repo = "alice/project"
 
-[profiles.work.hosts."gitbucket.example.com"]
+[profiles.work.hosts."https://gitbucket.example.com/gitbucket"]
 token = "your-work-token"
 user = "alice"
 protocol = "https"
 ```
 
-Path-prefixed instances can also be stored as plain host-plus-path keys:
+Existing configuration can contain legacy host-plus-path keys. New login writes
+a full base-URL key; use the explicit migration/restore flow in
+[AUTH_PROFILES.md](docs/AUTH_PROFILES.md) rather than merging ambiguous aliases:
 
 ```toml
 [hosts."gitbucket.example.com/gitbucket"]
@@ -1568,7 +1574,7 @@ not network deadlines. Unrelated background work is not cancelled.
 | `GB_PROFILE` | Default configuration profile |
 | `GB_TOKEN` | Access token override |
 | `GB_PROTOCOL` | Protocol selection for a bare target, including saved credentials |
-| `GB_USER` | Username for GitBucket web-session fallbacks |
+| `GB_USER` | Username for Web sessions and token-authenticated Git; does not establish the REST actor |
 | `GB_WEB_USER` | Explicit Web user override; authorizes an actor different from the REST token |
 | `GB_PASSWORD` | Password for GitBucket web-session fallbacks |
 | `GB_HTTP_CONNECT_TIMEOUT` | HTTP connect deadline in seconds (default 10) |
@@ -1646,38 +1652,30 @@ Example runtime error:
 
 ```text
 src/
-  main.rs
-  error.rs
-  limits.rs
-  cancel.rs
-  operation.rs
+  main.rs                 # CLI dispatch and output finalization
+  error.rs, limits.rs, cancel.rs, operation.rs
   cli/
-    mod.rs
-    common.rs
-    auth.rs
-    repo.rs
-    issue.rs
-    pr.rs
+    common/               # target/auth resolution and Web composition
+    issue/, pr/, repo/    # command arguments, read/write orchestration
+    milestone/            # milestone-specific values and writes
+    auth.rs, auth_status.rs, config.rs, api.rs, completion.rs, label.rs
+  application/            # saved PR loading, review writes and merge verification
+  domain/                 # commit IDs, PR snapshots, review identities/intents
   api/
-    mod.rs
-    client.rs
-    repository.rs
-    issue.rs
-    pull_request.rs
-  models/
-    mod.rs
-    user.rs
-    repository.rs
-    issue.rs
-    pull_request.rs
-    comment.rs
+    client.rs, transport.rs, pagination.rs, url.rs
+    issue.rs, pull_request.rs, repository.rs, label.rs, milestone.rs, user.rs
+    web.rs, web/          # separate Cookie session and versioned Web adapters
+  git.rs, git/            # scoped credentials, supervised processes and snapshots
+  models/                 # REST DTOs and immutable original JSON projections
   config/
-    mod.rs
-    auth.rs
-  output/
-    mod.rs
-    table.rs
+    auth/                 # scopes, instance matching, migration and storage
+    review_receipt.rs     # local inline-write intent/retry records
+  output/                 # JSON/errors, Unicode text/tables, stdout and pager
 ```
+
+This is a directory/responsibility map, not a claim that all command orchestration
+has moved out of the CLI. Saved-PR/review/merge use application modules;
+operation-specific CLI orchestration remains elsewhere.
 
 ### 9.2 Main dependencies
 
@@ -1771,28 +1769,35 @@ Milestone:
 
 ---
 
-## 10. Roadmap
+## 10. Refactor status and roadmap
 
-### Phase 1 next
+The planned PR-00–17 client units are merged through PR #56. The committed
+[status and remaining-work register](docs/REFACTOR_STATUS.md) maps them to actual
+PRs and documents upgrade-sensitive behavior. Original contract test counts are
+historical records, not current coverage claims.
 
-- Keep strengthening test and E2E coverage around the current command set
-- Keep `cargo clippy --all-targets --all-features -- -D warnings` green in CI
-- Keep release automation and package metadata aligned before tagging
+### Release preparation and next client work
 
-### Phase 2
+- Inspect source-package contents from a clean checkout; harden local-material
+  exclusion as follow-up C1 before relying on a dirty worktree for packaging.
+- Establish/test an MSRV before declaring a minimum Rust version (C2).
+- Review optional editor input separately (C3); explicit file/stdin input already
+  exists. Decide how binary archives expose linked documentation (C4).
+- Select the version and execute [release gates](RELEASE.md#preparation-gates)
+  as a separate maintainer action. This specification does not publish a release.
 
-- Expand issue/PR metadata handling where GitBucket exposes additional compatible APIs
+### Server and deployment requirements
 
-### Phase 3
-
-- Re-evaluate webhook and collaborator operations after the current command set stabilizes
-
-### Phase 4
-
-- Documentation refinements
+Formal decisions/history, atomic expected-head merge and additional label
+persistence remain server requirements, not completed client features. The
+verified baseline is GitBucket 4.44.0 core at root and /gitbucket. Intended
+business builds, plugins/SSO, Git transports and certificate settings need
+separate validation; see S1–S3 and D1 in the status register.
 
 ### Backlog / re-evaluate later
 
 - `gb user`
 - `gb webhook`
 - `gb repo collaborator`
+
+These feature proposals need their own scope and server-contract verification.
