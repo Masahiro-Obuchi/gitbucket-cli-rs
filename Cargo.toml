@@ -8,20 +8,24 @@ repository = "https://github.com/Masahiro-Obuchi/gitbucket-cli-rs"
 readme = "README.md"
 keywords = ["gitbucket", "cli", "git"]
 categories = ["command-line-utilities", "development-tools"]
-exclude = [
-  ".codex",
-  ".codex/**",
-  ".github",
-  ".github/**",
-  "AGENTS.md",
-  "docker",
-  "docker/**",
-  "RELEASE.md",
-  "scripts",
-  "scripts/**",
-  "skills",
-  "skills/**",
-  "TESTING.md",
+# Explicit public content: local notes/new workspace directories are not opt-in
+# merely because Git tracks them or a developer packages with --allow-dirty.
+include = [
+  "/Cargo.toml",
+  "/Cargo.lock",
+  "/LICENSE",
+  "/README.md",
+  "/SPEC.md",
+  "/RELEASE.md",
+  "/TESTING.md",
+  "/src/**/*.rs",
+  "/tests/**/*.rs",
+  "/tests/fixtures/**/*.json",
+  "/tests/fixtures/**/*.html",
+  "/tests/fixtures/**/*.md",
+  "/docs/**/*.md",
+  "!**/.*",
+  "!**/.*/**",
 ]
 
 [[bin]]
