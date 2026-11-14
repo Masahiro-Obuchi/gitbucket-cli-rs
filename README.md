@@ -20,6 +20,11 @@ Base: alice/my-app:main
 URL: https://gitbucket.example.com/alice/my-app/pull/5
 ```
 
+The PR-00–17 refactor series is merged. See [delivered work, upgrade notes and
+remaining requirements](docs/REFACTOR_STATUS.md) for the implementation status
+and [release preparation](RELEASE.md) before choosing and publishing a version.
+The Cargo manifest version alone does not identify a released set of changes.
+
 ## Installation
 
 ### Install with Cargo
@@ -48,7 +53,7 @@ cp target/release/gb ~/.local/bin/
 Tagged releases publish prebuilt binaries to GitHub Releases for supported platforms.
 See [RELEASE.md](RELEASE.md) for the release process.
 
-**Requirements:** Rust 1.70+ and `git` when installing with Cargo or building from source
+**Requirements:** Use the stable Rust toolchain validated by CI when installing with Cargo or building from source. A minimum supported Rust version has not been established. `git` is required for Git-backed operations.
 
 ## Quick start
 

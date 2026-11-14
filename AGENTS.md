@@ -15,11 +15,13 @@
 ## Project Structure & Module Organization
 
 - `src/main.rs`: CLI entrypoint and command dispatch.
-- `src/cli/`: command implementations (`auth`, `api`, `completion`, `config`, `label`, `milestone`, `repo`, `issue`, `pr`) and shared resolution logic in `common.rs`.
+- `src/cli/`: command implementations (`auth`, `api`, `completion`, `config`, `label`, `milestone`, `repo`, `issue`, `pr`) and shared resolution logic in `common/`.
 - `src/api/`: GitBucket API client and endpoint wrappers.
 - `src/models/`: API request/response structs.
 - `src/config/`: local auth/config file handling.
 - `src/output/`: table and display helpers.
+- `src/application/`, `src/domain/`, `src/git/`: operation verification, domain identities, and Git adapters.
+- `docs/REFACTOR_STATUS.md`: merged refactor units, upgrade notes, and remaining release/server/deployment work.
 - `README.md`: user-facing usage guide.
 - `SPEC.md`: detailed functional specification.
 

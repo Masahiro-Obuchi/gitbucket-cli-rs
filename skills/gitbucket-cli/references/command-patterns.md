@@ -52,13 +52,17 @@ gb pr merge 5
 
 ```bash
 gb label list
-gb label create bug --color fc2929 --description "Broken behavior"
+gb label create bug --color fc2929
 gb label view bug
 
 gb milestone list --state all
 gb milestone create v1.0 --description "First release" --due-on 2026-04-01
 gb milestone edit 1 --state closed
 ```
+
+Label descriptions are not persisted by the verified GitBucket 4.44.0 adapter;
+`--description`/`--remove-description` fail before mutation. See the repository
+README and `docs/UPSTREAM_LABEL_API.md` for the server requirements.
 
 ## Raw API Calls
 

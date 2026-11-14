@@ -125,6 +125,15 @@ Relevant pinned upstream sources:
 - [Label API](https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/controller/api/ApiIssueLabelControllerBase.scala)
 - [Web commit comments](https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/controller/RepositoryViewerController.scala)
 
+## Refactor-series status
+
+PR-00–17 are merged through [PR #56](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/56).
+Later tests cover saved positions/history limits, private reads, inline writes,
+profile/migration behavior, explicit input and merge checks. The original numbers
+below remain the initial baseline's record. See [the status and remaining-work
+register](REFACTOR_STATUS.md) and [TESTING.md](../TESTING.md) for later evidence,
+upgrade changes and unverified deployment/server requirements.
+
 ## Validation record for the initial baseline
 
 - Existing root-deployment CLI E2E: 19 passed.
