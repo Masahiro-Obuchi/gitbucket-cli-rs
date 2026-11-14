@@ -720,3 +720,34 @@ PR-16 local validation: all 528 ordinary tests passed; all 44 live E2E cases
 passed at root and /gitbucket. Check, Clippy with -D warnings, fmt and diff
 checks passed. The final focused suite rechecks input/index preservation,
 output pipes, cancellation and PR target validation after the final changes.
+
+## Review Decisions and Merge Verification
+
+`tests/pr_merge.rs` exercises full reviewed-head parsing, missing/changed heads,
+number/base mismatches, draft/closed/merged/explicit-unmergeable refusals on both
+reads, preserved API merge result JSON (including opaque JGit identities), 4xx
+rejection, 5xx and unconfirmed successes, and failed/contradictory canonical
+readback. Requests prove no replay, Web fallback or ordinary-comment substitute;
+operation status separates not_attempted/failed/unverified. macOS and Windows
+run this target as well as the Linux suite. Existing wrapper/deadline and target
+regressions remain, with fresh-read/readback steps added to successful scripts.
+
+`tests/e2e_smoke/review_merge.rs` uses isolated base branches and authenticated
+positive controls. It proves missing formal decision endpoints leave ordinary
+comments unchanged, a wrong sha is actually ignored by direct core merge,
+reported draft is refused by client and core, and CLI reviewed-head success is
+confirmed by canonical readback. These tests run at root and /gitbucket. The
+core's opaque AnyObjectId result is retained, not mistaken for the saved head.
+A new failure was reproduced before the fix: draft merge attempted a PUT rather
+than failing a local check. A first live run exposed that the result identity is
+not a bare hash; the adapter and regression were corrected to the actual contract.
+
+```sh
+cargo test --locked --test pr_merge --test transport_failures --test json_contract
+cargo test --locked --test e2e_smoke review_merge -- --ignored --nocapture
+```
+
+PR-17 local validation: 536 ordinary tests passed, with 47 Docker cases ignored.
+The five related review/merge, existing-merge and JSON contracts passed at both
+root and /gitbucket. Locked check, Clippy with -D warnings, fmt and diff checks
+passed. Full-platform and complete E2E runs are additionally executed by PR CI.

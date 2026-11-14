@@ -7,7 +7,10 @@
 - Repository flows support list/view/create/clone/delete/fork.
 - Issue flows support list/view/create/edit/close/reopen/comment.
 - Pull request flows support list/view/create/edit/close/reopen/merge/checkout/diff/comment.
-- Planned but not yet implemented: none.
+- Formal review approval/request-changes/dismissal, atomic expected-head merges,
+  and complete stored review history are not implemented by the verified adapter.
+  See `docs/REVIEW_MERGE.md` for GitBucket 4.44.0 core support and limits; other
+  versions, plugins and SSO integrations require separate verification.
 
 ## Project Structure & Module Organization
 

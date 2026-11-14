@@ -92,7 +92,12 @@ fn pr_merge_returns_non_zero_when_server_reports_not_merged() {
         ScriptedResponse::json(
             "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
             "200 OK",
-            r#"{"number":5,"title":"Feature","state":"open"}"#,
+            r#"{"number":5,"title":"Feature","state":"open","head":{"ref":"topic","sha":"1111111111111111111111111111111111111111"}}"#,
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
+            "200 OK",
+            r#"{"number":5,"title":"Feature","state":"open","head":{"ref":"topic","sha":"1111111111111111111111111111111111111111"}}"#,
         ),
         ScriptedResponse::json(
             "PUT /api/v3/repos/alice/project/pulls/5/merge HTTP/1.1",

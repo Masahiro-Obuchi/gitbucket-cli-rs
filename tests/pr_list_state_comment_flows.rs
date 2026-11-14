@@ -90,35 +90,44 @@ fn pr_close_sends_closed_state_patch() {
 #[test]
 fn pr_merge_sends_expected_payload() {
     let env = GbTestEnv::new();
+    let open = serde_json::json!({"number":5,"title":"Feature","state":"open","merged":false,"head":{"ref":"topic","sha":"1111111111111111111111111111111111111111"}});
+    let mut closed = open.clone();
+    closed["state"] = serde_json::json!("closed");
+    closed["merged"] = serde_json::json!(true);
+    let get = |value: &Value| {
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
+            "200 OK",
+            &value.to_string(),
+        )
+    };
     let (port, server) = spawn_scripted_server(vec![
-        pr(5),
+        get(&open),
+        get(&open),
         ScriptedResponse::json(
             "PUT /api/v3/repos/alice/project/pulls/5/merge HTTP/1.1",
             "200 OK",
-            r#"{"merged":true,"message":"merged"}"#,
+            r#"{"merged":true,"sha":"2222222222222222222222222222222222222222","message":"merged"}"#,
         ),
+        get(&closed),
     ]);
-
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
         .args(["pr", "merge", "5", "--message", "Ship it"])
         .output()
         .unwrap();
-
-    let requests = server.join().unwrap();
-    let request = requests.last().unwrap();
-
     assert!(
         output.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let requests = server.join().unwrap();
+    assert_eq!(requests.len(), 4);
+    let request = &requests[2];
     assert_eq!(request.method, "PUT");
-    assert_eq!(request.target, "/api/v3/repos/alice/project/pulls/5/merge");
     let body: Value = serde_json::from_str(&request.body).unwrap();
-    assert_eq!(body["commit_message"], "Ship it");
-    assert!(body["sha"].is_null());
-    assert!(body["merge_method"].is_null());
+    assert_eq!(body, serde_json::json!({"commit_message":"Ship it"}));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("client checks; not atomic"));
 }
 
 #[test]
@@ -290,13 +299,26 @@ fn pr_comment_edit_last_updates_authenticated_users_latest_comment() {
 #[test]
 fn pr_merge_accepts_gitbucket_enveloped_response() {
     let env = GbTestEnv::new();
+    let open = serde_json::json!({"number":9,"title":"Feature","state":"open","head":{"ref":"topic","sha":"1111111111111111111111111111111111111111"}});
+    let mut closed = open.clone();
+    closed["state"] = serde_json::json!("closed");
+    closed["merged"] = serde_json::json!(true);
+    let get = |pr: &Value| {
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/pulls/9 HTTP/1.1",
+            "200 OK",
+            &pr.to_string(),
+        )
+    };
     let (port, server) = spawn_scripted_server(vec![
-        pr(9),
+        get(&open),
+        get(&open),
         ScriptedResponse::json(
             "PUT /api/v3/repos/alice/project/pulls/9/merge HTTP/1.1",
             "200 OK",
-            r#"{"status":200,"body":"{\"sha\":\"abc123\",\"merged\":true,\"message\":\"Pull Request successfully merged\"}","headers":{}}"#,
+            r#"{"status":200,"body":"{\"sha\":\"2222222222222222222222222222222222222222\",\"merged\":true,\"message\":\"Pull Request successfully merged\"}","headers":{}}"#,
         ),
+        get(&closed),
     ]);
 
     let output = env
@@ -306,7 +328,7 @@ fn pr_merge_accepts_gitbucket_enveloped_response() {
         .unwrap();
 
     let requests = server.join().unwrap();
-    let request = requests.last().unwrap();
+    let request = &requests[2];
 
     assert!(
         output.status.success(),

@@ -1,5 +1,9 @@
 # Upstream requirements for complete review access
 
+Formal approval/request-changes/dismissal resources and atomic expected-head
+merge require separate server support; see [review and merge requirements](REVIEW_MERGE.md).
+The comment interfaces below cannot be treated as formal review decisions.
+
 GitBucket 4.44.0 has distinct IssueComment and CommitComment stores. Its PR review
 URL is advertised, but the PR review REST route is absent in the pinned live
 fixture. The Web conversation provides useful visible data; a complete persisted

@@ -22,6 +22,9 @@ All REST paths below are relative to `/api/v3/repos/{owner}/{repo}`.
 | Saved PR comparisons | Closed/merged PRs retain base/head SHAs after branch reuse; refs/pull/N/head preserves the saved head | Diff/checkout must use saved object IDs, not current branch tips |
 | Deleted fork detail | Detail returns 200 with zero bytes; collection still exposes saved SHAs and base repository retains PR head ref | Snapshot-specific absent-detail recovery can restore verified Git objects without trusting collection head ownership |
 | PR response metadata | draft/labels/assignees/merged_by, nullable mergeable, id and resource URLs are returned | Preserve original JSON; expose reported PR metadata without inventing absent values |
+| Formal review decisions | Authenticated review GET/APPROVE/REQUEST_CHANGES POST and dismissal PUT return 404 in pinned core, with no discussion writes | No formal decision adapter or ordinary-comment substitute; human decision status stays unknown |
+| Merge expected-head condition | A direct merge with an incorrect sha still succeeds; response identity is JGit AnyObjectId text | Do not claim atomic protection by sending sha; client head checks and canonical readback are supplementary |
+| Draft merge | Core rejects merging a reported draft; CLI refuses before PUT | Retain draft/readiness state and do not infer approval from comments |
 | Issue JSON comment count | The 4.44 Issue response omits a count even when comments exist | Keep absence; add fetched discussions under comment_details without synthesizing comments |
 | PR title/body/state | `PATCH /pulls/{number}` updates title/body/state; a subsequent state-only PATCH preserves title/body | Use the PR endpoint, without requiring Web authentication for these fields |
 | Issue-style edit of a PR | `PATCH /issues/{number}` returns 404 and leaves the title unchanged | Do not interpret this as proof that PR REST editing is unavailable |
@@ -101,13 +104,16 @@ stored review history still need server support and dedicated contracts. The
 present tests establish a first baseline; they do not finish the entire review
 compatibility matrix.
 
-## Source-confirmed items awaiting dedicated live contracts
+## Completed adapter contracts and remaining unknowns
 
-The review also identified APIs for Issue label add/remove/replace, missing
-Issue PATCH support, and differences between PR metadata and assignee updates.
-Those observations still require dedicated live regression cases as the relevant
-fixes are implemented. Do not turn a source observation into a verified CLI
-compatibility claim without testing its result.
+The dedicated Issue-label delta, PR content and Web-assignee contracts now cover
+the earlier source observations; see [Web operations](WEB_OPERATIONS.md),
+the pinned `api_contract.rs` cases and their corresponding CLI regressions.
+PR-17 adds [review-decision and merge contracts](REVIEW_MERGE.md), including
+actual ignored-sha and draft behavior. These do not establish compatibility
+with untested versions/extensions, formal decisions, atomic merges, or complete
+stored review history. Source observations alone remain insufficient evidence
+for another server's behavior.
 
 Relevant pinned upstream sources:
 

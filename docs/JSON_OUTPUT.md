@@ -42,6 +42,11 @@ unwrapped according to their existing route contracts, then the inner resource's
 fields are preserved. Config/auth summaries are CLI-defined JSON and are not raw
 API resources. Raw `gb api` retains its existing behavior.
 
+`pr merge --json` is a CLI-defined report: `number`, checked `head_commit`,
+`atomic=false`, `verification=client_preflight_and_readback`, and the preserved
+unwrapped API object under `result`. Its result identity may be JGit text rather
+than a bare hash and is not the reviewed head. See [merge verification](REVIEW_MERGE.md).
+
 ## Discussion arrays
 
 Without `--comments`, view JSON is the selected API object without a comment fetch.

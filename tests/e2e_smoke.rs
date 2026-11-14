@@ -15,3 +15,6 @@ mod api_contract;
 
 #[path = "e2e_smoke/pr_snapshot.rs"]
 mod pr_snapshot;
+
+#[path = "e2e_smoke/review_merge.rs"]
+mod review_merge;

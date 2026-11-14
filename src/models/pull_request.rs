@@ -92,8 +92,6 @@ pub struct MergePullRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit_message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sha: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub merge_method: Option<String>,
 }
 

@@ -1,6 +1,5 @@
 use crate::cli::common::RepoContext;
-use crate::error::{GbError, Result};
-use crate::models::pull_request::MergePullRequest;
+use crate::error::Result;
 
 pub(in crate::cli::pr) async fn close(
     hostname: &Option<String>,
@@ -42,29 +41,27 @@ pub(in crate::cli::pr) async fn merge(
     cli_profile: &Option<String>,
     number: u64,
     message: Option<String>,
+    expected_head: Option<crate::domain::pull_request::CommitId>,
+    json: bool,
 ) -> Result<()> {
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
-
-    super::super::target::require_pull_request(&ctx, number).await?;
-
-    let body = MergePullRequest {
-        commit_message: message,
-        sha: None,
-        merge_method: None,
-    };
-
-    let result = ctx
-        .client
-        .merge_pull_request(&ctx.owner, &ctx.repo, number, &body)
-        .await?;
-    if result.merged == Some(true) {
-        println!("✓ Merged pull request #{}", number);
-        Ok(())
-    } else {
-        let msg = result.message.as_deref().unwrap_or("Unknown error");
-        Err(GbError::Other(format!(
-            "Failed to merge pull request #{}: {}",
-            number, msg
-        )))
+    eprintln!("Notice: Merge uses client head checks only. GitBucket 4.44.0 has no atomic expected-head guard; a later branch update can still race the merge.");
+    let report = crate::application::pr_merge::merge(
+        &ctx.client,
+        &ctx.owner,
+        &ctx.repo,
+        number,
+        expected_head,
+        message,
+    )
+    .await?;
+    if json {
+        return crate::output::print_json(&report);
     }
+    println!("✓ Merged pull request #{}", number);
+    println!(
+        "Checked head: {} (client checks; not atomic)",
+        report.head_commit
+    );
+    Ok(())
 }

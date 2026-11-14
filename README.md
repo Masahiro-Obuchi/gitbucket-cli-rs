@@ -275,6 +275,31 @@ The skill keeps agent-facing workflow guidance separate from the full user docum
 `gb issue list`, `gb pr list`, and `gb milestone list` support `--state open`, `--state closed`, and `--state all`.
 Invalid values are rejected before the API call is made.
 
+## Review Decisions and Merge Checks
+
+`pr view` shows the saved head commit and reported mergeability, while formal
+review decision remains unknown. GitBucket 4.44.0 core has no verified
+approve/request-changes/dismissal API; discussion and inline comments are not
+reported as formal decisions.
+
+```sh
+gb pr view 5 --no-pager
+gb pr merge 5 --match-head-commit 0123456789abcdef0123456789abcdef01234567 --json
+```
+
+Merge checks the saved head at start and immediately before PUT, refuses reported
+drafts/closed/unmergeable PRs, then verifies the saved merged state. Missing or
+changed heads stop the attempt. A failed result check is unverified and is never
+retried. Without an explicit reviewed SHA, only the head first read during this
+invocation is checked.
+
+**These checks are not atomic.** The verified server ignores merge's sha payload
+parameter; another writer can still race the last check. Successful merge JSON
+explicitly includes `atomic: false`, the checked head and the preserved API
+result. See the [review/merge support matrix and guarantees](docs/REVIEW_MERGE.md)
+for the result schema, failure behavior and server requirements. The verified
+baseline is 4.44.0 core at root and /gitbucket, not all versions/plugins/SSO.
+
 ## Text Input and Display
 
 Issue/PR create, edit and comment commands accept `--body-file FILE` or
