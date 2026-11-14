@@ -888,6 +888,13 @@ the ordinary `comments` array. Public/token reads need no password; only Web
 after reading. Unknown layouts, read/auth failures and changed heads return no
 partial JSON. See [review contracts](docs/REVIEW_COMMENTS.md).
 
+Human PR view displays saved head SHA, reported mergeability and an explicitly
+unknown formal review decision; comments do not establish approval. The verified
+4.44.0 core has no formal review-decision adapter. View JSON keeps original API
+fields without synthesizing decision state. Unsupported approval/request-changes/
+dismissal and atomic merge guarantees remain documented server requirements,
+not completed CLI workflows; see [support matrix](docs/REVIEW_MERGE.md).
+
 #### `gb pr create`
 
 Create a pull request.
@@ -1004,6 +1011,33 @@ gb pr merge <NUMBER> [OPTIONS]
 | Option | Short | Description |
 | --- | --- | --- |
 | `--message <TEXT>` | `-m` | Merge commit message |
+| `--match-head-commit <SHA>` | — | Full reviewed nonzero 40/64 hex head; client checks only |
+| `--json` | — | CLI result report including atomic=false and verification scope |
+
+Resolve and validate the saved head and numbered/base target. Refuse reported
+draft, closed/merged and mergeable=false PRs. Unknown readiness remains unknown
+and subject to server validation. Compare with the explicit reviewed head, or
+with the first observed head if omitted, then re-read canonical details directly
+before PUT and repeat validation. Missing/changed heads stop before mutation.
+
+Send one REST merge request, omitting unsupported sha. GitBucket 4.44.0 ignores
+that parameter, as confirmed with a deliberately wrong SHA. A positive response
+must include a nonempty result identity, then canonical readback must confirm a
+closed merged PR with the checked saved head. Result sha may be JGit AnyObjectId
+text; it is preserved and is not compared as the reviewed head.
+
+This is not an atomic guard or an approval-policy guarantee. A head/base can
+move after the client check. No retry, Web/comment fallback or rollback is
+performed. Readback failures or contradictions are unverified even after a
+success response. HTTP rejections retain status; planned pr.merge is
+not_attempted, failed, or unverified as appropriate.
+
+Human success includes the checked head and a non-atomic scope note. --json
+returns number, head_commit, atomic=false, verification=client_preflight_and_readback
+and result (the unchanged unwrapped API object). --json-errors still controls
+stderr failures independently; local validation uses merge_check_failed with
+a specific cause. Invalid option SHA exits 2; runtime failure exits 1.
+See [complete review/merge contracts](docs/REVIEW_MERGE.md).
 
 #### `gb pr checkout`
 
@@ -1558,6 +1592,7 @@ not network deadlines. Unrelated background work is not cancelled.
 - `NotAuthenticated`
 - `RepoNotFound`
 - `DiffUnavailable { number, cause, message }`
+- `MergeCheck { cause, message }` (merge_check_failed; operation outcome distinguishes preflight from unverified readback)
 - `Request { source, operation, phase, status, mutating, detail }` (sanitized HTTP context)
 - `Git { operation, reason, source, mutating }`
 - `Cancelled`

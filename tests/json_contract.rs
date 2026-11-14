@@ -288,6 +288,9 @@ fn pr_text_shows_reported_metadata_and_distinguishes_unknown_draft() {
         "Labels: review",
         "Assignees: bob",
         "Merged by: alice",
+        "Mergeable: unknown",
+        "Head commit: unknown",
+        "Review decision: unknown",
     ] {
         assert!(text.contains(expected), "{text}");
     }

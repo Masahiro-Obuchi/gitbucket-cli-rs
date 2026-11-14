@@ -323,7 +323,12 @@ fn malformed_or_unrecognized_merge_envelopes_fail_without_retry() {
             ScriptedResponse::json(
                 "GET /api/v3/repos/alice/project/pulls/7 HTTP/1.1",
                 "200 OK",
-                r#"{"number":7,"title":"PR","state":"open"}"#,
+                r#"{"number":7,"title":"PR","state":"open","head":{"ref":"topic","sha":"1111111111111111111111111111111111111111"}}"#,
+            ),
+            ScriptedResponse::json(
+                "GET /api/v3/repos/alice/project/pulls/7 HTTP/1.1",
+                "200 OK",
+                r#"{"number":7,"title":"PR","state":"open","head":{"ref":"topic","sha":"1111111111111111111111111111111111111111"}}"#,
             ),
             ScriptedResponse::json(
                 "PUT /api/v3/repos/alice/project/pulls/7/merge HTTP/1.1",
@@ -339,7 +344,7 @@ fn malformed_or_unrecognized_merge_envelopes_fail_without_retry() {
         let e = error(&output);
         assert_eq!(e["code"], "json_error");
         assert_eq!(e["outcome"], "unverified");
-        assert_eq!(server.join().unwrap().len(), 2);
+        assert_eq!(server.join().unwrap().len(), 3);
     }
 }
 

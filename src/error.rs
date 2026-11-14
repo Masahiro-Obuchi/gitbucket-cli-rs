@@ -2,6 +2,11 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum GbError {
+    #[error("Pull request merge check failed: {message}")]
+    MergeCheck {
+        cause: &'static str,
+        message: String,
+    },
     #[error("Interactive input requires terminal stdin/stderr and is disabled with --json-errors. Supply all required options or explicit confirmation flags.")]
     InputRequired,
     #[error("Pager exited unsuccessfully (status {status:?})")]
@@ -110,6 +115,7 @@ impl GbError {
     }
     pub fn code(&self) -> &'static str {
         match self {
+            GbError::MergeCheck { .. } => "merge_check_failed",
             GbError::InputRequired => "input_required",
             GbError::Pager { .. } => "pager_failed",
             GbError::ReviewWrite { .. } => "review_write_unavailable",
@@ -147,6 +153,7 @@ impl GbError {
 
     pub fn cause_code(&self) -> Option<&'static str> {
         match self {
+            GbError::MergeCheck { cause, .. } => Some(cause),
             GbError::InputRequired => Some("interactive_input_disabled"),
             GbError::Pager { .. } => Some("nonzero_exit"),
             GbError::ReviewWrite { cause, .. } => Some(cause),

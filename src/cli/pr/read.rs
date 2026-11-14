@@ -308,6 +308,24 @@ fn format_pr_view(pr: &PullRequest) -> String {
     if let Some(draft) = pr.draft {
         output.push_str(&format!("Draft: {}\n", if draft { "yes" } else { "no" }));
     }
+    let head = pr
+        .head
+        .as_ref()
+        .and_then(|head| head.sha.as_deref())
+        .and_then(|sha| crate::domain::pull_request::CommitId::parse(sha).ok());
+    output.push_str(&format!(
+        "Head commit: {}\n",
+        head.as_ref().map(|sha| sha.as_str()).unwrap_or("unknown")
+    ));
+    output.push_str(&format!(
+        "Mergeable: {}\n",
+        match pr.mergeable {
+            Some(true) => "yes",
+            Some(false) => "no",
+            None => "unknown",
+        }
+    ));
+    output.push_str("Review decision: unknown (approval status is not queried; comments do not establish approval)\n");
     if let Some(labels) = &pr.labels {
         let names: Vec<_> = labels
             .iter()

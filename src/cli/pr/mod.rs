@@ -12,6 +12,9 @@ mod worktree;
 mod write;
 
 #[derive(Args)]
+#[command(
+    after_help = "Discussion and visible inline review comments are supported. Approval, request-changes and dismissal decisions have no verified core API in GitBucket 4.44.0 and are not implemented by posting comments. Human view reports review decision as unknown. See docs/REVIEW_MERGE.md for the tested support matrix."
+)]
 pub struct PrArgs {
     #[command(subcommand)]
     pub command: PrCommand,
@@ -133,12 +136,21 @@ pub enum PrCommand {
         number: u64,
     },
     /// Merge a pull request
+    #[command(
+        after_help = "Checks the saved head at start and immediately before merge, refuses reported draft/closed/unmergeable PRs, then verifies canonical merged state and saved head. --match-head-commit pins the head you reviewed. GitBucket 4.44.0 ignores the merge sha parameter: these client checks are NOT atomic and do not prevent a subsequent server-side race. No approval is inferred from comments, no merge is retried, and unverified results require inspection. See docs/REVIEW_MERGE.md."
+    )]
     Merge {
         /// PR number
         number: u64,
         /// Merge commit message
         #[arg(long, short)]
         message: Option<String>,
+        /// Full reviewed head SHA (client checks only; not an atomic server guard)
+        #[arg(long, value_parser = crate::domain::pull_request::CommitId::parse)]
+        match_head_commit: Option<crate::domain::pull_request::CommitId>,
+        /// Print the result and explicit client-check/atomic=false metadata as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Checkout a pull request branch locally
     #[command(
@@ -362,8 +374,22 @@ pub async fn run(
         PrCommand::Reopen { number } => {
             write::reopen(cli_hostname, cli_repo, cli_profile, number).await
         }
-        PrCommand::Merge { number, message } => {
-            write::merge(cli_hostname, cli_repo, cli_profile, number, message).await
+        PrCommand::Merge {
+            number,
+            message,
+            match_head_commit,
+            json,
+        } => {
+            write::merge(
+                cli_hostname,
+                cli_repo,
+                cli_profile,
+                number,
+                message,
+                match_head_commit,
+                json,
+            )
+            .await
         }
         PrCommand::Checkout { number } => {
             checkout::checkout(cli_hostname, cli_repo, cli_profile, number).await
