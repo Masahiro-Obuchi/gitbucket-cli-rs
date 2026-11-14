@@ -752,3 +752,29 @@ PR-17 local validation: 536 ordinary tests passed, with 47 Docker cases ignored.
 The five related review/merge, existing-merge and JSON contracts passed at both
 root and /gitbucket. Locked check, Clippy with -D warnings, fmt and diff checks
 passed. Full-platform and complete E2E runs are additionally executed by PR CI.
+
+## Source-Package Selection and Verification
+
+`tests/package_contents.rs` uses the actual Cargo include/exclude policy with
+dependency-free temporary packages. It detects local review/runtime/workspace
+files in the package list, including force-committed, untracked and ignored
+files, as well as hidden files under approved trees. Positive source/docs/test
+fixtures must remain included even when a Git ignore rule matches a required
+module. Both Git and non-Git cases run `cargo package` verification, building
+the extracted fixture without registry access or local user data.
+
+The ordinary suite includes these tests; macOS and Windows CI also run the
+target explicitly. Linux Rust CI and Release preflight verify the real source
+package, and the release helper runs the same check before creating a tag.
+Offline verification follows the regular Cargo checks so dependencies are
+already cached. Local development can add --allow-dirty to generate an archive
+before committing, while release preparation requires a clean checkout.
+
+```sh
+cargo test --locked --test package_contents
+cargo package --list --locked
+cargo package --locked --offline
+```
+
+See [source-package policy](docs/PACKAGE_CONTENTS.md) for allowed paths and the
+remaining responsibility to review content inside public source/docs/fixtures.

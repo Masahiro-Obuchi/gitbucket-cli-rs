@@ -1778,8 +1778,9 @@ historical records, not current coverage claims.
 
 ### Release preparation and next client work
 
-- Inspect source-package contents from a clean checkout; harden local-material
-  exclusion as follow-up C1 before relying on a dirty worktree for packaging.
+- C1's explicit source-package policy and real Cargo regressions are implemented;
+  inspect the archive from a clean checkout as a release gate. See
+  [package contents and CI verification](docs/PACKAGE_CONTENTS.md).
 - Establish/test an MSRV before declaring a minimum Rust version (C2).
 - Review optional editor input separately (C3); explicit file/stdin input already
   exists. Decide how binary archives expose linked documentation (C4).
