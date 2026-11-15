@@ -154,8 +154,18 @@ def verify_archive(archive, expected, binary_name, smoke_test):
         extracted = Path(temp).resolve()
         if archive.suffix == ".zip":
             with zipfile.ZipFile(archive) as package:
-                names = package.namelist()
-                actual = {name: package.read(name) for name in names}
+                members = package.infolist()
+                # A byte-identical member may still be a symlink or directory
+                # to an unzip tool. Windows ZIPs may omit Unix file-type bits.
+                if any(
+                    member.is_dir()
+                    or member.external_attr & 0x10  # DOS directory attribute.
+                    or stat.S_IFMT(member.external_attr >> 16) not in (0, stat.S_IFREG)
+                    for member in members
+                ):
+                    raise ValueError("archive contains a non-regular member")
+                names = [member.filename for member in members]
+                actual = {member.filename: package.read(member) for member in members}
         else:
             with tarfile.open(archive, "r:gz") as package:
                 members = package.getmembers()

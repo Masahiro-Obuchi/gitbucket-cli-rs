@@ -52,6 +52,9 @@ resolve online if that label actually exists with the selected source files.
 Before returning the archive, the packager reads it back into a fresh temporary
 directory, compares its exact file set and bytes, checks local Markdown file
 and heading links against that extracted tree, and checks Unix executable mode.
+Both formats reject non-regular entries; ZIP checks include Unix file-type bits
+and the DOS directory attribute, so matching bytes cannot hide a symlink,
+directory or special file.
 `--smoke-test` additionally runs the extracted native binary's `--help` there.
 A failure stops before replacing an existing output archive.
 

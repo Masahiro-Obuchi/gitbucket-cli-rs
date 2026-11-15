@@ -2,6 +2,7 @@
 
 import importlib.util
 from pathlib import Path
+import stat
 import subprocess
 import tarfile
 import tempfile
@@ -193,6 +194,30 @@ class ReleaseArchiveTests(unittest.TestCase):
                         package.writestr(name, updated)
             with self.assertRaisesRegex(ValueError, "contents differ"):
                 release.verify_archive(archive, expected, "gb.exe", False)
+
+    def test_verifier_rejects_zip_non_regular_member_attributes(self):
+        archive = self.package("x86_64-pc-windows-msvc")
+        expected = self.contents(archive)
+        attributes = [
+            (stat.S_IFLNK | 0o777) << 16,
+            (stat.S_IFDIR | 0o755) << 16,
+            (stat.S_IFIFO | 0o600) << 16,
+            (0o600 << 16) | 0x10,  # DOS directory bit without a trailing slash.
+        ]
+        for changed in ["README.md", "gb.exe"]:
+            for attribute in attributes:
+                with self.subTest(member=changed, attribute=attribute):
+                    with zipfile.ZipFile(archive, "w") as package:
+                        for name, content in expected.items():
+                            info = zipfile.ZipInfo(name)
+                            info.create_system = 3
+                            info.external_attr = (
+                                attribute if name == changed
+                                else (stat.S_IFREG | 0o644) << 16
+                            )
+                            package.writestr(info, content)
+                    with self.assertRaisesRegex(ValueError, "non-regular member"):
+                        release.verify_archive(archive, expected, "gb.exe", False)
 
     def test_verifier_checks_navigation_after_extracting(self):
         archive = self.package("x86_64-pc-windows-msvc")
