@@ -27,12 +27,13 @@ an MSRV and a matching CI job is follow-up C2 in the status register.
 
 ## Preparation gates
 
-Prepare from a clean checkout of the intended release commit. Local `.tmp/`
-fixtures, credentials and review notes are not release material. The current
-manifest does not explicitly exclude `review/`: an offline listing with
-`--allow-dirty` in the development worktree included its five untracked review
-files. Package-policy hardening remains follow-up C1. Do not use `--allow-dirty`
-as a substitute for reviewing what will be shipped.
+Prepare from a clean checkout of the intended release commit. The manifest's
+explicit [source-package policy](docs/PACKAGE_CONTENTS.md) includes public
+source, tests/fixtures and named documentation, and excludes local workspace
+material such as `review/`, `.tmp/` and dotfiles even with `--allow-dirty`.
+This closes C1's observed review-file leak; content inside the allowed public
+paths still needs review. Do not use `--allow-dirty` as a substitute for that
+review or the clean-checkout gate.
 
 Before any publication:
 
@@ -54,6 +55,7 @@ Before any publication:
    cargo check --locked
    cargo test --locked
    cargo clippy --locked --all-targets --all-features -- -D warnings
+   cargo package --locked --offline
    ```
 
 4. Confirm the **full** pinned GitBucket 4.44.0 E2E suite at root and `/gitbucket`
@@ -86,7 +88,8 @@ After the gates pass and the maintainer chooses to publish:
 1. Publish the chosen crate with `cargo publish --locked`.
 2. Run `scripts/release-tag.sh` with the chosen **new** tag. The helper checks
    tag syntax/version, a clean worktree, existing local tags and ordinary release
-   validation, then creates the tag locally. It does not push or publish by itself.
+   validation including source-package verification, then creates the tag
+   locally. It does not push or publish by itself.
 3. Push only that new release tag to origin. The tag-push `Release` workflow
    publishes a **non-draft** GitHub Release after its preflight/build jobs succeed.
 

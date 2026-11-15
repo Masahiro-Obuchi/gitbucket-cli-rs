@@ -24,6 +24,8 @@ jobs:
         run: cargo test --locked
       - name: Run clippy
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - name: Verify source package
+        run: cargo package --locked --offline
 
   git-auth-platforms:
     runs-on: ${{ matrix.os }}
@@ -48,6 +50,8 @@ jobs:
         run: cargo test --locked --test input_display
       - name: Test merge head checks and result verification
         run: cargo test --locked --test pr_merge
+      - name: Test source package file selection
+        run: cargo test --locked --test package_contents
       - name: Test configuration storage unit cases
         run: 'cargo test --locked --bin gb config::'
       - name: Test safe PR checkout

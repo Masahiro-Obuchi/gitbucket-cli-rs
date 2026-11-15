@@ -35,6 +35,12 @@ Keep `README.md`, `SPEC.md`, and CLI help text aligned whenever command behavior
 - `cargo check`: fast compile checks during development.
 - `cargo fmt --all`: format Rust code.
 - `cargo clippy --all-targets --all-features -- -D warnings`: lint and fail on warnings.
+- `cargo package --locked --offline`: build and verify the source archive after dependencies are cached.
+
+Source-package paths are explicitly permitted by `package.include` in `Cargo.toml`.
+When adding public file types or directories, update that policy deliberately and
+run `cargo test --test package_contents`; keep local material outside the public
+source/docs/fixture trees. See `docs/PACKAGE_CONTENTS.md`.
 
 ## Coding Style & Naming Conventions
 

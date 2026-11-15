@@ -76,6 +76,7 @@ cargo fmt --all -- --check
 cargo check --locked
 cargo test --locked
 cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo package --locked --offline
 
 git tag "${TAG}"
 echo "Created local tag ${TAG}"

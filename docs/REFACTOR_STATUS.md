@@ -73,6 +73,18 @@ Consult the selected release's notes and source revision.
   `atomic=false` and the preserved API result, not a bare PR resource.
   [Review and merge support](REVIEW_MERGE.md).
 
+## Completed follow-up: C1 source-package policy
+
+The manifest now permits explicit public root files, Rust source/tests,
+JSON/HTML/Markdown fixtures and Markdown documentation, excluding hidden paths.
+Local review notes and other root workspace trees are excluded regardless of
+Git tracking/ignore state or `--allow-dirty`. Regression fixtures check both
+Git and non-Git inputs, preserve required public files and build the extracted
+packages. CI and the release helper also verify the actual source archive.
+See [the package policy](PACKAGE_CONTENTS.md) and
+[regression tests](../tests/package_contents.rs). This does not scan permitted
+file contents or change binary-archive documentation (C4).
+
 ## Remaining client and release work
 
 The following are candidates for separately scoped follow-up PRs. They are not
@@ -80,14 +92,13 @@ unimplemented parts silently counted as completed server functionality.
 
 | ID | Work | Completion evidence |
 | --- | --- | --- |
-| C1 | Package-content policy | Define explicit exclusions/allowlist for local review material, then check the source package with representative local files present. A listing from this worktree with `cargo package --list --locked --offline --allow-dirty` included the five untracked files under `review/`; `.tmp/` and `.codex` were absent. Until hardened, prepare releases in a clean checkout and inspect the exact package list. No private files are uploaded by a package listing. |
 | C2 | Minimum Rust version | Choose and test an MSRV against the locked dependencies and intended targets before adding a `rust-version` promise. CI currently uses stable; the former README claim of Rust 1.70+ was not supported by an MSRV job. |
 | C3 | Optional editor input | Separate PR if needed, as deferred in PR-16. Define editor selection, protected temporary files, failure/cancellation handling and unchanged file/stdin semantics. File/stdin input already works. |
 | C4 | Release artifact documentation | Binary archives currently contain only `gb`, README and LICENSE; linked `docs/` files are not bundled. Choose bundling or an explicit online documentation strategy and verify navigation from an extracted archive. Crate source and binary archives are separate artifacts. |
 
-The next implementation candidate is C1, followed by C2. C3 is optional. Choosing
-a version, changing the manifest, publishing a crate, tagging or dispatching a
-release is a separate maintainer action; this status update performs none of them.
+The next implementation candidate is C2. C3 is optional. Choosing a release
+version, publishing a crate, tagging or dispatching a release is a separate
+maintainer action; the packaging-policy change performs none of them.
 See [release gates](../RELEASE.md#preparation-gates).
 
 ## Remaining server and deployment requirements
