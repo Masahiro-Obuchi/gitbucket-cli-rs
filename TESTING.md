@@ -191,7 +191,9 @@ Bootstrap writes these environment variables to `.tmp/e2e/runtime.env`:
 - `GB_E2E_BASE_URL`
 
 The dedicated GitHub Actions workflow in `.github/workflows/e2e.yml` uses the same bootstrap contract on `main` pushes, pull requests, and manual runs, and exercises both root-path and `/gitbucket` path-prefixed deployments.
-The normal Rust workflow in `.github/workflows/rust.yml` runs `cargo check`, `cargo test`, and `cargo clippy --all-targets --all-features -- -D warnings`.
+The normal Rust workflow in `.github/workflows/rust.yml` runs stable checks,
+tests, Clippy and source-package verification, plus the
+[MSRV matrix](#minimum-supported-rust-version).
 
 ## Release Validation
 
@@ -784,3 +786,35 @@ cargo package --locked --offline
 
 See [source-package policy](docs/PACKAGE_CONTENTS.md) for allowed paths and the
 remaining responsibility to review content inside public source/docs/fixtures.
+
+## Minimum Supported Rust Version
+
+Rust **1.88.0** is declared in `Cargo.toml`. With the committed lockfile, the
+Rust workflow checks `--all-targets --all-features` natively for the same four
+target triples as the binary release workflow: Linux x86_64 GNU, macOS x86_64,
+macOS aarch64 and Windows x86_64 MSVC. Linux also runs all ordinary tests and
+verifies the extracted source package at MSRV. The other three run
+`package_contents`, including the fixture package builds, at MSRV. Existing
+stable platform tests and root/subpath E2E remain separate checks.
+
+To repeat the Linux checks locally (the first install needs network access):
+
+```sh
+rustup toolchain install 1.88.0 --profile minimal
+cargo +1.88.0 check --locked --all-targets --all-features
+cargo +1.88.0 test --locked --all-features
+cargo +1.88.0 package --locked --offline
+```
+
+The package command follows dependency population by the other commands.
+Use a committed checkout for the real package check. Ordinary tests continue
+to ignore the Docker cases; they do not establish live-server compatibility
+under MSRV. Full E2E currently runs on stable. No older compiler or additional
+target is promised. See [Rust version support](docs/RUST_VERSION.md) for the
+dependency floor, lockfile scope and update policy.
+
+C2 local validation: the ordinary suite passed **540 tests** on both Rust
+1.88.0 and stable 1.94.0, with **47 Docker cases ignored** on each. The MSRV
+all-targets/features check and actual source-package build passed; stable check,
+Clippy with `-D warnings` and formatting passed. These are revision-scoped
+observations, not E2E results on the minimum compiler.

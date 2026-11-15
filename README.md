@@ -44,7 +44,7 @@ cargo install --git https://github.com/Masahiro-Obuchi/gitbucket-cli-rs --tag v0
 ```bash
 git clone https://github.com/Masahiro-Obuchi/gitbucket-cli-rs.git
 cd gitbucket-cli-rs
-cargo build --release
+cargo build --release --locked
 cp target/release/gb ~/.local/bin/
 ```
 
@@ -53,7 +53,12 @@ cp target/release/gb ~/.local/bin/
 Tagged releases publish prebuilt binaries to GitHub Releases for supported platforms.
 See [RELEASE.md](RELEASE.md) for the release process.
 
-**Requirements:** Use the stable Rust toolchain validated by CI when installing with Cargo or building from source. A minimum supported Rust version has not been established. `git` is required for Git-backed operations.
+**Requirements:** This source revision requires Rust **1.88.0 or later** when
+installing with Cargo or building from source. Use `--locked` to use the tested
+dependencies; older published versions have their own requirements. CI checks
+the minimum version and current stable. See [Rust version support](docs/RUST_VERSION.md)
+for the tested targets and update policy. `git` is required for Git-backed
+operations.
 
 ## Quick start
 

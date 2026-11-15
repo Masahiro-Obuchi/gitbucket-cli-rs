@@ -2,6 +2,7 @@
 name = "gitbucket-cli"
 version = "0.6.1"
 edition = "2021"
+rust-version = "1.88.0"
 description = "A command-line tool for GitBucket, inspired by GitHub CLI"
 license = "MIT"
 repository = "https://github.com/Masahiro-Obuchi/gitbucket-cli-rs"
