@@ -13,7 +13,8 @@ jobs:
   release-archives:
     uses: ./.github/workflows/archive.yml
     with:
-      ref: ${{ github.ref }}
+      # Keep queued archive jobs on this run's commit if the branch/PR advances.
+      ref: ${{ github.sha }}
       # Preview artifacts only: this workflow creates no tag or release.
       tag: v0.0.0-archive-test
 

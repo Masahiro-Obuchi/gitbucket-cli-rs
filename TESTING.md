@@ -826,6 +826,8 @@ and packaging job on Linux x86_64 GNU, macOS x86_64/aarch64 and Windows x86_64
 MSVC. Each builds the real release-mode binary, generates its archive, checks
 the file set and extracted document/heading links, and runs extracted `--help`.
 PR/main uses a preview version label without creating a Git tag or release.
+Its archive checkout uses the event commit SHA, keeping queued jobs on the
+revision reported by that run even if the branch/PR ref advances.
 
 Run the packager's disposable regressions with Python 3.10+:
 

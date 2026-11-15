@@ -72,7 +72,9 @@ Windows x86_64 MSVC runners it:
 4. Uploads only the verified archive as a workflow artifact.
 
 PR/main artifacts use `v0.0.0-archive-test` as a preview label and create no tag
-or release. The Release caller retains version validation, checksum generation
+or release. Their checkout is pinned to the triggering event's commit SHA, so
+queued archive jobs still verify that run's revision after a branch/PR update.
+The Release caller retains version validation, checksum generation
 and its existing explicit tag/dispatch publishing behavior. No publication is
 triggered merely by adding or running the archive checks.
 
