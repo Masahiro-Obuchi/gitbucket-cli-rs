@@ -47,6 +47,15 @@ const LOCAL_FILES: &[&str] = &[
     "tests/fixtures/runtime.env",
     "src/debug.log",
     "docs/local.env",
+    // Cargo's include globs also match directories, not just files.
+    "src/local.rs/runtime.env",
+    "src/local.rs/nested.rs",
+    "tests/local.rs/config.toml",
+    "tests/fixtures/local.json/runtime.env",
+    "tests/fixtures/local.html/token.txt",
+    "tests/fixtures/local.md/runtime.env",
+    "docs/local.md/runtime.env",
+    "docs/local.md/nested.md",
 ];
 
 fn write(root: &Path, name: &str, content: &str) {
@@ -157,7 +166,7 @@ fn fixture(git: bool) -> tempfile::TempDir {
     temp
 }
 
-fn assert_selection(root: &Path) {
+fn package_files(root: &Path) -> BTreeSet<String> {
     let listed = cargo(
         root,
         &[
@@ -168,11 +177,15 @@ fn assert_selection(root: &Path) {
             "--allow-dirty",
         ],
     );
-    let files: BTreeSet<_> = String::from_utf8(listed.stdout)
+    String::from_utf8(listed.stdout)
         .unwrap()
         .lines()
         .map(|path| path.replace('\\', "/"))
-        .collect();
+        .collect()
+}
+
+fn assert_selection(root: &Path) {
+    let files = package_files(root);
     for path in LOCAL_FILES {
         assert!(!files.contains(*path), "local material packaged: {path}");
     }
@@ -203,4 +216,24 @@ fn package_policy_excludes_local_files_without_git_and_retains_build_inputs() {
 fn package_policy_is_independent_of_tracked_untracked_and_ignored_local_files() {
     let fixture = fixture(true);
     assert_selection(fixture.path());
+}
+
+#[test]
+fn package_policy_does_not_expand_root_file_names_into_directories() {
+    let fixture = fixture(false);
+    let root = fixture.path();
+    for name in ["LICENSE", "SPEC.md", "RELEASE.md", "TESTING.md"] {
+        std::fs::remove_file(root.join(name)).unwrap();
+        write(
+            root,
+            &format!("{name}/runtime.env"),
+            "synthetic local data\n",
+        );
+    }
+    let files = package_files(root);
+    for name in ["LICENSE", "SPEC.md", "RELEASE.md", "TESTING.md"] {
+        assert!(!files.contains(&format!("{name}/runtime.env")));
+    }
+    assert!(files.contains("src/main.rs"));
+    cargo(root, &["package", "--locked", "--offline", "--allow-dirty"]);
 }

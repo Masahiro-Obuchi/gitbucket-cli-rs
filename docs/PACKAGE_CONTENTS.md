@@ -19,6 +19,10 @@ The policy permits these repository-root paths:
 
 Hidden files and hidden directories under those trees are explicitly removed
 from the selection. Other extensions and other root paths are not included.
+Cargo globs match directories too, so descendants of directories named `*.rs`,
+`*.json`, `*.html`, `*.md` or root `LICENSE` are explicitly excluded. For example,
+`docs/local.md/runtime.env` and even `docs/local.md/nested.md` do not ship;
+public documentation directories should use names without those suffixes.
 `RELEASE.md` and `TESTING.md` now ship with the source crate so its documentation
 can resolve the existing links to them. This does not change the separately
 assembled binary archives; their documentation strategy remains C4.
@@ -52,6 +56,9 @@ repository; another deliberately commits local files, then adds untracked and
 ignored local files. The latter also ignores a required public Rust module.
 Each test checks Cargo's file list, then packages and builds the extracted
 fixture, detecting both leaked local files and missing required build inputs.
+Directory-name cases include runtime data and otherwise allowed file extensions
+below a matching directory, plus root document/license paths replaced by
+directories. These must not widen the published file selection.
 They never read or modify the worktree's local review notes.
 
 The Linux/macOS/Windows Rust jobs run these regressions. The Linux Rust job,

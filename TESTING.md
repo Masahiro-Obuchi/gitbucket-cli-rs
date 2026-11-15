@@ -758,9 +758,12 @@ passed. Full-platform and complete E2E runs are additionally executed by PR CI.
 `tests/package_contents.rs` uses the actual Cargo include/exclude policy with
 dependency-free temporary packages. It detects local review/runtime/workspace
 files in the package list, including force-committed, untracked and ignored
-files, as well as hidden files under approved trees. Positive source/docs/test
-fixtures must remain included even when a Git ignore rule matches a required
-module. Both Git and non-Git cases run `cargo package` verification, building
+files, as well as hidden files under approved trees. Cases with directory names
+matching public file patterns check that their descendants cannot bypass the
+extension policy. Root document/license paths replaced by directories receive
+the same negative check. Positive source/docs/test fixtures must remain included
+even when a Git ignore rule matches a required module. Both Git and non-Git
+cases run `cargo package` verification, building
 the extracted fixture without registry access or local user data.
 
 The ordinary suite includes these tests; macOS and Windows CI also run the

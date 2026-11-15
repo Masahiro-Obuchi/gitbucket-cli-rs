@@ -24,6 +24,12 @@ include = [
   "/tests/fixtures/**/*.html",
   "/tests/fixtures/**/*.md",
   "/docs/**/*.md",
+  # A file glob also matches directories: never include their descendants.
+  "!**/*.rs/**",
+  "!**/*.json/**",
+  "!**/*.html/**",
+  "!**/*.md/**",
+  "!/LICENSE/**",
   "!**/.*",
   "!**/.*/**",
 ]
