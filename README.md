@@ -51,7 +51,10 @@ cp target/release/gb ~/.local/bin/
 ### Prebuilt binaries
 
 Tagged releases publish prebuilt binaries to GitHub Releases for supported platforms.
-See [RELEASE.md](RELEASE.md) for the release process.
+Unpack the complete archive to keep README, SPEC and the linked `docs/` pages
+together for offline reading. Source-evidence links open the matching tag on
+GitHub. See [archive contents and navigation](docs/BINARY_ARCHIVES.md) and
+[RELEASE.md](RELEASE.md) for the release process.
 
 **Requirements:** This source revision requires Rust **1.88.0 or later** when
 installing with Cargo or building from source. Use `--locked` to use the tested

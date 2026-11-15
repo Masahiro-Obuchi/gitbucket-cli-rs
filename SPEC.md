@@ -1786,8 +1786,12 @@ historical records, not current coverage claims.
 - C2 declares Rust 1.88.0 and checks all four release targets at that version,
   alongside stable CI. Dependency updates must preserve this check or explicitly
   revise the [Rust version policy](docs/RUST_VERSION.md).
+- C4 bundles the root guides and public Markdown docs with binary archives,
+  keeps local document links and pins source-evidence links to the release tag.
+  PR/main and Release share native four-target archive/navigation checks. See
+  [binary archive contents](docs/BINARY_ARCHIVES.md).
 - Review optional editor input separately (C3); explicit file/stdin input already
-  exists. Decide how binary archives expose linked documentation (C4).
+  exists.
 - Select the version and execute [release gates](RELEASE.md#preparation-gates)
   as a separate maintainer action. This specification does not publish a release.
 

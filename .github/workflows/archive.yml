@@ -1,0 +1,70 @@
+name: Build release archives
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Source revision to package
+        required: true
+        type: string
+      tag:
+        description: Version label for archive names and source links
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RELEASE_TAG: ${{ inputs.tag }}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            bin: gb
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            bin: gb
+          - os: macos-15
+            target: aarch64-apple-darwin
+            bin: gb
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin: gb.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test archive selection and navigation
+        run: python -B -m unittest discover -s scripts/tests -v
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+      - name: Build release binary
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package and verify extracted archive
+        shell: bash
+        run: >-
+          python scripts/package-release.py
+          --binary target/${{ matrix.target }}/release/${{ matrix.bin }}
+          --tag "${RELEASE_TAG}"
+          --target ${{ matrix.target }}
+          --output-dir dist
+          --smoke-test
+      - name: Upload verified archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/gb-*
+          if-no-files-found: error

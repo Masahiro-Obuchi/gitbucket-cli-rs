@@ -10,6 +10,13 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  release-archives:
+    uses: ./.github/workflows/archive.yml
+    with:
+      ref: ${{ github.ref }}
+      # Preview artifacts only: this workflow creates no tag or release.
+      tag: v0.0.0-archive-test
+
   msrv:
     name: MSRV (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
