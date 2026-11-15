@@ -39,6 +39,10 @@ Release binaries continue to use stable rather than pinning their compiler to
 the source-build minimum. Local commands are in
 [TESTING.md](../TESTING.md#minimum-supported-rust-version).
 
+The ARM macOS jobs in both workflows use `macos-15`; GitHub
+[retired `macos-14` on November 2, 2026](https://github.blog/changelog/2026-10-01-github-actions-macos-14-runner-image-retirement/).
+Changing the runner retains the `aarch64-apple-darwin` artifact target.
+
 ## Dependency and compiler updates
 
 - Use `--locked` when installing or building this revision. Resolving new
