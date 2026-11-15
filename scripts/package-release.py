@@ -139,7 +139,9 @@ def verify_archive(archive, expected, binary_name, smoke_test):
     # Read only regular, explicitly expected members into a fresh directory.
     # Avoid extractall and its platform/version-dependent path/link semantics.
     with tempfile.TemporaryDirectory(prefix="gb-release-verify-") as temp:
-        extracted = Path(temp)
+        # macOS /var and Windows temporary paths can have filesystem aliases.
+        # Compare both sides in the same canonical path representation.
+        extracted = Path(temp).resolve()
         if archive.suffix == ".zip":
             with zipfile.ZipFile(archive) as package:
                 names = package.namelist()

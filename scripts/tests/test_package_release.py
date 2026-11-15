@@ -6,6 +6,7 @@ import subprocess
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 SCRIPT = Path(__file__).resolve().parents[1] / "package-release.py"
@@ -47,7 +48,7 @@ class ReleaseArchiveTests(unittest.TestCase):
     def write(self, name, content):
         path = self.root / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+        path.write_bytes(content.encode("utf-8"))
 
     def package(self, target="x86_64-unknown-linux-gnu", tag="v1.2.3-rc.1+docs"):
         return release.package_release(self.root, self.binary, tag, target, self.output)
@@ -129,6 +130,29 @@ class ReleaseArchiveTests(unittest.TestCase):
             self.skipTest("symlink creation unavailable")
         with self.assertRaisesRegex(ValueError, "symlink"):
             self.package()
+
+    def test_verification_handles_a_symlinked_temporary_parent(self):
+        actual = Path(self.temp.name) / "actual-temp"
+        actual.mkdir()
+        alias = Path(self.temp.name) / "temp-alias"
+        try:
+            alias.symlink_to(actual, target_is_directory=True)
+        except OSError:
+            self.skipTest("directory symlink creation unavailable")
+        make_temp = tempfile.TemporaryDirectory
+
+        def temporary_directory(*args, **kwargs):
+            if kwargs.get("prefix") == "gb-release-verify-":
+                kwargs["dir"] = alias
+            return make_temp(*args, **kwargs)
+
+        with mock.patch.object(release.tempfile, "TemporaryDirectory", temporary_directory):
+            self.assertIn("docs/contract.md", self.contents(self.package()))
+
+    def test_crlf_document_bytes_and_links_are_preserved(self):
+        original = b"# Guide\r\n[Contract](docs/contract.md#details)\r\n`example`\r\n"
+        (self.root / "README.md").write_bytes(original)
+        self.assertEqual(self.contents(self.package())["README.md"], original)
 
     def test_invalid_tag_or_target_does_not_create_output(self):
         for tag in ["../outside", "v1.2", "v1.2.3/other", "v1.2.3\n"]:
