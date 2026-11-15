@@ -286,7 +286,7 @@ fn cancelling_a_diff_stops_a_pager_while_writing_or_waiting() {
                     &mut slave,
                     std::ptr::null_mut(),
                     std::ptr::null_mut(),
-                    std::ptr::null()
+                    std::ptr::null_mut()
                 ),
                 0
             );

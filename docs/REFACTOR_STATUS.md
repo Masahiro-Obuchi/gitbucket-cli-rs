@@ -75,6 +75,10 @@ Consult the selected release's notes and source revision.
 
 ## Completed follow-up: C1 source-package policy
 
+Merged in [PR #58](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/58)
+(merge `f2ccbc9`), including directory-glob exclusions and Git-environment
+isolation for package fixtures.
+
 The manifest now permits explicit public root files, Rust source/tests,
 JSON/HTML/Markdown fixtures and Markdown documentation, excluding hidden paths.
 Local review notes and other root workspace trees are excluded regardless of
@@ -85,6 +89,16 @@ See [the package policy](PACKAGE_CONTENTS.md) and
 [regression tests](../tests/package_contents.rs). This does not scan permitted
 file contents or change binary-archive documentation (C4).
 
+## Completed follow-up: C2 minimum Rust version
+
+The manifest declares Rust **1.88.0** with the committed lockfile. Locked normal
+dependencies already require that version. The Rust workflow checks all
+targets/features on each of the four binary release targets at MSRV; Linux
+also runs the full ordinary suite and verifies the actual source package, and
+the other three run package-selection tests. Current stable tests/lints and
+root/subpath E2E remain in place. See [the Rust version policy](RUST_VERSION.md)
+for dependency-update rules and the limits of the verification scope.
+
 ## Remaining client and release work
 
 The following are candidates for separately scoped follow-up PRs. They are not
@@ -92,11 +106,10 @@ unimplemented parts silently counted as completed server functionality.
 
 | ID | Work | Completion evidence |
 | --- | --- | --- |
-| C2 | Minimum Rust version | Choose and test an MSRV against the locked dependencies and intended targets before adding a `rust-version` promise. CI currently uses stable; the former README claim of Rust 1.70+ was not supported by an MSRV job. |
 | C3 | Optional editor input | Separate PR if needed, as deferred in PR-16. Define editor selection, protected temporary files, failure/cancellation handling and unchanged file/stdin semantics. File/stdin input already works. |
 | C4 | Release artifact documentation | Binary archives currently contain only `gb`, README and LICENSE; linked `docs/` files are not bundled. Choose bundling or an explicit online documentation strategy and verify navigation from an extracted archive. Crate source and binary archives are separate artifacts. |
 
-The next implementation candidate is C2. C3 is optional. Choosing a release
+The next release-preparation candidate is C4; C3 is optional. Choosing a release
 version, publishing a crate, tagging or dispatching a release is a separate
 maintainer action; the packaging-policy change performs none of them.
 See [release gates](../RELEASE.md#preparation-gates).

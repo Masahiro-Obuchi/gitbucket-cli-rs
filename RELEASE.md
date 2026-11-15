@@ -21,9 +21,11 @@ noninteractive input, PR defaults and merge verification. Review those
 [upgrade-sensitive behaviors](docs/REFACTOR_STATUS.md#upgrade-notes-to-carry-into-the-next-release)
 when selecting a version and writing release notes.
 
-Use the stable toolchain tested by CI. An MSRV has not been established; do not
-describe Rust 1.70+ or another minimum as supported without testing it. Defining
-an MSRV and a matching CI job is follow-up C2 in the status register.
+This source revision declares Rust 1.88.0 as its MSRV with the committed
+lockfile. CI checks all four release targets at that version, while release
+binaries and stable lint/test jobs use current stable. See the
+[Rust version policy](docs/RUST_VERSION.md). An increase requires an explicit
+compatibility decision, synchronized manifest/CI/docs and a release-note entry.
 
 ## Preparation gates
 
@@ -57,6 +59,12 @@ Before any publication:
    cargo clippy --locked --all-targets --all-features -- -D warnings
    cargo package --locked --offline
    ```
+
+   Also confirm the Rust workflow's four MSRV jobs on the exact revision.
+   The Linux MSRV job runs the ordinary suite and source-package build; the
+   other three compile all test targets and run package-selection tests.
+   [TESTING.md](TESTING.md#minimum-supported-rust-version) lists local commands.
+   Stable-only release preflight is not a substitute for these MSRV checks.
 
 4. Confirm the **full** pinned GitBucket 4.44.0 E2E suite at root and `/gitbucket`
    on the release revision, plus relevant private/Git authentication and

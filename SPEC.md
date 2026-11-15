@@ -7,6 +7,8 @@ It follows the command design style of GitHub CLI (`gh`) and uses the GitBucket 
 
 - **Command name:** `gb`
 - **Language:** Rust (edition 2021)
+- **Minimum Rust version:** 1.88.0 with the committed lockfile; see
+  [Rust version support and target verification](docs/RUST_VERSION.md).
 - **Target platforms:** Linux / macOS / Windows
 - **License:** MIT
 
@@ -1781,7 +1783,9 @@ historical records, not current coverage claims.
 - C1's explicit source-package policy and real Cargo regressions are implemented;
   inspect the archive from a clean checkout as a release gate. See
   [package contents and CI verification](docs/PACKAGE_CONTENTS.md).
-- Establish/test an MSRV before declaring a minimum Rust version (C2).
+- C2 declares Rust 1.88.0 and checks all four release targets at that version,
+  alongside stable CI. Dependency updates must preserve this check or explicitly
+  revise the [Rust version policy](docs/RUST_VERSION.md).
 - Review optional editor input separately (C3); explicit file/stdin input already
   exists. Decide how binary archives expose linked documentation (C4).
 - Select the version and execute [release gates](RELEASE.md#preparation-gates)

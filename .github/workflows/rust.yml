@@ -10,6 +10,40 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  msrv:
+    name: MSRV (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          # Keep this in sync with package.rust-version in Cargo.toml.
+          toolchain: "1.88.0"
+          target: ${{ matrix.target }}
+      - name: Check all targets and features at MSRV
+        run: cargo check --locked --all-targets --all-features --target ${{ matrix.target }}
+      - name: Run the ordinary suite at MSRV
+        if: runner.os == 'Linux'
+        run: cargo test --locked --all-features --target ${{ matrix.target }}
+      - name: Test source package selection at MSRV
+        if: runner.os != 'Linux'
+        run: cargo test --locked --test package_contents --target ${{ matrix.target }}
+      - name: Verify source package at MSRV
+        if: runner.os == 'Linux'
+        run: cargo package --locked --offline
+
   build:
     runs-on: ubuntu-latest
 

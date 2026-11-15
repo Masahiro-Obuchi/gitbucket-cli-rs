@@ -36,6 +36,12 @@ Keep `README.md`, `SPEC.md`, and CLI help text aligned whenever command behavior
 - `cargo fmt --all`: format Rust code.
 - `cargo clippy --all-targets --all-features -- -D warnings`: lint and fail on warnings.
 - `cargo package --locked --offline`: build and verify the source archive after dependencies are cached.
+- `cargo +1.88.0 check --locked --all-targets --all-features` and
+  `cargo +1.88.0 test --locked --all-features`: verify the declared MSRV.
+
+The MSRV is Rust 1.88.0 with the committed lockfile. Keep `package.rust-version`,
+the MSRV CI toolchain and `docs/RUST_VERSION.md` aligned. Dependency updates must
+pass MSRV CI; raising the minimum requires an explicit compatibility change.
 
 Source-package paths are explicitly permitted by `package.include` in `Cargo.toml`.
 When adding public file types or directories, update that policy deliberately and
