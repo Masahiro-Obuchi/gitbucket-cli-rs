@@ -60,6 +60,11 @@ Directory-name cases include runtime data and otherwise allowed file extensions
 below a matching directory, plus root document/license paths replaced by
 directories. These must not widen the published file selection.
 They never read or modify the worktree's local review notes.
+Fixture Cargo/Git subprocesses clear inherited `GIT_*` selectors and use only
+the fixture's empty global Git config, with system Git config disabled. A
+regression re-runs the Git fixture with another disposable repository's
+`GIT_DIR`, `GIT_COMMON_DIR`, `GIT_WORK_TREE` and `GIT_INDEX_FILE`, checking that
+its index and history remain byte-for-byte unchanged.
 
 The Linux/macOS/Windows Rust jobs run these regressions. The Linux Rust job,
 Release preflight and `scripts/release-tag.sh` additionally run

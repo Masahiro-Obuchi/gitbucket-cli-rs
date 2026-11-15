@@ -1,5 +1,5 @@
 //! Exercise Cargo's real package selection, independent of Git ignore rules.
-use std::{collections::BTreeSet, path::Path, process::Command};
+use std::{collections::BTreeSet, ffi::OsStr, path::Path, process::Command};
 
 const PUBLIC_FILES: &[(&str, &str)] = &[
     (
@@ -64,13 +64,35 @@ fn write(root: &Path, name: &str, content: &str) {
     std::fs::write(path, content).unwrap();
 }
 
+fn command(root: &Path, program: impl AsRef<OsStr>) -> Command {
+    let mut command = Command::new(program);
+    command.current_dir(root);
+    // Git hooks can export repository/index/config selectors. A temporary cwd
+    // alone does not stop `git add` or `git commit` from targeting that repo.
+    for (key, _) in std::env::vars_os() {
+        if key
+            .to_string_lossy()
+            .to_ascii_uppercase()
+            .starts_with("GIT_")
+        {
+            command.env_remove(key);
+        }
+    }
+    command
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", root.join(".package-fixture.gitconfig"));
+    command
+}
+
 fn cargo(root: &Path, args: &[&str]) -> std::process::Output {
-    let output = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
-        .current_dir(root)
-        .env("CARGO_TARGET_DIR", root.join("target"))
-        .args(args)
-        .output()
-        .unwrap();
+    let output = command(
+        root,
+        std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()),
+    )
+    .env("CARGO_TARGET_DIR", root.join("target"))
+    .args(args)
+    .output()
+    .unwrap();
     assert!(
         output.status.success(),
         "cargo {args:?}: {}\n{}",
@@ -83,6 +105,7 @@ fn cargo(root: &Path, args: &[&str]) -> std::process::Output {
 fn fixture(git: bool) -> tempfile::TempDir {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path();
+    write(root, ".package-fixture.gitconfig", "");
     // Copy the actual policy, not a second implementation of its glob matching.
     // The fixture has no registry dependencies or access to local user files.
     let manifest: toml::Value = toml::from_str(include_str!("../Cargo.toml")).unwrap();
@@ -101,8 +124,7 @@ fn fixture(git: bool) -> tempfile::TempDir {
     }
     cargo(root, &["generate-lockfile", "--offline"]);
     if git {
-        let output = Command::new("git")
-            .current_dir(root)
+        let output = command(root, "git")
             .args(["init", "--quiet"])
             .output()
             .unwrap();
@@ -115,20 +137,17 @@ fn fixture(git: bool) -> tempfile::TempDir {
         write(root, name, "synthetic local data\n");
     }
     if git {
-        let output = Command::new("git")
-            .current_dir(root)
+        let output = command(root, "git")
             .args(["add", "--force", "."])
             .output()
             .unwrap();
         assert!(output.status.success());
-        let output = Command::new("git")
-            .current_dir(root)
+        let output = command(root, "git")
             .args(["rm", "--cached", "--quiet", "src/required.rs"])
             .output()
             .unwrap();
         assert!(output.status.success());
-        let output = Command::new("git")
-            .current_dir(root)
+        let output = command(root, "git")
             .args([
                 "-c",
                 "user.name=PackageFixture",
@@ -150,8 +169,7 @@ fn fixture(git: bool) -> tempfile::TempDir {
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
-        let output = Command::new("git")
-            .current_dir(root)
+        let output = command(root, "git")
             .args(["check-ignore", "--quiet", "src/required.rs"])
             .output()
             .unwrap();
@@ -236,4 +254,47 @@ fn package_policy_does_not_expand_root_file_names_into_directories() {
     }
     assert!(files.contains("src/main.rs"));
     cargo(root, &["package", "--locked", "--offline", "--allow-dirty"]);
+}
+
+#[test]
+fn package_fixture_does_not_modify_an_inherited_git_repository() {
+    let bait = fixture(true);
+    write(
+        bait.path(),
+        "keep-untracked.txt",
+        "synthetic unrelated file\n",
+    );
+    let index = bait.path().join(".git/index");
+    let history = bait.path().join(".git/logs/HEAD");
+    let index_before = std::fs::read(&index).unwrap();
+    let history_before = std::fs::read(&history).unwrap();
+    // Re-exec only the fixture test with repository selectors such as those
+    // inherited from Git hooks. Never change this process's environment.
+    let output = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "package_policy_is_independent_of_tracked_untracked_and_ignored_local_files",
+            "--nocapture",
+        ])
+        .current_dir(bait.path())
+        .env("GIT_DIR", bait.path().join(".git"))
+        .env("GIT_COMMON_DIR", bait.path().join(".git"))
+        .env("GIT_WORK_TREE", bait.path())
+        .env("GIT_INDEX_FILE", &index)
+        .output()
+        .unwrap();
+    assert!(
+        std::fs::read(index).unwrap() == index_before,
+        "fixture modified the inherited Git index"
+    );
+    assert!(
+        std::fs::read(history).unwrap() == history_before,
+        "fixture modified the inherited Git history"
+    );
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }

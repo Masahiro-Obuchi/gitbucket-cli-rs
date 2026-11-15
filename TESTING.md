@@ -765,6 +765,9 @@ the same negative check. Positive source/docs/test fixtures must remain included
 even when a Git ignore rule matches a required module. Both Git and non-Git
 cases run `cargo package` verification, building
 the extracted fixture without registry access or local user data.
+Cargo/Git fixture commands also isolate inherited Git repository/config
+settings. A child-test regression points those settings at a separate disposable
+repository and asserts that neither its index nor its history changes.
 
 The ordinary suite includes these tests; macOS and Windows CI also run the
 target explicitly. Linux Rust CI and Release preflight verify the real source
