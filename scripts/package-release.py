@@ -25,7 +25,7 @@ TARGETS = {
 }
 REPOSITORY = "https://github.com/Masahiro-Obuchi/gitbucket-cli-rs"
 LINK = re.compile(
-    r"(?P<before>!?\[[^\]\n]*\]\()"
+    r"(?P<before>!?\[[^\]]*\]\()"
     r"(?P<url><[^>\n]+>|[^()\s]+)"
     r"(?P<after>(?:\s+\"[^\"\n]*\")?\))"
 )
@@ -34,11 +34,27 @@ TOKEN = re.compile(r"`+[^`]*`+|" + LINK.pattern)
 
 def map_links(text, transform):
     """Handle the inline Markdown links used by the project, outside code."""
-    result = []
+    result, prose = [], []
     fence = None
+
+    def replace(match):
+        if match["url"] is None:
+            return match[0]
+        target = transform(match["url"].strip("<>"))
+        if match["url"].startswith("<"):
+            target = f"<{target}>"
+        return match["before"] + target + match["after"]
+
+    def flush():
+        # Labels in the existing guides wrap across lines. Keep each prose
+        # block together, while never interpreting a fenced example as a link.
+        result.append(TOKEN.sub(replace, "".join(prose)))
+        prose.clear()
+
     for line in text.splitlines(keepends=True):
         marker = re.match(r"^ {0,3}(`{3,}|~{3,})", line)
         if marker:
+            flush()
             if fence is None:
                 fence = marker[1]
             elif marker[1][0] == fence[0] and len(marker[1]) >= len(fence):
@@ -49,14 +65,8 @@ def map_links(text, transform):
         else:
             # A link label may itself contain inline code. Match complete links
             # before their contents, while leaving standalone code untouched.
-            def replace(match):
-                if match["url"] is None:
-                    return match[0]
-                target = transform(match["url"].strip("<>"))
-                if match["url"].startswith("<"):
-                    target = f"<{target}>"
-                return match["before"] + target + match["after"]
-            result.append(TOKEN.sub(replace, line))
+            prose.append(line)
+    flush()
     return "".join(result)
 
 

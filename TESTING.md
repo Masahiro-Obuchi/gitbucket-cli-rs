@@ -838,7 +838,8 @@ local/hidden/directory-name inputs; missing files/anchors; online source links
 at the encoded release tag; preserved code examples; spaces/titles/duplicate
 headings; symlinks where supported; invalid target/tag input; archive corruption
 or omission; broken extracted navigation; and smoke-test failure preserving an
-existing archive. Aliased temporary paths and CRLF documents are covered too.
+existing archive. Aliased temporary paths, CRLF documents and wrapped link labels
+are covered too.
 A regression recreates the former binary/README/LICENSE-only
 layout and confirms its extracted README links are broken.
 
@@ -848,7 +849,7 @@ are separate from the Cargo test count and source-package checks. The archive
 check neither contacts a GitBucket server nor publishes any artifact by itself.
 
 C4 local validation: **540 Cargo tests passed**, with **47 Docker cases ignored**,
-and **14 Python archive regressions passed**. The current Linux release binary
+and **15 Python archive regressions passed**. The current Linux release binary
 was built and packaged with 23 files; extracted navigation and `--help` passed.
 Locked check, Clippy with `-D warnings`, formatting and document links passed.
 Native archive builds for the other release targets are additionally run by CI.

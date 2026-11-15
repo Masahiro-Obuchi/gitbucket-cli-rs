@@ -122,6 +122,14 @@ class ReleaseArchiveTests(unittest.TestCase):
         files = self.contents(self.package())
         self.assertIn(b'(<docs/a guide.md#same-1> "A guide")', files["README.md"])
 
+    def test_wrapped_link_labels_are_rewritten_and_checked(self):
+        self.write("README.md", "# Guide\n[Source\n evidence](tests/evidence.rs)\n")
+        files = self.contents(self.package())
+        self.assertIn(b"[Source\n evidence](https://github.com/", files["README.md"])
+        self.write("README.md", "[Missing\n document](docs/missing.md)\n")
+        with self.assertRaises((OSError, ValueError)):
+            self.package()
+
     def test_symlinked_document_cannot_copy_another_file(self):
         link = self.root / "docs/alias.md"
         try:
