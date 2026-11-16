@@ -856,3 +856,44 @@ and **16 Python archive regressions passed**. The current Linux release binary
 was built and packaged with 23 files; extracted navigation and `--help` passed.
 Locked check, Clippy with `-D warnings`, formatting and document links passed.
 Native archive builds for the other release targets are additionally run by CI.
+
+## Explicit Editor Input
+
+```sh
+cargo test --locked --bin gb cli::editor::tests
+cargo test --locked --test editor_input --test pr_review_write
+```
+
+Editor lifecycle unit cases launch the test executable as a disposable editor
+on Linux/macOS/Windows. They verify command precedence and quoting, private Unix
+permissions, initial text, replacement saves, exact UTF-8/newline bytes, clearing,
+unchanged/nonzero/invalid/nonregular output, missing executables and cancellation
+cleanup. Deleted edited files must also report editor_failed/invalid_body.
+Unix also checks symlink rejection without deleting the target.
+
+Unix CLI tests attach terminal stdin/stderr with a PTY. They verify actual HTTP
+payloads for Issue/PR create/edit and ordinary/inline comments, current-body seeds
+and own-comment selection, blank-comment rejection and no API access after editor
+failure/unchanged input/signals. Editor output must not contaminate JSON stdout.
+Raw-mode fixtures also check that Unix terminal flags and control characters
+return to their original values after successful, failed, unchanged and cancelled
+editor invocations.
+The comparison excludes only macOS's transient `PENDIN` bit: the
+[XNU terminal implementation](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/tty.c)
+sets it when canonical input is restored. Echo/canonical modes, other persistent
+flags and control characters remain checked.
+All platforms check Clap conflicts and nonterminal rejection; a terminal test
+also rejects editor input in JSON-error mode. Tests use per-child environments,
+never the developer's editor or mutable process-global configuration.
+
+The existing pinned `contract_cli_default_base_published_head_and_multiline_input`
+E2E now edits a PR with the terminal editor fixture, verifies the original seed
+and stored body, and checks temporary-file cleanup. Run it at both root/subpath
+with the regular E2E environment; CI includes it in the complete suites.
+
+C3 local validation: **558 ordinary tests passed**, with **47 Docker cases
+ignored** by the ordinary run. The related live input/editor contract passed at
+both layouts. Rust 1.88 editor cases and all-targets/features check, stable
+check/Clippy with `-D warnings`, formatting and Python archive regressions passed.
+The editor/input contract and platform limits are documented in
+[INPUT_DISPLAY.md](docs/INPUT_DISPLAY.md#explicit-editor-input).

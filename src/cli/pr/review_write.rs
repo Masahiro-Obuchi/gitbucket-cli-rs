@@ -21,6 +21,7 @@ pub(super) struct Request {
     position: Option<(String, u64, Side)>,
     body: Option<String>,
     body_file: Option<PathBuf>,
+    editor: bool,
     commit: Option<String>,
     request_id: Option<String>,
     json: bool,
@@ -31,6 +32,7 @@ impl Request {
         action: Action,
         body: Option<String>,
         body_file: Option<PathBuf>,
+        editor: bool,
         request_id: Option<String>,
     ) -> Self {
         Self {
@@ -40,6 +42,7 @@ impl Request {
             position: None,
             body,
             body_file,
+            editor,
             commit: target.commit,
             request_id,
             json: target.json,
@@ -61,6 +64,7 @@ impl Request {
             position: Some(position),
             body: args.body,
             body_file: args.body_file,
+            editor: args.editor,
             commit: args.commit,
             request_id: args.request_id,
             json: args.json,
@@ -73,13 +77,12 @@ pub(super) async fn run(
     profile: &Option<String>,
     request: Request,
 ) -> Result<()> {
-    let body = if request.action == Action::Delete {
+    let input = crate::cli::input::body(request.body, request.body_file, request.editor).await?;
+    let editor = input.is_editor();
+    let mut body = if request.action == Action::Delete || editor {
         None
     } else {
-        let text = crate::cli::input::comment(
-            crate::cli::input::body(request.body, request.body_file).await?,
-        )
-        .await?;
+        let text = crate::cli::input::comment(input).await?;
         Some(normalized_body(&text)?)
     };
     let ctx = RepoContext::resolve(host, repo, profile)?;
@@ -168,6 +171,22 @@ pub(super) async fn run(
         diff = Some(verified.diff);
     }
     let position = position.ok_or_else(|| invalid("Missing verified inline position."))?;
+    if editor {
+        let seed = if request.action == Action::Edit {
+            session
+                .review_edit_body(
+                    &ctx.owner,
+                    &ctx.repo,
+                    target.expect("identified edit").identity.id,
+                )
+                .await?
+        } else {
+            String::new()
+        };
+        let text =
+            crate::cli::input::comment_seed(crate::cli::input::BodyInput::Editor, &seed).await?;
+        body = Some(normalized_body(&text)?);
+    }
     let result = match request.action {
         Action::Create | Action::Reply => {
             writer

@@ -11,7 +11,7 @@ use crate::models::pull_request::{PullRequest, UpdatePullRequest};
 pub(in crate::cli::pr) struct EditRequest {
     pub number: u64,
     pub title: Option<String>,
-    pub body: Option<String>,
+    pub body: crate::cli::input::BodyInput,
     pub add_assignees: Vec<String>,
     pub remove_assignees: Vec<String>,
     pub state: Option<String>,
@@ -23,7 +23,7 @@ impl EditRequest {
         Self {
             number,
             title: None,
-            body: None,
+            body: None.into(),
             add_assignees: vec![],
             remove_assignees: vec![],
             state: Some(state.into()),
@@ -100,10 +100,15 @@ pub(super) async fn apply_edit(
         ));
     }
 
+    let body = request
+        .body
+        .resolve(current.body.as_deref().unwrap_or_default())
+        .await?;
+
     // GitBucket 4.44 updates content only inside title.foreach. Body-only input
     // needs the current title, while title-only input must retain the stored body.
     // State-only requests intentionally omit both content fields.
-    let edits_content = request.title.is_some() || request.body.is_some();
+    let edits_content = request.title.is_some() || body.is_some();
     let update = UpdatePullRequest {
         title: if edits_content {
             Some(request.title.unwrap_or_else(|| current.title.clone()))
@@ -111,7 +116,7 @@ pub(super) async fn apply_edit(
             None
         },
         body: if edits_content {
-            request.body.or_else(|| current.body.clone())
+            body.or_else(|| current.body.clone())
         } else {
             None
         },

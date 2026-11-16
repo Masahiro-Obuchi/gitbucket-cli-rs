@@ -10,7 +10,7 @@ use crate::models::issue::UpdateIssue;
 pub(in crate::cli::issue) struct EditRequest {
     pub number: u64,
     pub title: Option<String>,
-    pub body: Option<String>,
+    pub body: crate::cli::input::BodyInput,
     pub add_labels: Vec<String>,
     pub remove_labels: Vec<String>,
     pub add_assignees: Vec<String>,
@@ -75,6 +75,10 @@ pub(in crate::cli::issue) async fn edit(
             "Issue lookup returned another number. No changes were applied.".into(),
         ));
     }
+    let body = request
+        .body
+        .resolve(current.body.as_deref().unwrap_or_default())
+        .await?;
     let labels = super::labels::LabelChanges::new(request.add_labels, request.remove_labels)?;
     labels.preflight(&ctx).await?;
 
@@ -100,7 +104,7 @@ pub(in crate::cli::issue) async fn edit(
     let update_body = UpdateIssue {
         state,
         title: request.title,
-        body: request.body,
+        body,
         assignees,
         milestone,
     };

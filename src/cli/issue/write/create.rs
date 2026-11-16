@@ -7,7 +7,7 @@ pub(in crate::cli::issue) async fn create(
     cli_repo: &Option<String>,
     cli_profile: &Option<String>,
     title: Option<String>,
-    body: Option<String>,
+    body: crate::cli::input::BodyInput,
     labels: Vec<String>,
     assignees: Vec<String>,
 ) -> Result<()> {

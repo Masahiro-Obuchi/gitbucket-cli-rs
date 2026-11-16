@@ -1,7 +1,7 @@
 # Explicit input and human display
 
 PR-16 changes the defaults for noninteractive creation and PR base selection.
-It adds no automatic push or editor process.
+It adds no automatic push. C3 adds only explicitly requested editor processes.
 
 ## Text input
 
@@ -43,6 +43,78 @@ login also requires an explicit hostname; stdin reads remain cancellable.
 Known login tokens are carried through final runtime-error reporting for stdin,
 argv and prompted input. Both text and JSON diagnostics redact them, including
 context added by the command after the HTTP layer has already cleaned an error.
+
+## Explicit editor input
+
+`--editor/-e` is available anywhere Issue/PR description or comment bodies accept
+`--body`/`--body-file`, including inline create/edit/reply. These three input
+sources are mutually exclusive, even when `--body` is empty. An editor is never
+launched just because a body is missing. Existing prompt/file/stdin behavior
+remains the default. Editor input requires terminal stdin and stderr and is
+disabled by `--json-errors`; rejected input returns `input_required` before
+starting an editor or accessing the API.
+
+Selection uses the first **set** variable among `GB_EDITOR`, `VISUAL`, `EDITOR`,
+then `vi` on Unix or `notepad.exe` on Windows. A set but empty, invalid UTF-8 or
+incorrectly quoted setting fails instead of choosing another editor. Commands
+use POSIX-style argument quoting on all platforms, without a shell, expansion,
+redirection or command substitution. Quote executable paths/arguments containing
+spaces; use single quotes around Windows paths to preserve backslashes. The
+body file is appended as one argument. GUI editors must wait for the document
+to close, for example `GB_EDITOR='code --wait'`.
+
+New descriptions/comments/replies start empty. Description edits preload the
+current API body; `--edit-last` preloads the authenticated user's latest ordinary
+comment. Inline edits preload the permission-checked raw Markdown after target,
+author and saved-position validation. These reads and Web authentication can
+precede editing; content changes cannot. Editing does not lock the server record
+or add atomic expected-head/body guarantees: concurrent updates can still race.
+
+Exit zero with changed UTF-8 text submits that text through the existing route.
+Whitespace, CRLF/LF and final newlines are retained for REST; inline Web trimming
+and restrictions still apply. Deleting an existing description to an empty file
+clears it; blank comments remain invalid. Closing without changing bytes cancels
+the whole command, including other requested metadata changes, with exit 1 and
+`cancelled`. Use `--body ''` for an explicitly empty new description.
+
+An unsuccessful exit or launch/command/content failure returns an error without
+submitting content; process/config/content failures use `editor_failed`, with
+the child status retained for nonzero exits. Ctrl+C/SIGTERM cancels editing,
+terminates and reaps the selected process, then releases its temporary file.
+Unix editors retain the foreground terminal process group; the editor is
+responsible for its own background helpers. Windows additionally supervises the
+process job. There is no human-editing deadline and no automatic retry.
+Unix terminal modes are saved before launch and restored after the selected
+process is stopped/reaped, on success, failure and cancellation.
+Missing, unreadable or nonregular edited files report `editor_failed` with
+cause `invalid_body`. For a missing file the diagnostic is
+`Editor failed: The edited body must be a readable regular file.`
+
+The body lives in a random temporary directory, never a workspace file. On Unix
+the directory is mode 0700 and the initial file mode 0600. Windows inherits the
+temporary parent's ACL; use a private user temporary directory. The initial
+handle closes before editor launch so replacement saves work on Windows too.
+After exit, only a regular file is read; symlinks/reparse points and special files
+are rejected. Temporary data is removed on success, failure and cancellation
+where the filesystem permits cleanup; abrupt termination can leave private
+temporary data. Editor backup files within that directory are cleaned with it.
+The editor is a trusted local program and may manage its own other files.
+
+Editor stdin/stderr use the terminal, and its stdout is directed to terminal
+stderr so `--json` output stays clean. The editor controls its own terminal UI;
+gb's display sanitization applies to gb's own output. No body text or command arguments are
+included in gb's editor-failure diagnostics. For example:
+
+```text
+Editor failed: The editor exited unsuccessfully; no body was submitted.
+```
+
+```sh
+GB_EDITOR='code --wait' gb issue create --title 'Bug report' --editor
+gb pr edit 5 --editor
+gb pr comment 5 --edit-last --editor
+gb pr comment edit 5 --kind inline --id 12 --web --editor
+```
 
 ## PR creation
 

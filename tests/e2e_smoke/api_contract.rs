@@ -129,6 +129,29 @@ async fn contract_cli_default_base_published_head_and_multiline_input() {
     ])))
     .unwrap();
     assert_eq!(issue["body"], markdown);
+    #[cfg(unix)]
+    {
+        let log = temp.path().join("editor");
+        let edited = "## Editor body\n\n日本語\n";
+        let mut command = cli(&["pr", "edit", &number, "--editor"]);
+        crate::editor::configure(&mut command, &log, edited, "write");
+        let output = crate::editor::run(&mut command);
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            std::fs::read_to_string(log.with_extension("seed")).unwrap(),
+            markdown
+        );
+        crate::editor::assert_cleaned(&log);
+        let stored: Value = serde_json::from_str(&run_and_assert_success(&mut cli(&[
+            "pr", "view", &number, "--json",
+        ])))
+        .unwrap();
+        assert_eq!(stored["body"], edited);
+    }
     std::fs::write(work.join("input.txt"), "unpublished\n").unwrap();
     run_git(&work, &["commit", "-am", "Keep this commit local"]);
     let refs_before = git_output(&work, &["show-ref"]);

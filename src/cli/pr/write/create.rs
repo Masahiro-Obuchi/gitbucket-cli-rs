@@ -8,7 +8,7 @@ use super::existing::find_existing_open_pull_request;
 
 pub(in crate::cli::pr) struct CreateRequest {
     pub title: Option<String>,
-    pub body: Option<String>,
+    pub body: crate::cli::input::BodyInput,
     pub head: Option<String>,
     pub head_owner: Option<String>,
     pub base: Option<String>,

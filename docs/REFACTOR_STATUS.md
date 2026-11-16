@@ -26,7 +26,7 @@ selected by this document. The manifest still says `0.6.1`.
 | PR-13 | [#52](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/52) | Inline create/edit/reply/delete, saved-position checks, principal checks and local retry receipts. [Write limits](REVIEW_WRITES.md). |
 | PR-14 | [#53](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/53) | Profile/global scope, verified auth status, explicit credential-key migration and guarded restore. [Scope and migration](AUTH_PROFILES.md). |
 | PR-15 | [#54](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/54) | Unified JSON errors, stable exit codes, closed-pipe handling and pager lifecycle. [Output contracts](CLI_ERRORS_OUTPUT.md). |
-| PR-16 | [#55](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/55) | File/stdin bodies and token input, noninteractive behavior, published-head/default-base checks, Unicode/control-character display. [Input contracts](INPUT_DISPLAY.md). Optional editor input remains deferred. |
+| PR-16 | [#55](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/55) | File/stdin bodies and token input, noninteractive behavior, published-head/default-base checks, Unicode/control-character display. [Input contracts](INPUT_DISPLAY.md). Editor input followed separately in C3. |
 | PR-17 | [#56](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/56) | Reviewed-head merge checks, canonical readback and an explicit review/merge support matrix. [Guarantees and remaining limits](REVIEW_MERGE.md). |
 
 The implementation introduces typed targets, domain/application modules and
@@ -105,6 +105,10 @@ for dependency-update rules and the limits of the verification scope.
 
 ## Completed follow-up: C4 binary-archive documentation
 
+Merged in [PR #60](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/60)
+(merge `ed4b908`), including event-commit pinning for previews and rejection of
+non-regular ZIP entries during archive verification.
+
 Binary archives now bundle README/SPEC/RELEASE/TESTING and public Markdown docs.
 Local document/anchor links stay local, while links to omitted source/test
 evidence target the release tag on GitHub. A shared packaging workflow builds
@@ -112,17 +116,18 @@ all four native release targets in PR/main CI and Release, verifies the actual
 archive and extracted navigation, and runs the extracted binary's help. Preview
 checks create no tag or release. See [the archive policy](BINARY_ARCHIVES.md).
 
-## Remaining client and release work
+## Completed follow-up: C3 optional editor input
 
-The following are candidates for separately scoped follow-up PRs. They are not
-unimplemented parts silently counted as completed server functionality.
+Issue/PR create/edit/comment and inline create/edit/reply support explicit
+`--editor/-e`, exclusive with body/file input. Existing edits preload the current
+body; selection, private temporary data, subprocess exit/cancellation and
+unchanged-text behavior are defined in [input contracts](INPUT_DISPLAY.md#explicit-editor-input).
+File/stdin defaults remain intact; noninteractive/JSON-error mode never starts
+an editor. No new server-side atomicity guarantee is claimed.
 
-| ID | Work | Completion evidence |
-| --- | --- | --- |
-| C3 | Optional editor input | Separate PR if needed, as deferred in PR-16. Define editor selection, protected temporary files, failure/cancellation handling and unchanged file/stdin semantics. File/stdin input already works. |
+## Remaining release work
 
-No required C1/C2/C4 implementation unit remains in this register; C3 is optional.
-Choosing a release
+The C1–C4 client/release-policy follow-ups are implemented. Choosing a release
 version, publishing a crate, tagging or dispatching a release is a separate
 maintainer action; the completed client/release-policy changes perform none of them.
 See [release gates](../RELEASE.md#preparation-gates).

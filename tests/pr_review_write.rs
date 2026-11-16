@@ -10,6 +10,98 @@ use support::{
 const PR: &str = "/bucket/api/v3/repos/alice/project/pulls/1";
 const WEB: &str = "/bucket/alice/project/pull/1";
 const EDIT: &str = "/bucket/alice/project/commit_comments/_data/1?dataType=html";
+#[cfg(unix)]
+#[test]
+fn editor_fixture() {
+    support::editor::fixture();
+}
+
+#[cfg(unix)]
+#[test]
+fn inline_editor_creates_and_edits_using_verified_raw_seed_without_changing_routes() {
+    for action in ["create", "edit", "unchanged"] {
+        let (env, base, head) = fixture();
+        let frames = if action == "create" {
+            script(&base, &head, "success")
+        } else {
+            let mut frames = vec![
+                get_pr(&base, &head),
+                get_pr(&base, &head),
+                html("POST", "/bucket/signin", "200 OK", "")
+                    .with_header("set-cookie", "session=test; Path=/"),
+                html("GET", WEB, "200 OK", &page(true, "alice")),
+                html("GET", EDIT, "200 OK", &edit_form(1, "old body")), // editor seed
+            ];
+            if action == "edit" {
+                frames.extend([
+                    html("GET", EDIT, "200 OK", &edit_form(1, "old body")), // existing mutation preflight
+                    get_pr(&base, &head),
+                    html(
+                        "POST",
+                        "/bucket/alice/project/commit_comments/edit/1",
+                        "200 OK",
+                        "{}",
+                    ),
+                    html("GET", WEB, "200 OK", &page(true, "alice")),
+                    html("GET", EDIT, "200 OK", &edit_form(1, "new body")),
+                    get_pr(&base, &head),
+                ]);
+            }
+            with_verified_web_session(frames)
+        };
+        let (port, server) = spawn_scripted_server(frames);
+        let mut command = env.repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project");
+        command
+            .env("GB_USER", "alice")
+            .env("GB_PASSWORD", "password");
+        if action == "create" {
+            command.args([
+                "pr",
+                "comment",
+                "1",
+                "--file",
+                "new file.txt",
+                "--line",
+                "1",
+                "--side",
+                "new",
+                "--web",
+            ]);
+        } else {
+            command.args([
+                "pr", "comment", "edit", "1", "--kind", "inline", "--id", "1", "--web",
+            ]);
+        }
+        command.args(["--editor", "--json"]);
+        let log = env.path().join("editor");
+        support::editor::configure(
+            &mut command,
+            &log,
+            "new body",
+            if action == "unchanged" {
+                "unchanged"
+            } else {
+                "write"
+            },
+        );
+        let output = support::editor::run(&mut command);
+        if action == "unchanged" {
+            assert_failure(&output);
+        } else {
+            assert_success(&output);
+            assert!(serde_json::from_slice::<Value>(&output.stdout).is_ok());
+        }
+        assert_eq!(
+            std::fs::read_to_string(log.with_extension("seed")).unwrap(),
+            if action == "create" { "" } else { "old body" }
+        );
+        support::editor::assert_cleaned(&log);
+        assert_eq!(
+            posts(&server.join().unwrap()),
+            if action == "unchanged" { 0 } else { 1 }
+        );
+    }
+}
 fn html(method: &str, path: &str, status: &str, body: &str) -> ScriptedResponse {
     ScriptedResponse::html(&format!("{method} {path} HTTP/1.1"), status, body)
 }

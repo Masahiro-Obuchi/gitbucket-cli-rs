@@ -9,21 +9,41 @@ pub(in crate::cli::pr) async fn comment(
     cli_repo: &Option<String>,
     cli_profile: &Option<String>,
     number: u64,
-    body: Option<String>,
+    body: crate::cli::input::BodyInput,
     edit_last: bool,
     json: bool,
 ) -> Result<()> {
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
-    let body_text = crate::cli::input::comment(body).await?;
+    let editing = edit_last && body.is_editor();
+    let existing = if editing {
+        super::super::target::require_pull_request(&ctx, number).await?;
+        Some(
+            latest_comment_by_current_user(&ctx.client, &ctx.owner, &ctx.repo, number, "PR")
+                .await?,
+        )
+    } else {
+        None
+    };
+    let seed = existing
+        .as_ref()
+        .and_then(|comment| comment.body.as_deref())
+        .unwrap_or_default();
+    let body_text = crate::cli::input::comment_seed(body, seed).await?;
 
-    super::super::target::require_pull_request(&ctx, number).await?;
+    if !editing {
+        super::super::target::require_pull_request(&ctx, number).await?;
+    }
 
     let comment_body = CreateComment { body: body_text };
     if edit_last {
-        let comment =
-            latest_comment_by_current_user(&ctx.client, &ctx.owner, &ctx.repo, number, "PR")
-                .await?;
+        let comment = match existing {
+            Some(comment) => comment,
+            None => {
+                latest_comment_by_current_user(&ctx.client, &ctx.owner, &ctx.repo, number, "PR")
+                    .await?
+            }
+        };
 
         let comment = ctx
             .client

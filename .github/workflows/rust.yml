@@ -90,6 +90,12 @@ jobs:
         run: cargo test --locked --test cli_errors_output
       - name: Test explicit input and terminal display
         run: cargo test --locked --test input_display
+      - name: Test editor lifecycle and explicit terminal input
+        timeout-minutes: 5
+        run: cargo test --locked --bin gb cli::editor::tests
+      - name: Test editor command integration
+        timeout-minutes: 5
+        run: cargo test --locked --test editor_input --test pr_review_write
       - name: Test merge head checks and result verification
         run: cargo test --locked --test pr_merge
       - name: Test source package file selection
