@@ -45,11 +45,23 @@ fn parse_command(value: &str) -> Result<Command> {
     Ok(command)
 }
 
-struct Child(Box<dyn ChildWrapper>);
+struct Child(Box<dyn ChildWrapper>, bool);
 impl Drop for Child {
     fn drop(&mut self) {
-        let _ = self.0.start_kill();
-        let _ = self.0.wait();
+        // Do not signal a reaped Unix PID: it can already have been reused.
+        // Windows signals the owned job, never an unrelated reused process.
+        if self.1 || cfg!(windows) {
+            let _ = self.0.start_kill();
+        }
+        if self.1 {
+            // Only JobObject wraps this native child on Windows. Reap that
+            // child directly: JobObject::try_wait consumes completion events,
+            // so a later JobObject::wait can block on an already consumed one.
+            #[cfg(windows)]
+            let _ = self.0.inner_mut().wait();
+            #[cfg(not(windows))]
+            let _ = self.0.wait();
+        }
     }
 }
 
@@ -105,12 +117,14 @@ fn edit_with(seed: &str, mut command: Command, cancelled: impl Fn() -> bool) -> 
         command
             .spawn()
             .map_err(|_| failure("spawn_failed", "Could not start the selected editor."))?,
+        true,
     );
     let status = loop {
         if cancelled() {
             return Err(GbError::Cancelled);
         }
         if let Some(status) = child.0.try_wait()? {
+            child.1 = false;
             break status;
         }
         std::thread::sleep(Duration::from_millis(10));
@@ -331,8 +345,10 @@ mod tests {
     fn cancellation_stops_and_reaps_the_editor_before_removing_its_file() {
         let (dir, command) = fixture("sleep");
         let start = Instant::now();
+        let ready = dir.path().join("path");
         let error = edit_with("seed", command, || {
-            start.elapsed() > Duration::from_millis(500)
+            std::fs::metadata(&ready).is_ok_and(|metadata| metadata.len() > 0)
+                || start.elapsed() > Duration::from_secs(5)
         })
         .unwrap_err();
         assert_eq!(error.code(), "cancelled");
