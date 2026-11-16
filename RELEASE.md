@@ -66,6 +66,11 @@ Before any publication:
    [TESTING.md](TESTING.md#minimum-supported-rust-version) lists local commands.
    Stable-only release preflight is not a substitute for these MSRV checks.
 
+   Confirm the same revision's four archive jobs too. They share the Release
+   packaging workflow and verify native release binaries, documentation links
+   and extracted `--help` before uploading preview artifacts. Follow
+   [binary archive verification](docs/BINARY_ARCHIVES.md) to inspect locally.
+
 4. Confirm the **full** pinned GitBucket 4.44.0 E2E suite at root and `/gitbucket`
    on the release revision, plus relevant private/Git authentication and
    Linux/macOS/Windows checks. Follow [TESTING.md](TESTING.md). Ordinary tests
@@ -125,8 +130,17 @@ The current workflow builds:
 - `gb-<tag>-x86_64-pc-windows-msvc.zip`
 - `SHA256SUMS` over those archives
 
-Each binary archive currently contains the `gb` binary, `README.md` and `LICENSE`.
-The linked `docs/` pages are not bundled. Read documentation at the matching tag
-in the source repository; bundling/navigation from extracted archives remains
-follow-up C4. A Cargo source package has its own manifest-driven file inventory
-and is not validated merely by inspecting the binary archives.
+Each binary archive contains `gb` (or `gb.exe`), `LICENSE`, `README.md`, `SPEC.md`,
+`RELEASE.md`, `TESTING.md` and the public Markdown pages below `docs/`. Keep that
+directory layout when extracting. Links between bundled documents remain local;
+source/test evidence links become online GitHub links at the release tag.
+The shared archive workflow validates contents and extracted navigation and runs
+the native binary before uploading an artifact. See
+[the binary-archive policy and preview commands](docs/BINARY_ARCHIVES.md).
+
+The Rust workflow runs this same four-target build/packaging path for PR/main
+checks using a preview label, without publishing. A Cargo source package has its
+own manifest-driven inventory and verification; inspecting a binary archive does
+not validate the crate. Existing release files and older tags retain their
+original policy and workflow. Rebuilding a tag predating the shared packager
+requires the corresponding older workflow rather than this new helper.

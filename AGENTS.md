@@ -38,6 +38,8 @@ Keep `README.md`, `SPEC.md`, and CLI help text aligned whenever command behavior
 - `cargo package --locked --offline`: build and verify the source archive after dependencies are cached.
 - `cargo +1.88.0 check --locked --all-targets --all-features` and
   `cargo +1.88.0 test --locked --all-features`: verify the declared MSRV.
+- `python3 -B -m unittest discover -s scripts/tests -v`: test binary-archive
+  selection, link rewriting and extracted navigation without publishing.
 
 The MSRV is Rust 1.88.0 with the committed lockfile. Keep `package.rust-version`,
 the MSRV CI toolchain and `docs/RUST_VERSION.md` aligned. Dependency updates must
@@ -47,6 +49,10 @@ Source-package paths are explicitly permitted by `package.include` in `Cargo.tom
 When adding public file types or directories, update that policy deliberately and
 run `cargo test --test package_contents`; keep local material outside the public
 source/docs/fixture trees. See `docs/PACKAGE_CONTENTS.md`.
+
+Binary archives use `scripts/package-release.py` and the reusable
+`.github/workflows/archive.yml` from both PR CI and Release. Keep bundled
+documentation/link checks aligned; see `docs/BINARY_ARCHIVES.md`.
 
 ## Coding Style & Naming Conventions
 

@@ -87,9 +87,13 @@ Git and non-Git inputs, preserve required public files and build the extracted
 packages. CI and the release helper also verify the actual source archive.
 See [the package policy](PACKAGE_CONTENTS.md) and
 [regression tests](../tests/package_contents.rs). This does not scan permitted
-file contents or change binary-archive documentation (C4).
+file contents. Binary-archive documentation is handled separately by C4.
 
 ## Completed follow-up: C2 minimum Rust version
+
+Merged in [PR #59](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/59)
+(merge `6e8faa4`), including the available macOS ARM runner and portable PTY
+test pointer needed by the new all-target compilation checks.
 
 The manifest declares Rust **1.88.0** with the committed lockfile. Locked normal
 dependencies already require that version. The Rust workflow checks all
@@ -99,6 +103,15 @@ the other three run package-selection tests. Current stable tests/lints and
 root/subpath E2E remain in place. See [the Rust version policy](RUST_VERSION.md)
 for dependency-update rules and the limits of the verification scope.
 
+## Completed follow-up: C4 binary-archive documentation
+
+Binary archives now bundle README/SPEC/RELEASE/TESTING and public Markdown docs.
+Local document/anchor links stay local, while links to omitted source/test
+evidence target the release tag on GitHub. A shared packaging workflow builds
+all four native release targets in PR/main CI and Release, verifies the actual
+archive and extracted navigation, and runs the extracted binary's help. Preview
+checks create no tag or release. See [the archive policy](BINARY_ARCHIVES.md).
+
 ## Remaining client and release work
 
 The following are candidates for separately scoped follow-up PRs. They are not
@@ -107,11 +120,11 @@ unimplemented parts silently counted as completed server functionality.
 | ID | Work | Completion evidence |
 | --- | --- | --- |
 | C3 | Optional editor input | Separate PR if needed, as deferred in PR-16. Define editor selection, protected temporary files, failure/cancellation handling and unchanged file/stdin semantics. File/stdin input already works. |
-| C4 | Release artifact documentation | Binary archives currently contain only `gb`, README and LICENSE; linked `docs/` files are not bundled. Choose bundling or an explicit online documentation strategy and verify navigation from an extracted archive. Crate source and binary archives are separate artifacts. |
 
-The next release-preparation candidate is C4; C3 is optional. Choosing a release
+No required C1/C2/C4 implementation unit remains in this register; C3 is optional.
+Choosing a release
 version, publishing a crate, tagging or dispatching a release is a separate
-maintainer action; the packaging-policy change performs none of them.
+maintainer action; the completed client/release-policy changes perform none of them.
 See [release gates](../RELEASE.md#preparation-gates).
 
 ## Remaining server and deployment requirements

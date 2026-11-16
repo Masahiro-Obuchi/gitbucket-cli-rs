@@ -818,3 +818,41 @@ C2 local validation: the ordinary suite passed **540 tests** on both Rust
 all-targets/features check and actual source-package build passed; stable check,
 Clippy with `-D warnings` and formatting passed. These are revision-scoped
 observations, not E2E results on the minimum compiler.
+
+## Binary Archive Documentation and Navigation
+
+The PR/main Rust workflow and Release workflow use the same `archive.yml` build
+and packaging job on Linux x86_64 GNU, macOS x86_64/aarch64 and Windows x86_64
+MSVC. Each builds the real release-mode binary, generates its archive, checks
+the file set and extracted document/heading links, and runs extracted `--help`.
+PR/main uses a preview version label without creating a Git tag or release.
+Its archive checkout uses the event commit SHA, keeping queued jobs on the
+revision reported by that run even if the branch/PR ref advances.
+
+Run the packager's disposable regressions with Python 3.10+:
+
+```sh
+python3 -B -m unittest discover -s scripts/tests -v
+```
+
+They cover all four target layouts/formats; public-file selection with negative
+local/hidden/directory-name inputs; missing files/anchors; online source links
+at the encoded release tag; preserved code examples; spaces/titles/duplicate
+headings; symlinks where supported; invalid target/tag input; archive corruption
+or omission, including ZIP symlink/directory/special-file attributes on otherwise
+matching members; broken extracted navigation; and smoke-test failure preserving
+an existing archive. Aliased temporary paths, CRLF documents and wrapped link labels
+are covered too.
+A regression recreates the former binary/README/LICENSE-only
+layout and confirms its extracted README links are broken.
+
+For local real-binary packaging and inspection, follow
+[the archive commands and policy](docs/BINARY_ARCHIVES.md). These Python tests
+are separate from the Cargo test count and source-package checks. The archive
+check neither contacts a GitBucket server nor publishes any artifact by itself.
+
+C4 local validation: **540 Cargo tests passed**, with **47 Docker cases ignored**,
+and **16 Python archive regressions passed**. The current Linux release binary
+was built and packaged with 23 files; extracted navigation and `--help` passed.
+Locked check, Clippy with `-D warnings`, formatting and document links passed.
+Native archive builds for the other release targets are additionally run by CI.

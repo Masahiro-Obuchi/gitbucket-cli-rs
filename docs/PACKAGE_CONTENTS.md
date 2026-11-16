@@ -24,8 +24,8 @@ Cargo globs match directories too, so descendants of directories named `*.rs`,
 `docs/local.md/runtime.env` and even `docs/local.md/nested.md` do not ship;
 public documentation directories should use names without those suffixes.
 `RELEASE.md` and `TESTING.md` now ship with the source crate so its documentation
-can resolve the existing links to them. This does not change the separately
-assembled binary archives; their documentation strategy remains C4.
+can resolve the existing links to them. Binary archives use the separate
+[bundling and navigation policy](BINARY_ARCHIVES.md) implemented in C4.
 
 The patterns are rooted so a similarly named directory elsewhere is not a new
 public source tree. Cargo handles its generated manifest, original-manifest
