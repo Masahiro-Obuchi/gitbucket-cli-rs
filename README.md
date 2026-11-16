@@ -324,6 +324,8 @@ It conflicts with both body options. Existing description/comment edits preload
 their current body; new bodies start empty. Unchanged text, editor failure or
 Ctrl+C cancels the entire command before content changes. `--editor` requires
 terminal stdin/stderr and is disabled by `--json-errors`.
+On Unix, the original terminal modes are restored after editor exit, including
+failure and cancellation.
 
 ```sh
 GB_EDITOR='code --wait' gb issue create --title 'Bug report' --editor

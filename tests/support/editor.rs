@@ -3,7 +3,7 @@
 use std::{
     fs::File,
     io::Read,
-    os::fd::FromRawFd,
+    os::fd::{AsRawFd, FromRawFd},
     path::Path,
     process::{Command, Output, Stdio},
     time::{Duration, Instant},
@@ -15,15 +15,27 @@ pub fn fixture() {
     };
     let path = std::path::PathBuf::from(std::env::args_os().last().unwrap());
     let log = std::path::PathBuf::from(std::env::var_os("TEST_EDITOR_LOG").unwrap());
+    if mode.to_str().unwrap().starts_with("raw_") {
+        let mut settings = terminal_settings(libc::STDIN_FILENO);
+        unsafe {
+            libc::cfmakeraw(&mut settings);
+            assert_eq!(
+                libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &settings),
+                0
+            );
+        }
+    }
     std::fs::write(&log, path.to_str().unwrap()).unwrap();
     std::fs::copy(&path, log.with_extension("seed")).unwrap();
     std::println!("EDITOR-STDOUT-MARKER");
     match mode.to_str().unwrap() {
-        "write" => std::fs::write(path, std::env::var("TEST_EDITOR_TEXT").unwrap()).unwrap(),
-        "unchanged" => {}
-        "fail" => std::process::exit(9),
+        "write" | "raw_write" => {
+            std::fs::write(path, std::env::var("TEST_EDITOR_TEXT").unwrap()).unwrap()
+        }
+        "unchanged" | "raw_unchanged" => {}
+        "fail" | "raw_fail" => std::process::exit(9),
         "invalid" => std::fs::write(path, [0xff]).unwrap(),
-        "sleep" => std::thread::sleep(Duration::from_secs(60)),
+        "sleep" | "raw_sleep" => std::thread::sleep(Duration::from_secs(60)),
         _ => panic!("unknown editor fixture mode"),
     }
 }
@@ -70,6 +82,8 @@ pub fn run_cancel(command: &mut Command, ready: Option<&Path>) -> Output {
         );
         (File::from_raw_fd(master), File::from_raw_fd(slave))
     };
+    let terminal_handle = slave.try_clone().unwrap();
+    let original_settings = terminal_settings(terminal_handle.as_raw_fd());
     let mut child = command
         .stdin(slave.try_clone().unwrap())
         .stderr(slave)
@@ -113,8 +127,32 @@ pub fn run_cancel(command: &mut Command, ready: Option<&Path>) -> Output {
         }
     }
     let mut output = child.wait_with_output().unwrap();
+    let actual_settings = terminal_settings(terminal_handle.as_raw_fd());
+    assert_eq!(
+        (
+            actual_settings.c_iflag,
+            actual_settings.c_oflag,
+            actual_settings.c_cflag,
+            actual_settings.c_lflag,
+            actual_settings.c_cc,
+        ),
+        (
+            original_settings.c_iflag,
+            original_settings.c_oflag,
+            original_settings.c_cflag,
+            original_settings.c_lflag,
+            original_settings.c_cc,
+        ),
+        "editor left terminal settings changed"
+    );
     output.stderr = terminal;
     output
+}
+
+fn terminal_settings(fd: std::os::fd::RawFd) -> libc::termios {
+    let mut settings = std::mem::MaybeUninit::uninit();
+    assert_eq!(unsafe { libc::tcgetattr(fd, settings.as_mut_ptr()) }, 0);
+    unsafe { settings.assume_init() }
 }
 
 pub fn assert_cleaned(log: &Path) {

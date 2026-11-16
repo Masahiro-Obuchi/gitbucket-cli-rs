@@ -874,6 +874,9 @@ Unix CLI tests attach terminal stdin/stderr with a PTY. They verify actual HTTP
 payloads for Issue/PR create/edit and ordinary/inline comments, current-body seeds
 and own-comment selection, blank-comment rejection and no API access after editor
 failure/unchanged input/signals. Editor output must not contaminate JSON stdout.
+Raw-mode fixtures also check that Unix terminal flags and control characters
+return to their original values after successful, failed, unchanged and cancelled
+editor invocations.
 All platforms check Clap conflicts and nonterminal rejection; a terminal test
 also rejects editor input in JSON-error mode. Tests use per-child environments,
 never the developer's editor or mutable process-global configuration.

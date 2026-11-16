@@ -45,6 +45,53 @@ fn parse_command(value: &str) -> Result<Command> {
     Ok(command)
 }
 
+#[cfg(unix)]
+struct TerminalState(Vec<(std::os::fd::OwnedFd, libc::termios)>);
+
+#[cfg(unix)]
+impl TerminalState {
+    fn capture() -> std::io::Result<Self> {
+        use std::os::fd::{AsFd, AsRawFd};
+        let stdin = std::io::stdin();
+        let stderr = std::io::stderr();
+        let mut state = Self(Vec::new());
+        for handle in [stdin.as_fd(), stderr.as_fd()] {
+            let handle = handle.try_clone_to_owned()?;
+            let mut settings = std::mem::MaybeUninit::uninit();
+            loop {
+                if unsafe { libc::tcgetattr(handle.as_raw_fd(), settings.as_mut_ptr()) } == 0 {
+                    state.0.push((handle, unsafe { settings.assume_init() }));
+                    break;
+                }
+                let error = std::io::Error::last_os_error();
+                if error.raw_os_error() == Some(libc::ENOTTY) {
+                    break; // Nonterminal unit-test streams have no modes to save.
+                }
+                if error.kind() != std::io::ErrorKind::Interrupted {
+                    return Err(error);
+                }
+            }
+        }
+        Ok(state)
+    }
+}
+
+#[cfg(unix)]
+impl Drop for TerminalState {
+    fn drop(&mut self) {
+        use std::os::fd::AsRawFd;
+        for (handle, settings) in &self.0 {
+            loop {
+                if unsafe { libc::tcsetattr(handle.as_raw_fd(), libc::TCSANOW, settings) } == 0
+                    || std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted
+                {
+                    break;
+                }
+            }
+        }
+    }
+}
+
 struct Child(Box<dyn ChildWrapper>, bool);
 impl Drop for Child {
     fn drop(&mut self) {
@@ -113,6 +160,10 @@ fn edit_with(seed: &str, mut command: Command, cancelled: impl Fn() -> bool) -> 
     // Unix editors stay in the foreground terminal group, like the pager.
     #[cfg(windows)]
     command.wrap(process_wrap::std::JobObject);
+    // Declare before Child so early returns kill/reap it before restoring modes.
+    // Editors killed during cancellation cannot run their own terminal cleanup.
+    #[cfg(unix)]
+    let terminal_state = TerminalState::capture()?;
     let mut child = Child(
         command
             .spawn()
@@ -140,6 +191,8 @@ fn edit_with(seed: &str, mut command: Command, cancelled: impl Fn() -> bool) -> 
         });
     }
     drop(child);
+    #[cfg(unix)]
+    drop(terminal_state);
     let mut file = open_body(&path)?;
     let mut text = String::new();
     file.read_to_string(&mut text)

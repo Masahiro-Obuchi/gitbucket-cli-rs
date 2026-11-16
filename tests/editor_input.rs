@@ -241,4 +241,38 @@ mod terminal {
         let error: Value = serde_json::from_slice(&output.stderr).unwrap();
         assert_eq!(error["error"]["code"], "input_required");
     }
+
+    #[test]
+    fn editor_restores_terminal_modes_after_success_failure_and_cancellation() {
+        for mode in ["raw_write", "raw_fail", "raw_unchanged", "raw_sleep"] {
+            let env = GbTestEnv::new();
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.set_nonblocking(true).unwrap();
+            let (port, server) = if mode == "raw_write" {
+                let (port, server) = spawn_scripted_server(vec![response(
+                    "POST",
+                    "repos/alice/project/issues/1/comments",
+                    json!({"id":3,"body":"new body\n"}),
+                )]);
+                (port, Some(server))
+            } else {
+                (listener.local_addr().unwrap().port(), None)
+            };
+            let mut command = env.repo_api_command(format!("127.0.0.1:{port}"), "alice/project");
+            command.args(["issue", "comment", "1", "--editor"]);
+            let log = env.path().join("editor");
+            editor::configure(&mut command, &log, "new body\n", mode);
+            // run_cancel also verifies that the PTY's original modes survive.
+            let output =
+                editor::run_cancel(&mut command, (mode == "raw_sleep").then_some(log.as_path()));
+            if let Some(server) = server {
+                assert_success(&output);
+                assert_eq!(server.join().unwrap().len(), 1);
+            } else {
+                assert_failure(&output);
+                assert!(listener.accept().is_err());
+            }
+            editor::assert_cleaned(&log);
+        }
+    }
 }

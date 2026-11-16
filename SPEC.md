@@ -745,7 +745,9 @@ Issue/PR create/edit/comment support explicit UTF-8 body-file/stdin input.
 `--editor/-e` explicitly composes a body at a terminal and conflicts with both
 body sources. Existing edits preload their current body. Unchanged text,
 editor failure or cancellation aborts the entire command before content writes;
-noninteractive/JSON-error mode never launches an editor. Selection, temporary
+noninteractive/JSON-error mode never launches an editor.
+Unix terminal modes are restored after the editor is stopped/reaped, including
+on failure or cancellation. Selection, temporary
 files and subprocess behavior are in
 [the editor contract](docs/INPUT_DISPLAY.md#explicit-editor-input).
 Noninteractive create requires --title and omits an unspecified optional body;

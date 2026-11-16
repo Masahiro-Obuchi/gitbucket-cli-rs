@@ -84,6 +84,8 @@ terminates and reaps the selected process, then releases its temporary file.
 Unix editors retain the foreground terminal process group; the editor is
 responsible for its own background helpers. Windows additionally supervises the
 process job. There is no human-editing deadline and no automatic retry.
+Unix terminal modes are saved before launch and restored after the selected
+process is stopped/reaped, on success, failure and cancellation.
 
 The body lives in a random temporary directory, never a workspace file. On Unix
 the directory is mode 0700 and the initial file mode 0600. Windows inherits the
