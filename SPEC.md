@@ -742,6 +742,12 @@ ordinary comments are added as `comment_details`; `comments` keeps its original
 API count, null or absence. No count is invented. See [JSON contracts](docs/JSON_OUTPUT.md).
 
 Issue/PR create/edit/comment support explicit UTF-8 body-file/stdin input.
+`--editor/-e` explicitly composes a body at a terminal and conflicts with both
+body sources. Existing edits preload their current body. Unchanged text,
+editor failure or cancellation aborts the entire command before content writes;
+noninteractive/JSON-error mode never launches an editor. Selection, temporary
+files and subprocess behavior are in
+[the editor contract](docs/INPUT_DISPLAY.md#explicit-editor-input).
 Noninteractive create requires --title and omits an unspecified optional body;
 required comment bodies produce input_required before prompting. Empty
 descriptions are allowed and edits clear them; blank comments are refused.
@@ -761,6 +767,7 @@ gb issue create [OPTIONS]
 | `--title <TEXT>` | `-t` | Issue title (prompted when omitted) |
 | `--body <TEXT>` | `-b` | Issue body |
 | `--body-file <FILE>` | — | UTF-8 file or stdin; conflicts with --body |
+| `--editor` | `-e` | Compose body in a terminal editor; conflicts with --body/--body-file |
 | `--label <LABEL>` | `-l` | Repeatable or comma-separated label option |
 | `--assignee <USER>` | `-a` | Repeatable or comma-separated assignee option |
 
@@ -777,6 +784,7 @@ gb issue edit <NUMBER> [OPTIONS]
 | `--title <TEXT>` | Updated title |
 | `--body <TEXT>` | Updated body |
 | `--body-file <FILE>` | UTF-8 file or stdin; conflicts with --body |
+| `--editor` / `-e` | Compose body in a terminal editor; conflicts with --body/--body-file |
 | `--add-label <LABEL>` | Add a label; repeatable or comma-separated |
 | `--remove-label <LABEL>` | Remove a label; repeatable or comma-separated |
 | `--add-assignee <USER>` | Add an assignee; repeatable or comma-separated |
@@ -829,6 +837,7 @@ gb issue comment <NUMBER> [OPTIONS]
 | --- | --- | --- |
 | `--body <TEXT>` | `-b` | Comment body (prompted when omitted) |
 | `--body-file <FILE>` | — | UTF-8 file or stdin; conflicts with --body |
+| `--editor` | `-e` | Compose body in a terminal editor; conflicts with --body/--body-file |
 | `--edit-last` | — | Edit your last ordinary discussion comment instead of adding a new one |
 
 ---
@@ -910,6 +919,7 @@ gb pr create [OPTIONS]
 | `--title <TEXT>` | `-t` | PR title (prompted when omitted) |
 | `--body <TEXT>` | `-b` | PR body |
 | `--body-file <FILE>` | — | UTF-8 file or stdin; conflicts with --body |
+| `--editor` | `-e` | Compose body in a terminal editor; conflicts with --body/--body-file |
 | `--head <BRANCH>` | — | Head branch (uses current git branch when omitted). For cross-repo PRs, pass `OWNER:BRANCH` or use `--head-owner OWNER --head BRANCH` |
 | `--head-owner <OWNER>` | — | Owner for the head branch; sends the head as `OWNER:BRANCH` |
 | `--base <BRANCH>` | `-B` | Target repository default_branch when omitted; missing metadata requires explicit --base |
@@ -954,6 +964,7 @@ gb pr edit <NUMBER> [OPTIONS]
 | `--title <TEXT>` | `-t` | New PR title |
 | `--body <TEXT>` | `-b` | New PR body |
 | `--body-file <FILE>` | — | UTF-8 file or stdin; conflicts with --body |
+| `--editor` | `-e` | Compose body in a terminal editor; conflicts with --body/--body-file |
 | `--add-assignee <USER>` | — | Add an assignee; repeatable or comma-separated |
 | `--remove-assignee <USER>` | — | Remove an assignee; repeatable or comma-separated |
 | `--state <STATE>` | — | Update PR state: `open` or `closed` |
@@ -1155,6 +1166,7 @@ gb pr comment delete <NUMBER> --kind inline --id <ID> --web [OPTIONS]
 | --- | --- | --- |
 | `--body <TEXT>` | `-b` | Comment body (prompted when omitted) |
 | `--body-file <FILE>` | — | UTF-8 file or stdin; conflicts with --body |
+| `--editor` | `-e` | Compose body in a terminal editor; conflicts with --body/--body-file |
 | `--edit-last` | — | Edit your last ordinary discussion comment instead of adding a new one |
 | `--json` | — | Print the ordinary API comment or verified inline write result as JSON |
 | `--no-pager` | — | Do not use a pager for `gb pr comment list` |
@@ -1790,8 +1802,9 @@ historical records, not current coverage claims.
   keeps local document links and pins source-evidence links to the release tag.
   PR/main and Release share native four-target archive/navigation checks. See
   [binary archive contents](docs/BINARY_ARCHIVES.md).
-- Review optional editor input separately (C3); explicit file/stdin input already
-  exists.
+- C3 adds explicit terminal editor input, including current-body seeds and
+  failure/cancellation cleanup, while preserving file/stdin defaults. See
+  [the editor contract](docs/INPUT_DISPLAY.md#explicit-editor-input).
 - Select the version and execute [release gates](RELEASE.md#preparation-gates)
   as a separate maintainer action. This specification does not publish a release.
 

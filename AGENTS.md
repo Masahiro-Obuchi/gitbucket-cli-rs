@@ -69,6 +69,9 @@ documentation/link checks aligned; see `docs/BINARY_ARCHIVES.md`.
 - Auth config is stored in `~/.config/gb/config.toml` (or `GB_CONFIG_DIR`) under `[hosts."<host-or-url>"]`.
 - Repository auto-resolution supports HTTPS, SSH, and GitBucket `/git/` clone URLs.
 - `issue list` and `pr list` support `--state open|closed|all` and pass that filter through to the API.
+- Issue/PR bodies support mutually exclusive `--body`, `--body-file` and explicit
+  `--editor/-e`. Editor input requires terminal stdin/stderr, is disabled by
+  `--json-errors`, and preloads existing bodies for edits. See `docs/INPUT_DISPLAY.md`.
 
 ## Testing Guidelines
 

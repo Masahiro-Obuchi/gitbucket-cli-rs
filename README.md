@@ -318,6 +318,19 @@ baseline is 4.44.0 core at root and /gitbucket, not all versions/plugins/SSO.
 Issue/PR create, edit and comment commands accept `--body-file FILE` or
 `--body-file -` for UTF-8 stdin, mutually exclusive with `--body`. Descriptions
 may be empty; comments must contain text. REST input retains newlines and spaces.
+Use `--editor/-e` instead to compose in a terminal editor, selected from
+`GB_EDITOR`, `VISUAL`, `EDITOR`, then `vi` (Unix) or `notepad.exe` (Windows).
+It conflicts with both body options. Existing description/comment edits preload
+their current body; new bodies start empty. Unchanged text, editor failure or
+Ctrl+C cancels the entire command before content changes. `--editor` requires
+terminal stdin/stderr and is disabled by `--json-errors`.
+
+```sh
+GB_EDITOR='code --wait' gb issue create --title 'Bug report' --editor
+gb pr edit 5 --editor
+gb pr comment 5 --edit-last --editor
+```
+
 Noninteractive creation requires `--title` and treats an omitted body as optional.
 Missing required input returns `input_required` without starting a prompt.
 Use `auth login --with-token < token.txt` for token input without token argv.

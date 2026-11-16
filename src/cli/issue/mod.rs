@@ -68,6 +68,9 @@ pub enum IssueCommand {
         /// Read UTF-8 body from a file, or - for stdin
         #[arg(long, conflicts_with = "body", value_name = "FILE|-")]
         body_file: Option<std::path::PathBuf>,
+        /// Compose body in GB_EDITOR, VISUAL, EDITOR or the default editor (terminal only)
+        #[arg(long, short = 'e', conflicts_with_all = ["body", "body_file"])]
+        editor: bool,
         /// Label name (repeatable or comma-separated)
         #[arg(long, short, value_delimiter = ',')]
         label: Vec<String>,
@@ -91,6 +94,9 @@ pub enum IssueCommand {
         /// Read UTF-8 body from a file, or - for stdin
         #[arg(long, conflicts_with = "body", value_name = "FILE|-")]
         body_file: Option<std::path::PathBuf>,
+        /// Compose body in GB_EDITOR, VISUAL, EDITOR or the default editor (terminal only)
+        #[arg(long, short = 'e', conflicts_with_all = ["body", "body_file"])]
+        editor: bool,
         /// Add label name (repeatable or comma-separated)
         #[arg(long = "add-label", value_delimiter = ',')]
         add_label: Vec<String>,
@@ -133,6 +139,9 @@ pub enum IssueCommand {
         /// Read UTF-8 body from a file, or - for stdin
         #[arg(long, conflicts_with = "body", value_name = "FILE|-")]
         body_file: Option<std::path::PathBuf>,
+        /// Compose body in GB_EDITOR, VISUAL, EDITOR or the default editor (terminal only)
+        #[arg(long, short = 'e', conflicts_with_all = ["body", "body_file"])]
+        editor: bool,
         /// Edit your last comment instead of adding a new one
         #[arg(long)]
         edit_last: bool,
@@ -176,6 +185,7 @@ pub async fn run(
             title,
             body,
             body_file,
+            editor,
             label,
             assignee,
         } => {
@@ -184,7 +194,7 @@ pub async fn run(
                 cli_repo,
                 cli_profile,
                 title,
-                super::input::body(body, body_file).await?,
+                super::input::body(body, body_file, editor).await?,
                 nonempty_label_names(label),
                 normalize_str_vec(assignee),
             )
@@ -195,6 +205,7 @@ pub async fn run(
             title,
             body,
             body_file,
+            editor,
             add_label,
             remove_label,
             add_assignee,
@@ -210,7 +221,7 @@ pub async fn run(
                 write::EditRequest {
                     number,
                     title,
-                    body: super::input::body(body, body_file).await?,
+                    body: super::input::body(body, body_file, editor).await?,
                     add_labels: nonempty_label_names(add_label),
                     remove_labels: nonempty_label_names(remove_label),
                     add_assignees: normalize_str_vec(add_assignee),
@@ -232,6 +243,7 @@ pub async fn run(
             number,
             body,
             body_file,
+            editor,
             edit_last,
         } => {
             write::comment(
@@ -239,7 +251,7 @@ pub async fn run(
                 cli_repo,
                 cli_profile,
                 number,
-                super::input::body(body, body_file).await?,
+                super::input::body(body, body_file, editor).await?,
                 edit_last,
             )
             .await

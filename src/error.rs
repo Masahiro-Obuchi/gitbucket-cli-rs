@@ -2,6 +2,12 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum GbError {
+    #[error("Editor failed: {message}")]
+    Editor {
+        cause: &'static str,
+        status: Option<i32>,
+        message: String,
+    },
     #[error("Pull request merge check failed: {message}")]
     MergeCheck {
         cause: &'static str,
@@ -106,7 +112,7 @@ pub enum GbError {
 impl GbError {
     pub fn child_exit_code(&self) -> Option<i32> {
         match self {
-            Self::Pager { status } => *status,
+            Self::Pager { status } | Self::Editor { status, .. } => *status,
             Self::Context { source, .. }
             | Self::Operation { source, .. }
             | Self::Unverified { source } => source.child_exit_code(),
@@ -115,6 +121,7 @@ impl GbError {
     }
     pub fn code(&self) -> &'static str {
         match self {
+            GbError::Editor { .. } => "editor_failed",
             GbError::MergeCheck { .. } => "merge_check_failed",
             GbError::InputRequired => "input_required",
             GbError::Pager { .. } => "pager_failed",
@@ -153,6 +160,7 @@ impl GbError {
 
     pub fn cause_code(&self) -> Option<&'static str> {
         match self {
+            GbError::Editor { cause, .. } => Some(cause),
             GbError::MergeCheck { cause, .. } => Some(cause),
             GbError::InputRequired => Some("interactive_input_disabled"),
             GbError::Pager { .. } => Some("nonzero_exit"),

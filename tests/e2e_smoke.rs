@@ -1,6 +1,15 @@
 #[path = "e2e_smoke/support.rs"]
 mod support;
 
+#[cfg(unix)]
+#[path = "support/editor.rs"]
+mod editor;
+#[cfg(unix)]
+#[test]
+fn editor_fixture() {
+    editor::fixture();
+}
+
 #[path = "e2e_smoke/auth_config.rs"]
 mod auth_config;
 #[path = "e2e_smoke/issue.rs"]

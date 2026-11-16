@@ -13,7 +13,55 @@ pub(crate) fn required(option: &str) -> GbError {
     }
 }
 
-pub(crate) async fn body(body: Option<String>, file: Option<PathBuf>) -> Result<Option<String>> {
+pub(crate) enum BodyInput {
+    Text(Option<String>),
+    Editor,
+}
+impl BodyInput {
+    pub fn is_none(&self) -> bool {
+        matches!(self, Self::Text(None))
+    }
+    pub fn is_editor(&self) -> bool {
+        matches!(self, Self::Editor)
+    }
+    pub async fn resolve(self, seed: &str) -> Result<Option<String>> {
+        match self {
+            Self::Text(text) => Ok(text),
+            Self::Editor => {
+                let seed = seed.to_owned();
+                // Wait for the worker's child cleanup before returning cancellation.
+                tokio::task::spawn_blocking(move || super::editor::edit(&seed))
+                    .await
+                    .map_err(|_| GbError::Other("Editor task failed.".into()))?
+                    .map(Some)
+            }
+        }
+    }
+}
+impl From<Option<String>> for BodyInput {
+    fn from(text: Option<String>) -> Self {
+        Self::Text(text)
+    }
+}
+
+pub(crate) async fn body(
+    body: Option<String>,
+    file: Option<PathBuf>,
+    editor: bool,
+) -> Result<BodyInput> {
+    if editor {
+        if body.is_some() || file.is_some() {
+            return Err(GbError::Other(
+                "Choose --body, --body-file or --editor.".into(),
+            ));
+        }
+        if !interactive() {
+            return Err(required(
+                "--body or --body-file; --editor requires terminal stdin/stderr",
+            ));
+        }
+        return Ok(BodyInput::Editor);
+    }
     match (body, file) {
         (Some(_), Some(_)) => Err(GbError::Other("Choose --body or --body-file.".into())),
         (None, Some(file)) => {
@@ -25,11 +73,11 @@ pub(crate) async fn body(body: Option<String>, file: Option<PathBuf>) -> Result<
                 } else {
                     std::fs::read_to_string(file)?
                 };
-                Ok(Some(text))
+                Ok(BodyInput::Text(Some(text)))
             })
             .await
         }
-        (body, None) => Ok(body),
+        (body, None) => Ok(body.into()),
     }
 }
 
@@ -52,7 +100,8 @@ pub(crate) async fn title(title: Option<String>) -> Result<String> {
     Ok(title)
 }
 
-pub(crate) async fn optional_body(body: Option<String>) -> Result<Option<String>> {
+pub(crate) async fn optional_body(body: BodyInput) -> Result<Option<String>> {
+    let body = body.resolve("").await?;
     if body.is_some() || !interactive() {
         return Ok(body);
     }
@@ -66,7 +115,12 @@ pub(crate) async fn optional_body(body: Option<String>) -> Result<Option<String>
     Ok((!text.is_empty()).then_some(text))
 }
 
-pub(crate) async fn comment(body: Option<String>) -> Result<String> {
+pub(crate) async fn comment(body: BodyInput) -> Result<String> {
+    comment_seed(body, "").await
+}
+
+pub(crate) async fn comment_seed(body: BodyInput, seed: &str) -> Result<String> {
+    let body = body.resolve(seed).await?;
     let text = match body {
         Some(text) => text,
         None if !interactive() => return Err(required("--body or --body-file (use - for stdin)")),

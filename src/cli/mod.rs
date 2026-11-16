@@ -5,6 +5,7 @@ pub mod common;
 pub mod completion;
 pub mod config;
 pub mod config_output;
+mod editor;
 pub mod issue;
 pub mod issue_like;
 pub mod label;

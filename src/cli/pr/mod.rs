@@ -80,6 +80,9 @@ pub enum PrCommand {
         /// Read UTF-8 body from a file, or - for stdin
         #[arg(long, conflicts_with = "body", value_name = "FILE|-")]
         body_file: Option<std::path::PathBuf>,
+        /// Compose body in GB_EDITOR, VISUAL, EDITOR or the default editor (terminal only)
+        #[arg(long, short = 'e', conflicts_with_all = ["body", "body_file"])]
+        editor: bool,
         /// Published head branch (default: verify and use current branch). Cross-repo: OWNER:BRANCH or --head-owner.
         #[arg(long)]
         head: Option<String>,
@@ -112,6 +115,9 @@ pub enum PrCommand {
         /// Read UTF-8 body from a file, or - for stdin
         #[arg(long, conflicts_with = "body", value_name = "FILE|-")]
         body_file: Option<std::path::PathBuf>,
+        /// Compose body in GB_EDITOR, VISUAL, EDITOR or the default editor (terminal only)
+        #[arg(long, short = 'e', conflicts_with_all = ["body", "body_file"])]
+        editor: bool,
         /// Add assignee username (repeatable or comma-separated)
         #[arg(long = "add-assignee", value_delimiter = ',')]
         add_assignee: Vec<String>,
@@ -192,6 +198,9 @@ pub struct PrCommentArgs {
     /// Read UTF-8 body from a file, or - for stdin
     #[arg(long, conflicts_with = "body")]
     pub body_file: Option<std::path::PathBuf>,
+    /// Compose body in GB_EDITOR, VISUAL, EDITOR or the default editor (terminal only)
+    #[arg(long, short = 'e', conflicts_with_all = ["body", "body_file"])]
+    pub editor: bool,
     /// Exact path in the saved PR diff (destination path for renames)
     #[arg(long, requires_all = ["line", "side", "web"], conflicts_with = "edit_last")]
     pub file: Option<String>,
@@ -229,6 +238,9 @@ pub enum PrCommentCommand {
         /// Read UTF-8 body from a file, or - for stdin
         #[arg(long, conflicts_with = "body", value_name = "FILE|-")]
         body_file: Option<std::path::PathBuf>,
+        /// Compose body in GB_EDITOR, VISUAL, EDITOR or the default editor (terminal only)
+        #[arg(long, short = 'e', conflicts_with_all = ["body", "body_file"])]
+        editor: bool,
     },
     /// Add at the selected current position group; no persistent parent-ID relation
     Reply {
@@ -239,6 +251,9 @@ pub enum PrCommentCommand {
         /// Read UTF-8 body from a file, or - for stdin
         #[arg(long, conflicts_with = "body", value_name = "FILE|-")]
         body_file: Option<std::path::PathBuf>,
+        /// Compose body in GB_EDITOR, VISUAL, EDITOR or the default editor (terminal only)
+        #[arg(long, short = 'e', conflicts_with_all = ["body", "body_file"])]
+        editor: bool,
         #[arg(long)]
         request_id: Option<String>,
     },
@@ -320,6 +335,7 @@ pub async fn run(
             title,
             body,
             body_file,
+            editor,
             head,
             head_owner,
             base,
@@ -332,7 +348,7 @@ pub async fn run(
                 cli_profile,
                 write::CreateRequest {
                     title,
-                    body: super::input::body(body, body_file).await?,
+                    body: super::input::body(body, body_file, editor).await?,
                     head,
                     head_owner,
                     base,
@@ -347,6 +363,7 @@ pub async fn run(
             title,
             body,
             body_file,
+            editor,
             add_assignee,
             remove_assignee,
             state,
@@ -359,7 +376,7 @@ pub async fn run(
                 write::EditRequest {
                     number,
                     title,
-                    body: super::input::body(body, body_file).await?,
+                    body: super::input::body(body, body_file, editor).await?,
                     add_assignees: normalize_str_vec(add_assignee),
                     remove_assignees: normalize_str_vec(remove_assignee),
                     state,
@@ -402,6 +419,7 @@ pub async fn run(
                 target,
                 body,
                 body_file,
+                editor,
             }) => {
                 review_write::run(
                     cli_hostname,
@@ -412,6 +430,7 @@ pub async fn run(
                         review_write::Action::Edit,
                         body,
                         body_file,
+                        editor,
                         None,
                     ),
                 )
@@ -421,6 +440,7 @@ pub async fn run(
                 target,
                 body,
                 body_file,
+                editor,
                 request_id,
             }) => {
                 review_write::run(
@@ -432,6 +452,7 @@ pub async fn run(
                         review_write::Action::Reply,
                         body,
                         body_file,
+                        editor,
                         request_id,
                     ),
                 )
@@ -447,6 +468,7 @@ pub async fn run(
                         review_write::Action::Delete,
                         None,
                         None,
+                        false,
                         None,
                     ),
                 )
@@ -484,7 +506,7 @@ pub async fn run(
                     )
                     .await;
                 }
-                let body = super::input::body(args.body, args.body_file).await?;
+                let body = super::input::body(args.body, args.body_file, args.editor).await?;
                 write::comment(
                     cli_hostname,
                     cli_repo,
