@@ -1618,6 +1618,7 @@ not network deadlines. Unrelated background work is not cancelled.
 - `Request { source, operation, phase, status, mutating, detail }` (sanitized HTTP context)
 - `Git { operation, reason, source, mutating }`
 - `Cancelled`
+- `Editor { cause, status, message }` (editor_failed; missing/unreadable/invalid body uses invalid_body)
 - `Operation { source, operations }` / `Unverified { source }`
 - `Http(reqwest::Error)`
 - `Io(std::io::Error)`

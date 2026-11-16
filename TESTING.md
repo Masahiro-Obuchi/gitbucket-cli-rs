@@ -868,7 +868,8 @@ Editor lifecycle unit cases launch the test executable as a disposable editor
 on Linux/macOS/Windows. They verify command precedence and quoting, private Unix
 permissions, initial text, replacement saves, exact UTF-8/newline bytes, clearing,
 unchanged/nonzero/invalid/nonregular output, missing executables and cancellation
-cleanup. Unix also checks symlink rejection without deleting the target.
+cleanup. Deleted edited files must also report editor_failed/invalid_body.
+Unix also checks symlink rejection without deleting the target.
 
 Unix CLI tests attach terminal stdin/stderr with a PTY. They verify actual HTTP
 payloads for Issue/PR create/edit and ordinary/inline comments, current-body seeds
@@ -886,7 +887,7 @@ E2E now edits a PR with the terminal editor fixture, verifies the original seed
 and stored body, and checks temporary-file cleanup. Run it at both root/subpath
 with the regular E2E environment; CI includes it in the complete suites.
 
-C3 local validation: **557 ordinary tests passed**, with **47 Docker cases
+C3 local validation: **558 ordinary tests passed**, with **47 Docker cases
 ignored** by the ordinary run. The related live input/editor contract passed at
 both layouts. Rust 1.88 editor cases and all-targets/features check, stable
 check/Clippy with `-D warnings`, formatting and Python archive regressions passed.

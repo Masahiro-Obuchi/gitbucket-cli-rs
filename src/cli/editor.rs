@@ -217,7 +217,13 @@ fn regular(metadata: &std::fs::Metadata) -> bool {
 }
 
 fn open_body(path: &Path) -> Result<File> {
-    if !regular(&std::fs::symlink_metadata(path)?) {
+    let unreadable = || {
+        failure(
+            "invalid_body",
+            "The edited body must be a readable regular file.",
+        )
+    };
+    if !regular(&std::fs::symlink_metadata(path).map_err(|_| unreadable())?) {
         return Err(failure(
             "invalid_body",
             "The editor must leave a regular body file, not a symlink or special file.",
@@ -235,8 +241,8 @@ fn open_body(path: &Path) -> Result<File> {
         use std::os::windows::fs::OpenOptionsExt;
         options.custom_flags(0x00200000); // FILE_FLAG_OPEN_REPARSE_POINT
     }
-    let file = options.open(path)?;
-    if !regular(&file.metadata()?) {
+    let file = options.open(path).map_err(|_| unreadable())?;
+    if !regular(&file.metadata().map_err(|_| unreadable())?) {
         return Err(failure(
             "invalid_body",
             "The edited body is not a regular file.",
@@ -280,6 +286,7 @@ mod tests {
             "empty" => std::fs::write(&path, "").unwrap(),
             "exit" => std::process::exit(7),
             "invalid" => std::fs::write(&path, [0xff]).unwrap(),
+            "missing" => std::fs::remove_file(&path).unwrap(),
             "directory" => {
                 std::fs::remove_file(&path).unwrap();
                 std::fs::create_dir(&path).unwrap();
@@ -366,12 +373,14 @@ mod tests {
 
     #[test]
     fn editor_unchanged_exit_failure_invalid_utf8_and_nonregular_files_never_return_a_body() {
-        for mode in ["unchanged", "exit", "invalid", "directory"] {
+        for mode in ["unchanged", "exit", "invalid", "directory", "missing"] {
             let (dir, command) = fixture(mode);
             let error = edit_with("private seed", command, || false).unwrap_err();
             assert!(!error.to_string().contains("private seed"));
             if mode == "unchanged" {
                 assert_eq!(error.code(), "cancelled");
+            } else {
+                assert_eq!(error.code(), "editor_failed", "mode: {mode}");
             }
             if mode == "exit" {
                 assert_eq!(error.child_exit_code(), Some(7));
