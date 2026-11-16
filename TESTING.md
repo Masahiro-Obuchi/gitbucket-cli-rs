@@ -878,6 +878,10 @@ failure/unchanged input/signals. Editor output must not contaminate JSON stdout.
 Raw-mode fixtures also check that Unix terminal flags and control characters
 return to their original values after successful, failed, unchanged and cancelled
 editor invocations.
+The comparison excludes only macOS's transient `PENDIN` bit: the
+[XNU terminal implementation](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/tty.c)
+sets it when canonical input is restored. Echo/canonical modes, other persistent
+flags and control characters remain checked.
 All platforms check Clap conflicts and nonterminal rejection; a terminal test
 also rejects editor input in JSON-error mode. Tests use per-child environments,
 never the developer's editor or mutable process-global configuration.

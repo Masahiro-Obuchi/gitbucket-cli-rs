@@ -128,19 +128,26 @@ pub fn run_cancel(command: &mut Command, ready: Option<&Path>) -> Output {
     }
     let mut output = child.wait_with_output().unwrap();
     let actual_settings = terminal_settings(terminal_handle.as_raw_fd());
+    // XNU sets PENDIN when switching back to canonical input. It describes
+    // pending-input processing, not a persistent editor terminal setting.
+    let transient_flags = if cfg!(target_os = "macos") {
+        libc::PENDIN
+    } else {
+        0
+    };
     assert_eq!(
         (
             actual_settings.c_iflag,
             actual_settings.c_oflag,
             actual_settings.c_cflag,
-            actual_settings.c_lflag,
+            actual_settings.c_lflag & !transient_flags,
             actual_settings.c_cc,
         ),
         (
             original_settings.c_iflag,
             original_settings.c_oflag,
             original_settings.c_cflag,
-            original_settings.c_lflag,
+            original_settings.c_lflag & !transient_flags,
             original_settings.c_cc,
         ),
         "editor left terminal settings changed"
