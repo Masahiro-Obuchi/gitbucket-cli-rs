@@ -1809,7 +1809,10 @@ historical records, not current coverage claims.
   failure/cancellation cleanup, while preserving file/stdin defaults. See
   [the editor contract](docs/INPUT_DISPLAY.md#explicit-editor-input).
 - Select the version and execute [release gates](RELEASE.md#preparation-gates)
-  as a separate maintainer action. This specification does not publish a release.
+  as a separate maintainer action, using the
+  [unreleased notes and upgrade guide](docs/NEXT_RELEASE.md). Candidate identity,
+  validation and publication remain explicitly pending until recorded for that
+  chosen revision. This specification does not publish a release.
 
 ### Server and deployment requirements
 

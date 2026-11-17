@@ -118,6 +118,10 @@ checks create no tag or release. See [the archive policy](BINARY_ARCHIVES.md).
 
 ## Completed follow-up: C3 optional editor input
 
+Merged in [PR #61](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/61)
+(merge `b7a2ce9`), including Unix terminal restoration, consistent edited-file
+errors and the macOS pending-input adjustment in terminal-mode regressions.
+
 Issue/PR create/edit/comment and inline create/edit/reply support explicit
 `--editor/-e`, exclusive with body/file input. Existing edits preload the current
 body; selection, private temporary data, subprocess exit/cancellation and
@@ -131,6 +135,10 @@ The C1–C4 client/release-policy follow-ups are implemented. Choosing a release
 version, publishing a crate, tagging or dispatching a release is a separate
 maintainer action; the completed client/release-policy changes perform none of them.
 See [release gates](../RELEASE.md#preparation-gates).
+The [unreleased notes and upgrade guide](NEXT_RELEASE.md) now provide the
+release-note draft, migration sequence and candidate/publication handoff.
+They select no version and do not treat their own validation as a future
+release candidate's evidence.
 
 ## Remaining server and deployment requirements
 
