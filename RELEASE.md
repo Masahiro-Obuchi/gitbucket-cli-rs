@@ -11,6 +11,12 @@ requirements](docs/REFACTOR_STATUS.md) before preparing a release. A manifest
 version of `0.6.1` does not imply that an existing `v0.6.1` binary contains later
 refactor commits.
 
+[Draft next-release notes and the upgrade procedure](docs/NEXT_RELEASE.md)
+describe the merged changes, migration order and automation compatibility.
+They remain unreleased until a maintainer selects a new version and candidate
+commit. The document's handoff table separates that pending work from tests of
+an earlier preparation PR.
+
 ## Versioning
 
 Use a new SemVer-style tag with a leading `v`. Its version must match both
@@ -20,6 +26,9 @@ The refactor changes authentication scope/status, JSON absence/augmentation,
 noninteractive input, PR defaults and merge verification. Review those
 [upgrade-sensitive behaviors](docs/REFACTOR_STATUS.md#upgrade-notes-to-carry-into-the-next-release)
 when selecting a version and writing release notes.
+Use the [draft notes](docs/NEXT_RELEASE.md#draft-release-notes) as a starting point,
+then finalize them for the exact candidate. Do not relabel the existing v0.6.1
+release or infer crate-registry publication from a GitHub Release.
 
 This source revision declares Rust 1.88.0 as its MSRV with the committed
 lockfile. CI checks all four release targets at that version, while release

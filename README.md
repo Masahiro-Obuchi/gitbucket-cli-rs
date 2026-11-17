@@ -24,6 +24,8 @@ The PR-00–17 refactor series is merged. See [delivered work, upgrade notes and
 remaining requirements](docs/REFACTOR_STATUS.md) for the implementation status
 and [release preparation](RELEASE.md) before choosing and publishing a version.
 The Cargo manifest version alone does not identify a released set of changes.
+The [unreleased notes and upgrade guide](docs/NEXT_RELEASE.md) explain the
+compatibility changes and the remaining checks before publishing a new version.
 
 ## Installation
 
