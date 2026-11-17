@@ -151,7 +151,7 @@ also verify the Cookie actor; an explicit `GB_WEB_USER` permits a different acto
 | Errors | Handle exits 0/1/2 and `error.code`/`cause`; inspect `outcome=unverified` before any retry. `--json-errors` disables prompts and editor launch. |
 | Creation/input | Supply `--title` in automation. An omitted body is optional; stdin is consumed only with `--body-file -`. Do not combine body sources. Use `auth login --with-token` for token stdin. |
 | PR selection | Omitted `--base` uses `default_branch`. An inferred head must match the published commit; explicit `--head` deliberately selects remote content. Push remains a separate user action. |
-| Checkout/diff | Expect a saved-commit comparison and refusal of dirty/conflicting local state. Rename or reconcile a legacy conflicting branch explicitly; no automatic branch reset is performed. |
+| Checkout/diff | `pr diff` compares saved commits and excludes working-tree edits; it does not require a clean worktree. `pr checkout` requires a clean worktree/index, including untracked files, and refuses conflicting branches/worktrees. Rename or reconcile a legacy conflicting branch explicitly; no automatic branch reset is performed. |
 | Merge JSON | Consume the CLI report, with `atomic=false` and the API result under `result`. `--match-head-commit` pins a full reviewed SHA for client checks, not a server transaction. |
 | Inline retries | Retain `GB_CONFIG_DIR/review-writes` and stable request IDs when reconciling uncertain submissions. Do not delete receipts and blindly resend a comment. |
 
