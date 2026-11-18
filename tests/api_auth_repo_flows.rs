@@ -47,6 +47,30 @@ fn auth_login_success_saves_default_host_and_user() {
 }
 
 #[test]
+fn auth_login_saves_a_reusable_base_url_after_trimming_the_api_suffix() {
+    let env = GbTestEnv::new();
+    let (port, server) = spawn_server("200 OK", r#"{"login":"alice"}"#);
+    let base = format!("http://127.0.0.1:{port}/gitbucket");
+    let input = format!("{base}//api/v3/");
+    let output = with_stdin(
+        env.command()
+            .args(["auth", "login", "-H", &input, "--with-token"]),
+        b"fixture-token",
+    );
+    support::gb_cmd::assert_success(&output);
+    assert_eq!(server.join().unwrap().target, "/gitbucket/api/v3/user");
+
+    let output = env
+        .command()
+        .args(["auth", "status", "--offline", "--json"])
+        .output()
+        .unwrap();
+    support::gb_cmd::assert_success(&output);
+    let status: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(status["effective_actor"]["instance"], base);
+}
+
+#[test]
 fn auth_login_with_profile_saves_profile_scoped_host() {
     let env = GbTestEnv::new();
     let (port, server) = spawn_server("200 OK", r#"{"login":"alice"}"#);

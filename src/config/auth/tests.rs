@@ -94,6 +94,11 @@ fn instance_keys_preserve_scheme_and_remove_api_suffix() {
         instance_key("gitbucket.example.com/gitbucket", "http").unwrap(),
         "http://gitbucket.example.com/gitbucket"
     );
+    assert!(instance_key(
+        "https://gitbucket.example.com/gitbucket/api/v3//api/v3",
+        "https"
+    )
+    .is_err());
 }
 
 #[test]

@@ -14,8 +14,14 @@ pub(crate) fn instance_key(host: &str, protocol: &str) -> Result<String> {
         return Err(invalid());
     }
     let base = crate::api::url::normalize_web_base_url(host, protocol).map_err(|_| invalid())?;
-    crate::api::url::normalize_origin_path_or_url(&base, &base).map_err(|_| invalid())?;
-    Ok(base)
+    // Removing the API suffix can expose trailing slashes. Store a URL
+    // that normalizes to itself when loaded on the next invocation.
+    let base = base.trim_end_matches('/');
+    if base.ends_with("/api/v3") {
+        return Err(invalid());
+    }
+    crate::api::url::normalize_origin_path_or_url(base, base).map_err(|_| invalid())?;
+    Ok(base.to_owned())
 }
 
 pub(crate) fn instance_protocol(instance: &str) -> &str {
