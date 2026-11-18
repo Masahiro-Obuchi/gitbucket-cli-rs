@@ -13,7 +13,7 @@ mod write;
 
 #[derive(Args)]
 #[command(
-    after_help = "Discussion and visible inline review comments are supported. Approval, request-changes and dismissal decisions have no verified core API in GitBucket 4.44.0 and are not implemented by posting comments. Human view reports review decision as unknown. See docs/REVIEW_MERGE.md for the tested support matrix."
+    after_help = "Ordinary numbered commands require canonical PR details that match the requested number and any reported base repository. Diff, checkout and review reads have separate saved-snapshot rules. Discussion and visible inline review comments are supported. Approval, request-changes and dismissal decisions have no verified core API in GitBucket 4.44.0 and are not implemented by posting comments. Human view reports review decision as unknown. See docs/REVIEW_MERGE.md for the tested support matrix."
 )]
 pub struct PrArgs {
     #[command(subcommand)]

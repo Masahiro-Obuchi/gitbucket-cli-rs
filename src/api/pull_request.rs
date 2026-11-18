@@ -73,29 +73,6 @@ impl ApiClient {
         .await
     }
 
-    /// Get a single pull request
-    pub async fn get_pull_request(
-        &self,
-        owner: &str,
-        repo: &str,
-        number: u64,
-    ) -> Result<PullRequest> {
-        let pr = self.pull_request_details(owner, repo, number).await?;
-        match pr {
-            Some(pr) => Ok(pr),
-            None => {
-                let pr = self
-                    .list_pull_requests(owner, repo, "all")
-                    .await?
-                    .into_iter()
-                    .find(|pr| pr.number == number)
-                    .ok_or_else(|| GbError::Other(format!("Pull request #{number} not found")))?;
-                // Summary ownership cannot prove which fork owns the head.
-                Ok(pr.with_field("head", serde_json::Value::Null)?)
-            }
-        }
-    }
-
     /// Create a pull request
     pub async fn create_pull_request(
         &self,

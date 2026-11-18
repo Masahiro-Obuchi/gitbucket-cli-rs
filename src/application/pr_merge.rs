@@ -80,12 +80,16 @@ pub(crate) async fn merge(
 ) -> Result<MergeReport> {
     let mut progress = Progress::default();
     let step = progress.plan("pr.merge", Route::Rest);
-    // Compatibility lookup removes unverified summary heads, so it cannot
-    // authorize a merge when canonical details are null/unavailable.
     let first = client
-        .get_pull_request(owner, repo, number)
+        .pull_request_details(owner, repo, number)
         .await
-        .map_err(|e| progress.error(e))?;
+        .map_err(|e| progress.error(e))?
+        .ok_or_else(|| {
+            progress.error(check(
+                "missing_head",
+                "Canonical PR details are unavailable; no merge was attempted.",
+            ))
+        })?;
     let head = target(&first, owner, repo, number).map_err(|e| progress.error(e))?;
     ready(&first).map_err(|e| progress.error(e))?;
     let expected = expected.unwrap_or_else(|| head.clone());

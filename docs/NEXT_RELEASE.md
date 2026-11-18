@@ -29,7 +29,8 @@ before replacing a binary used by scripts.
 - Issue/PR/milestone edits preserve unspecified fields and associations. Verified
   Web operations check their actor and stored result; PR title/body/state use
   REST, while PR assignee Web writes require explicit `--web`.
-- PR diff and checkout use saved commit identities. Checkout protects existing
+- Numbered PR commands such as view and merge require a detail object. PR diff
+  and checkout use saved commit identities. Checkout protects existing
   branches/worktrees; inferred PR heads must match the published branch, and an
   omitted base uses the repository default branch. There is no automatic push.
 - API-backed JSON retains unknown fields and distinguishes missing, null, false
