@@ -803,8 +803,9 @@ JSON responses are pretty-printed, and zero-byte success responses (including
 204) print `null`. Top-level strings and objects containing `status`/`body` are
 preserved as returned. `gb api` does not apply PR-command wrapper compatibility
 or treat non-JSON text as JSON. Internal diff/HTML reads use a separate text
-contract. Typed JSON endpoints reject missing or invalid JSON. Ordinary PR commands
-require a detail object. The [saved-snapshot reader](docs/PR_SNAPSHOTS.md) can
+contract. Typed JSON endpoints reject missing or invalid JSON. Ordinary numbered
+PR commands require a detail object matching the requested number and any
+reported base repository. The [saved-snapshot reader](docs/PR_SNAPSHOTS.md) can
 recover the saved commits when detail is absent after fork deletion.
 
 ## Completion command

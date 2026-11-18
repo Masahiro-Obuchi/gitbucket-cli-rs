@@ -37,7 +37,7 @@ fn numbered_pr_operations_validate_the_target_before_using_issue_subresources() 
         vec!["pr", "checkout", "5"],
         vec!["pr", "diff", "5"],
     ];
-    for mode in ["404", "null", "mismatch", "forbidden"] {
+    for mode in ["404", "null", "mismatch", "wrong_base", "forbidden"] {
         for args in &actions {
             let env = GbTestEnv::new();
             let (status, body) = match mode {
@@ -46,6 +46,15 @@ fn numbered_pr_operations_validate_the_target_before_using_issue_subresources() 
                 "mismatch" => (
                     "200 OK",
                     json!({"number":6,"title":"another PR","state":"open"}),
+                ),
+                "wrong_base" => (
+                    "200 OK",
+                    json!({
+                        "number": 5, "title": "PR in another repository", "state": "open",
+                        "head": {"ref": "topic", "sha": "1".repeat(40)},
+                        "base": {"ref": "main", "sha": "2".repeat(40),
+                            "repo": {"name": "other", "full_name": "alice/other"}}
+                    }),
                 ),
                 _ => ("403 Forbidden", json!({"message":"denied"})),
             };
@@ -85,6 +94,10 @@ fn numbered_pr_operations_validate_the_target_before_using_issue_subresources() 
                     "null" if args[1] == "merge" => "Canonical PR details are unavailable",
                     "null" => "Canonical details for pull request #5 are unavailable",
                     "mismatch" => "PR target mismatch",
+                    "wrong_base" if matches!(args[1], "checkout" | "diff") => {
+                        "PR base repository does not match"
+                    }
+                    "wrong_base" => "PR target mismatch",
                     _ => "API error (403)",
                 }),
                 "{args:?}, {mode}: {message}"

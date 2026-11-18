@@ -66,7 +66,8 @@ running recheck retains the original POST error/status/outcome and adds context
 that the recheck was cancelled. Lookup diagnostics never assert that an earlier
 create could not have succeeded. The POST is never retried.
 
-Ordinary numbered PR commands require a detail object. A separate
+Ordinary numbered PR commands require a detail object and verify its number
+and any reported base repository. A separate
 [saved-snapshot reader](PR_SNAPSHOTS.md) can recover the verified 200/empty
 deleted-fork detail response using saved SHAs from the PR collection and retained
 Git objects. It verifies the saved comparison independently of the collection's

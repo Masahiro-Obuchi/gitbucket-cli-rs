@@ -947,7 +947,8 @@ claim that a prior creation was not applied. The POST is not retried.
 Detection and creation are not atomic under concurrent writers.
 
 Numbered PR operations read `GET /repos/{owner}/{repo}/pulls/{number}` and
-verify the returned number. Ordinary view, edit, merge and discussion commands
+verify the returned number and any reported base repository. Ordinary view,
+edit, merge and discussion commands
 require a detail object. Discussion commands call the Issue comments API only
 after that validation. Saved comparisons and review reads have their own
 absent-detail rules. See [snapshot design](docs/PR_SNAPSHOTS.md) and
@@ -1545,9 +1546,10 @@ or an interactive prompt. Git child termination/reaping may add cleanup time.
 | PR merge compatibility | Only this operation accepts the verified 4.44.0 ActionResult envelope: exactly status/body/headers, matching HTTP status, object headers, and a string body containing the merge object. A boolean merged field is required. |
 
 Wrapper inference is not global and does not depend on arbitrary status/body
-property names. Ordinary PR details fall back to the PR collection only for the verified
-JSON null response. The saved-snapshot reader additionally handles the verified
-200/zero-byte response above; neither path recovers a broken transfer or malformed data.
+property names. Ordinary numbered PR commands require an object and stop on
+JSON null or an empty body. Saved comparisons and review reads can recover
+JSON null or the verified 200/zero-byte response through the separate snapshot
+detail contract. A broken transfer or malformed response remains an error.
 
 HTTP transport/decode errors preserve the request method/path and phase. Known
 HTTP status is retained even when its body fails. Source codes remain
