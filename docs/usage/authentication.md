@@ -1,4 +1,4 @@
-# Authentication, profiles and instance keys
+# Authentication and configuration
 
 Runtime credentials and settings operations have different lookup rules.
 Runtime authentication selects `GB_TOKEN`, then the selected profile's matching
@@ -35,6 +35,41 @@ credentials. Clearing profile default-host instead removes that routing choice.
 Removing the global default credential clears the global default. Set another
 default explicitly with `gb config set default-host` when needed.
 
+## Login and configuration storage
+
+```sh
+gb auth login -H https://bucket.example/gitbucket --with-token < token.txt
+gb auth login --profile work -H https://bucket.example/gitbucket
+gb config set profile work --default-repo alice/project
+gb config set default-profile work
+gb config list --json
+```
+
+`auth login` verifies the token with `/user` and saves the selected instance as the scope's default. For a full URL, its scheme takes precedence over `--protocol`. For a bare hostname, login accepts `--protocol http` or `--protocol https` and defaults to HTTPS. See [token input](input-and-display.md#text-input).
+
+At runtime, the explicit `--hostname/-H`, `GB_HOST`, and the selected scope's saved default host are tried in that order. `--profile`, `GB_PROFILE`, and `default_profile` select the profile in that order. `GB_TOKEN` takes precedence over saved credentials, followed by credentials in the selected profile and global credentials for the selected target.
+
+`gb config path` prints the path to `config.toml` under `GB_CONFIG_DIR` or the default configuration directory (`~/.config/gb`). Each host entry stores `token` and `user`. The URL key carries the scheme. For example:
+
+```toml
+default_host = "https://bucket.example/gitbucket"
+default_profile = "work"
+
+[hosts."https://bucket.example/gitbucket"]
+token = "your-global-token"
+user = "alice"
+
+[profiles.work]
+default_host = "https://bucket.example/gitbucket"
+default_repo = "alice/project"
+
+[profiles.work.hosts."https://bucket.example/gitbucket"]
+token = "your-profile-token"
+user = "alice"
+```
+
+Writers wait up to five seconds for the OS lock, reload the current file, sync a private temporary file, and atomically replace the configuration. Keep the empty `config.toml.lock` file in place so concurrent writers lock the same file. The configuration and lock paths must be regular files. On Unix, the files use mode `0600` and newly created configuration directories use `0700`. On Windows, they inherit access permissions from the parent directory.
+
 ## Verified status and offline inventory
 
 ```sh
@@ -66,8 +101,7 @@ Verification is `verified`, `offline`, `rejected` (401/403), or `unverified`
 and leaves `user: null`. Online verification failure or missing effective
 credentials exits 1; `--json` still prints the status record before the error on
 stderr. Offline inventory exits 0 when readable, even without credentials.
-Status never includes tokens. This changes the previous offline-by-default
-behavior and the old assumption that effective_actor.user was a saved username.
+Status omits tokens.
 
 ## Scheme and instance matching
 
@@ -96,3 +130,25 @@ $ gb config set default-host http://bucket.example/gitbucket --profile work
 For configurations with bare host keys or defaults, set `GB_CONFIG_DIR` to a
 fresh directory, run `gb auth login` with the full deployment URL, and recreate
 any profile defaults you use.
+
+
+## Git authentication
+
+`gb repo clone OWNER/REPO`, `gb pr checkout`, and `gb pr diff` reuse the selected
+GitBucket user/token for HTTP(S) Git URLs on the same scheme, host, port, and
+configured base path. With `GB_TOKEN` alone, also set `GB_USER` for private Git
+access. SSH and other clone origins use Git's own authentication.
+
+Credentials are supplied by a process-local Git credential helper, not placed in
+Git command arguments, clone URLs, or Git configuration files. The helper checks
+the exact URL Git requests, including after `url.*.insteadOf` rewriting, and does
+not save credentials through existing helpers. Token-bearing commands allow only
+HTTP(S) transports, even if a local URL rewrite enables another transport.
+Token-bearing HTTP transfers do not follow redirects, including after URL rewriting;
+configure the direct clone URL if a proxy redirects it.
+The token is passed to the helper in the Git subprocess environment, so this does
+not protect against a local process with permission to inspect that environment.
+
+Full-URL `gb repo clone` uses Git's own credentials. HTTP URLs containing passwords
+are rejected; use a credential helper or `OWNER/REPO` with `gb auth login` instead.
+Existing HTTP remote userinfo is removed from the command URL used by PR fetches.

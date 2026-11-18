@@ -11,15 +11,16 @@ const PUBLIC_FILES: &[(&str, &str)] = &[
     ("tests/fixtures/nested/contract.json", "{}\n"),
     ("tests/fixtures/layout.html", "<p>fixture</p>\n"),
     ("tests/fixtures/README.md", "# Fixtures\n"),
-    ("docs/nested/guide.md", "# Public documentation\n"),
+    ("docs/README.md", "# Documentation index\n"),
+    ("docs/usage/guide.md", "# Public documentation\n"),
     ("README.md", "# Package policy fixture\n"),
-    ("SPEC.md", "# Specification\n"),
-    ("RELEASE.md", "# Release process\n"),
-    ("TESTING.md", "# Testing guide\n"),
     ("LICENSE", "MIT\n"),
 ];
 
 const LOCAL_FILES: &[&str] = &[
+    "SPEC.md",
+    "RELEASE.md",
+    "TESTING.md",
     "review/private.md",
     "review/nested/results.json",
     "future-local-notes/notes.md",
@@ -237,21 +238,13 @@ fn package_policy_is_independent_of_tracked_untracked_and_ignored_local_files() 
 }
 
 #[test]
-fn package_policy_does_not_expand_root_file_names_into_directories() {
+fn package_policy_does_not_expand_license_into_a_directory() {
     let fixture = fixture(false);
     let root = fixture.path();
-    for name in ["LICENSE", "SPEC.md", "RELEASE.md", "TESTING.md"] {
-        std::fs::remove_file(root.join(name)).unwrap();
-        write(
-            root,
-            &format!("{name}/runtime.env"),
-            "synthetic local data\n",
-        );
-    }
+    std::fs::remove_file(root.join("LICENSE")).unwrap();
+    write(root, "LICENSE/runtime.env", "synthetic local data\n");
     let files = package_files(root);
-    for name in ["LICENSE", "SPEC.md", "RELEASE.md", "TESTING.md"] {
-        assert!(!files.contains(&format!("{name}/runtime.env")));
-    }
+    assert!(!files.contains("LICENSE/runtime.env"));
     assert!(files.contains("src/main.rs"));
     cargo(root, &["package", "--locked", "--offline", "--allow-dirty"]);
 }

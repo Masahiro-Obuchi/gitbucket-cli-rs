@@ -17,7 +17,8 @@ spec.loader.exec_module(release)
 
 # Independent distribution contract: removing a guide or target in the
 # packager must not silently remove the same expectation from these tests.
-PUBLIC_ROOT = ("README.md", "SPEC.md", "RELEASE.md", "TESTING.md", "LICENSE")
+PUBLIC_ROOT = ("README.md", "LICENSE")
+PUBLIC_DOCS = {"docs/README.md", "docs/usage/contract.md"}
 ARCHIVES = (
     ("x86_64-unknown-linux-gnu", "gb", "tar.gz"),
     ("x86_64-apple-darwin", "gb", "tar.gz"),
@@ -36,11 +37,14 @@ class ReleaseArchiveTests(unittest.TestCase):
         for name in PUBLIC_ROOT:
             self.write(name, f"# {name}\n")
         self.write(
-            "README.md", "# Guide\n\n[Contract](docs/contract.md#details)\n[Spec](SPEC.md)\n",
+            "README.md", "# Guide\n\n[Documentation](docs/README.md#usage)\n",
         )
         self.write(
-            "docs/contract.md", "# Contract\n\n## Details\n"
-            "[Home](../README.md#guide)\n[Evidence](../tests/evidence.rs)\n",
+            "docs/README.md", "# Documentation\n\n## Usage\n\n[Contract](usage/contract.md#details)\n",
+        )
+        self.write(
+            "docs/usage/contract.md", "# Contract\n\n## Details\n"
+            "[Home](../../README.md#guide)\n[Evidence](../../tests/evidence.rs)\n",
         )
         self.write("tests/evidence.rs", "// public evidence\n")
         self.binary = Path(self.temp.name) / "compiled-binary"
@@ -67,31 +71,32 @@ class ReleaseArchiveTests(unittest.TestCase):
                 archive = self.package(target)
                 files = self.contents(archive)
                 self.assertTrue(archive.name.endswith("." + extension))
-                self.assertEqual(set(files), set(PUBLIC_ROOT) | {"docs/contract.md", binary})
+                self.assertEqual(set(files), set(PUBLIC_ROOT) | PUBLIC_DOCS | {binary})
                 self.assertEqual(files[binary], self.binary.read_bytes())
-                self.assertIn(b"(docs/contract.md#details)", files["README.md"])
-                self.assertIn(b"(../README.md#guide)", files["docs/contract.md"])
+                self.assertIn(b"(docs/README.md#usage)", files["README.md"])
+                self.assertIn(b"(usage/contract.md#details)", files["docs/README.md"])
+                self.assertIn(b"(../../README.md#guide)", files["docs/usage/contract.md"])
                 self.assertIn(
-                    b"/blob/v1.2.3-rc.1%2Bdocs/tests/evidence.rs", files["docs/contract.md"],
+                    b"/blob/v1.2.3-rc.1%2Bdocs/tests/evidence.rs", files["docs/usage/contract.md"],
                 )
-                self.assertNotIn(b"main/", files["docs/contract.md"])
-        self.assertIn("../tests/evidence.rs", (self.root / "docs/contract.md").read_text())
+                self.assertNotIn(b"main/", files["docs/usage/contract.md"])
+        self.assertIn("../../tests/evidence.rs", (self.root / "docs/usage/contract.md").read_text())
 
     def test_only_public_documents_are_selected(self):
         for name in [
             "review/private.md", ".codex", ".tmp/runtime.env", "docs/.private.md",
             "docs/.cache/notes.md", "docs/local.md/nested.md", "docs/runtime.env",
-            "docs/debug.txt", "unrelated/guide.md",
+            "docs/debug.txt", "unrelated/guide.md", "SPEC.md", "TESTING.md", "RELEASE.md",
         ]:
             self.write(name, "synthetic local data\n")
         self.write("docs/nested/guide.md", "# More\n")
         files = self.contents(self.package())
         self.assertEqual(
-            set(files), set(PUBLIC_ROOT) | {"gb", "docs/contract.md", "docs/nested/guide.md"},
+            set(files), set(PUBLIC_ROOT) | PUBLIC_DOCS | {"gb", "docs/nested/guide.md"},
         )
 
     def test_missing_file_and_anchor_stop_packaging(self):
-        for url in ["docs/missing.md", "docs/contract.md#missing", "tests/missing.rs"]:
+        for url in ["docs/missing.md", "docs/usage/contract.md#missing", "tests/missing.rs"]:
             with self.subTest(url=url):
                 self.write("README.md", f"# Guide\n[Broken]({url})\n")
                 with self.assertRaises((ValueError, OSError)):
@@ -156,10 +161,10 @@ class ReleaseArchiveTests(unittest.TestCase):
             return make_temp(*args, **kwargs)
 
         with mock.patch.object(release.tempfile, "TemporaryDirectory", temporary_directory):
-            self.assertIn("docs/contract.md", self.contents(self.package()))
+            self.assertIn("docs/usage/contract.md", self.contents(self.package()))
 
     def test_crlf_document_bytes_and_links_are_preserved(self):
-        original = b"# Guide\r\n[Contract](docs/contract.md#details)\r\n`example`\r\n"
+        original = b"# Guide\r\n[Contract](docs/usage/contract.md#details)\r\n`example`\r\n"
         (self.root / "README.md").write_bytes(original)
         self.assertEqual(self.contents(self.package())["README.md"], original)
 
@@ -186,7 +191,7 @@ class ReleaseArchiveTests(unittest.TestCase):
     def test_verifier_rejects_missing_docs_and_changed_binary(self):
         archive = self.package("x86_64-pc-windows-msvc")
         expected = self.contents(archive)
-        for omitted in ["docs/contract.md", "gb.exe", None]:
+        for omitted in ["docs/usage/contract.md", "gb.exe", None]:
             with zipfile.ZipFile(archive, "w") as package:
                 for name, content in expected.items():
                     if name != omitted:

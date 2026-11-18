@@ -77,7 +77,7 @@ new submission remains unverified and is not repeated or automatically deleted.
 Success JSON includes `status`, `action`, qualified `identity`, `web_actor`,
 `route: web`, `reused`, `review`, `reply_to`, `reply_semantics`, `verification`,
 `base_commit_id` and `head_commit_id`. Deletion has `review: null`. The nested
-review retains the [reader's source representation](REVIEW_COMMENTS.md), including
+review retains the [reader's source representation](review-comments.md), including
 unknown stored PR association/original metadata and Web display positions;
 `verification` separately records this operation's Git/body or absence check.
 Normal output prints the qualified ID and available URL. Readback failure prints

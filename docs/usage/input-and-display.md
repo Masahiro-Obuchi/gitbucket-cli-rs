@@ -1,7 +1,4 @@
-# Explicit input and human display
-
-PR-16 changes the defaults for noninteractive creation and PR base selection.
-It adds no automatic push. C3 adds only explicitly requested editor processes.
+# Input and terminal display
 
 ## Text input
 
@@ -17,7 +14,7 @@ as supplied; input does not trim or render Markdown. An empty issue/PR descripti
 is valid, including an empty file used to clear a description on edit. Ordinary
 and inline comments must contain non-whitespace text. Inline writes retain the
 existing GitBucket Web form restrictions and trimming described in
-[review writes](REVIEW_WRITES.md); they do not promise byte preservation by Web.
+[review writes](../reference/review-writes.md); they do not promise byte preservation by Web.
 
 With terminal stdin and stderr, creation may prompt for missing title/body and
 comments may prompt for missing body. Without those terminals, or with
@@ -164,5 +161,4 @@ a TTY. Terminal/font Unicode widths can still differ from the Unicode tables.
 JSON retains the original values, escaped by the JSON serializer rather than
 rewritten for display. Completion and raw PR diff streams also bypass human
 display conversion so they remain usable as shell code and patches. Use
-`gb api` or JSON for exact REST content. Existing pager and BrokenPipe behavior
-is unchanged.
+`gb api` or JSON for exact REST content. See [pager and pipe behavior](../reference/automation.md#output-and-pager-lifecycle).

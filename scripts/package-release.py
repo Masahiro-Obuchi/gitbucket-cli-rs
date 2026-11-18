@@ -16,7 +16,7 @@ import zipfile
 
 
 ROOT = Path(__file__).resolve().parent.parent
-ROOT_FILES = ("README.md", "SPEC.md", "RELEASE.md", "TESTING.md", "LICENSE")
+ROOT_FILES = ("README.md", "LICENSE")
 TARGETS = {
     "x86_64-unknown-linux-gnu": ("gb", "tar.gz"),
     "x86_64-apple-darwin": ("gb", "tar.gz"),
@@ -46,8 +46,8 @@ def map_links(text, transform):
         return match["before"] + target + match["after"]
 
     def flush():
-        # Labels in the existing guides wrap across lines. Keep each prose
-        # block together, while never interpreting a fenced example as a link.
+        # Process the prose together so links can span lines. Fenced examples
+        # are handled separately.
         result.append(TOKEN.sub(replace, "".join(prose)))
         prose.clear()
 

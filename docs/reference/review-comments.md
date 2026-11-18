@@ -7,11 +7,11 @@ gb pr comment list 42 --kind review --no-pager
 gb pr comment list 42 --kind discussion --json
 ```
 
-`--kind` selects sources, with `discussion` as the compatibility default.
+`--kind` selects sources, with `discussion` as the default.
 `review` includes file/line CommitComments and whole-commit comments. `all` selects
 both kinds of source; its coverage describes the actual scope. `--edit-last`
 continues to edit only ordinary discussion comments. A comment mutation does not
-accept the read filter. [Inline writes](REVIEW_WRITES.md) use separate explicit
+accept the read filter. [Inline writes](review-writes.md) use separate explicit
 position/ID arguments; the read filter does not authorize a mutation.
 
 | Source | Reader | Credentials |
@@ -29,7 +29,7 @@ The Cookie reader also rejects an expired session/login redirect.
 The verified server advertises review URLs but `/pulls/N/comments` returns 404;
 Issue comments omit CommitComments. This reader uses the proven Web representation
 without repeatedly probing that unsupported REST route. An advertised URL is not
-proof of a supported operation. [Upstream API requirements](UPSTREAM_REVIEW_API.md)
+proof of a supported operation. [Upstream API requirements](gitbucket-compatibility.md#upstream-review-api)
 describe how a complete token-only reader could replace this adapter.
 
 ## Output contracts
@@ -42,7 +42,7 @@ default as ordinary discussion.
 `pr view --comments --json` preserves the PR's API fields, including any
 `comments` value. It adds `comment_details` when discussion is requested and
 `review_comments` and `comment_coverage` when reviews are requested. Field name
-collisions return a composition error. See [the JSON contract](JSON_OUTPUT.md).
+collisions return a composition error. See [the JSON contract](automation.md#api-json).
 
 Both commands use the same application reader and ordering: ordinary comments by
 ID ascending, then reviews by CommitComment ID ascending. This groups sources
@@ -101,7 +101,7 @@ REST. Consequently
 visible review is read. The CLI does not claim complete stored history or recover
 hidden records by guessing IDs. These limits were reproduced in dedicated fixtures.
 
-## Implementation and validation
+## Validation
 
 - `domain/review_comment.rs`: source-specific identities and review data with
   explicit unknowns.

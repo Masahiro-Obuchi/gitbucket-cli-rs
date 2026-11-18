@@ -62,7 +62,7 @@ gb milestone edit 1 --state closed
 
 Label descriptions are not persisted by the verified GitBucket 4.44.0 adapter;
 `--description`/`--remove-description` fail before mutation. See the repository
-README and `docs/UPSTREAM_LABEL_API.md` for the server requirements.
+`docs/usage/commands.md` and `docs/reference/gitbucket-compatibility.md` for the server requirements.
 
 ## Raw API Calls
 

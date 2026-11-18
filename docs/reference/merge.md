@@ -9,7 +9,7 @@ claim. Other versions and extensions need their own contract tests.
 | Capability | Verified route / CLI behavior | Limit |
 | --- | --- | --- |
 | Ordinary PR discussion | REST Issue comments, `pr comment` | A comment is not an approval or change request |
-| Visible inline review read/write | Version-specific Web adapters; `pr comment --kind review/all` and inline writes | Visible conversation, not complete stored review history; see [read](REVIEW_COMMENTS.md) and [write](REVIEW_WRITES.md) contracts |
+| Visible inline review read/write | Version-specific Web adapters; `pr comment --kind review/all` and inline writes | Visible conversation, not complete stored review history; see [read](review-comments.md) and [write](review-writes.md) contracts |
 | Approve / request changes / dismiss a decision | Core `/pulls/N/reviews` and dismissal routes are absent in 4.44.0; no CLI adapter | No comment is substituted or reported as a formal decision |
 | Draft, labels, assignees, merged-by | Reported PR API metadata is shown and retained in JSON | Missing metadata stays unknown |
 | Review decision | Human view explicitly reports unknown / not queried | Neither comment text/counts nor a missing reviews URL proves approval |
@@ -112,7 +112,7 @@ unknown parameter or client GET cannot establish them.
 
 Formal review support likewise needs a verified decision resource with actor,
 commit scope, lifecycle/dismissal semantics and readable results. Complete stored
-review history has the additional [upstream requirements](UPSTREAM_REVIEW_API.md).
+review history has the additional [upstream requirements](gitbucket-compatibility.md#upstream-review-api).
 The core's missing features are not marked complete by this PR.
 
 Pinned primary sources: [merge controller](https://github.com/gitbucket/gitbucket/blob/4.44.0/src/main/scala/gitbucket/core/controller/api/ApiPullRequestControllerBase.scala),
