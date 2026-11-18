@@ -66,7 +66,7 @@ documentation/link checks aligned; see `docs/BINARY_ARCHIVES.md`.
 ## Current Functional Notes
 
 - `--hostname/-H` and `GB_HOST` accept either a bare host or a full base URL.
-- Auth config is stored in `~/.config/gb/config.toml` (or `GB_CONFIG_DIR`) under `[hosts."<host-or-url>"]`.
+- Auth config is stored in `~/.config/gb/config.toml` (or `GB_CONFIG_DIR`) under `[hosts."<normalized-http(s)-base-url>"]`.
 - Repository auto-resolution supports HTTPS, SSH, and GitBucket `/git/` clone URLs.
 - `issue list` and `pr list` support `--state open|closed|all` and pass that filter through to the API.
 - Issue/PR bodies support mutually exclusive `--body`, `--body-file` and explicit

@@ -49,7 +49,7 @@ pub enum RepoCommand {
         #[arg(long)]
         add_readme: bool,
         /// Group to create under
-        #[arg(long = "group", visible_alias = "org")]
+        #[arg(long = "group")]
         group: Option<String>,
     },
     /// Clone a repository
@@ -84,7 +84,7 @@ pub enum RepoCommand {
         #[arg(value_name = "OWNER/REPO")]
         repo: Option<String>,
         /// Group to fork into (defaults to the REST token's user)
-        #[arg(long = "group", visible_alias = "org")]
+        #[arg(long = "group")]
         group: Option<String>,
     },
 }

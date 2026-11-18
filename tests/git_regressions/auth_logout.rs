@@ -11,7 +11,6 @@ default_host = "https://gitbucket.example.com/gitbucket"
 [hosts."https://gitbucket.example.com/gitbucket"]
 token = "secret-token"
 user = "alice"
-protocol = "https"
 "#,
     )
     .unwrap();
@@ -44,13 +43,12 @@ fn auth_logout_with_profile_preserves_fallback_global_credentials() {
 default_profile = "work"
 
 [profiles.work]
-default_host = "gitbucket.example.com"
+default_host = "https://gitbucket.example.com"
 default_repo = "alice/project"
 
-[hosts."gitbucket.example.com"]
+[hosts."https://gitbucket.example.com"]
 token = "global-token"
 user = "alice"
-protocol = "https"
 "#,
     )
     .unwrap();
@@ -85,17 +83,15 @@ fn auth_logout_with_profile_prefers_profile_scoped_credentials() {
 default_profile = "work"
 
 [profiles.work]
-default_host = "gitbucket.example.com"
+default_host = "https://gitbucket.example.com"
 
-[profiles.work.hosts."gitbucket.example.com"]
+[profiles.work.hosts."https://gitbucket.example.com"]
 token = "profile-token"
 user = "alice"
-protocol = "https"
 
-[hosts."gitbucket.example.com"]
+[hosts."https://gitbucket.example.com"]
 token = "global-token"
 user = "bob"
-protocol = "https"
 "#,
     )
     .unwrap();

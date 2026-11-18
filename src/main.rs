@@ -77,13 +77,7 @@ async fn run_cli() {
             std::process::exit(2);
         }
     };
-    let mut token = match &cli.command {
-        Commands::Auth(cli::auth::AuthArgs {
-            command: cli::auth::AuthCommand::Login { token, .. },
-            ..
-        }) => token.clone(),
-        _ => None,
-    };
+    let mut token = None;
     output::set_suppress_stderr(cli.json_errors);
 
     if let Err(err) = cancel::install() {

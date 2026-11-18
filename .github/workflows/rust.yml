@@ -84,7 +84,7 @@ jobs:
         run: cargo test --locked --test git_credentials
       - name: Test atomic configuration and process locking
         run: cargo test --locked --test config_storage
-      - name: Test profile authentication and guarded migration
+      - name: Test profile authentication and saved instances
         run: cargo test --locked --test auth_profiles
       - name: Test CLI errors and pipe output
         run: cargo test --locked --test cli_errors_output

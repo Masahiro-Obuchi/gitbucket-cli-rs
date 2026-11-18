@@ -3,7 +3,7 @@ mod support;
 use std::fs;
 
 use serde_json::Value;
-use support::gb_cmd::GbTestEnv;
+use support::gb_cmd::{with_stdin, GbTestEnv};
 use support::mock_http::spawn_server;
 
 #[test]
@@ -12,20 +12,18 @@ fn auth_login_success_saves_default_host_and_user() {
     let (port, server) = spawn_server("200 OK", r#"{"login":"alice"}"#);
 
     let host = format!("127.0.0.1:{port}/gitbucket");
-    let output = env
-        .command()
-        .args([
+    let output = with_stdin(
+        env.command().args([
             "auth",
             "login",
             "-H",
             &host,
-            "-t",
-            "secret-token",
+            "--with-token",
             "--protocol",
             "http",
-        ])
-        .output()
-        .unwrap();
+        ]),
+        b"secret-token",
+    );
 
     let request = server.join().unwrap();
 
@@ -45,7 +43,7 @@ fn auth_login_success_saves_default_host_and_user() {
     assert!(config.contains("default_host = \"http://127.0.0.1:"));
     assert!(config.contains("token = \"secret-token\""));
     assert!(config.contains("user = \"alice\""));
-    assert!(config.contains("protocol = \"http\""));
+    assert!(!config.contains("protocol"));
 }
 
 #[test]
@@ -54,22 +52,20 @@ fn auth_login_with_profile_saves_profile_scoped_host() {
     let (port, server) = spawn_server("200 OK", r#"{"login":"alice"}"#);
 
     let host = format!("127.0.0.1:{port}");
-    let output = env
-        .command()
-        .args([
+    let output = with_stdin(
+        env.command().args([
             "--profile",
             "work",
             "auth",
             "login",
             "-H",
             &host,
-            "-t",
-            "profile-token",
+            "--with-token",
             "--protocol",
             "http",
-        ])
-        .output()
-        .unwrap();
+        ]),
+        b"profile-token",
+    );
 
     let request = server.join().unwrap();
 
@@ -100,8 +96,7 @@ fn auth_login_rejects_empty_profile_before_api_call() {
             "login",
             "-H",
             "127.0.0.1:9",
-            "-t",
-            "secret-token",
+            "--with-token",
             "--protocol",
             "http",
         ])
@@ -126,27 +121,24 @@ fn auth_status_with_profile_prints_only_that_profile_and_effective_actor() {
     fs::write(
         env.path().join("config.toml"),
         r#"
-[hosts."gitbucket.example.com"]
+[hosts."https://gitbucket.example.com"]
 token = "global-token"
 user = "global-user"
-protocol = "https"
 
 [profiles.work]
-default_host = "gitbucket.example.com"
+default_host = "https://gitbucket.example.com"
 default_repo = "alice/project"
 
-[profiles.work.hosts."gitbucket.example.com"]
+[profiles.work.hosts."https://gitbucket.example.com"]
 token = "work-token"
 user = "alice"
-protocol = "https"
 
 [profiles.sandbox]
-default_host = "gitbucket.example.com"
+default_host = "https://gitbucket.example.com"
 
-[profiles.sandbox.hosts."gitbucket.example.com"]
+[profiles.sandbox.hosts."https://gitbucket.example.com"]
 token = "sandbox-token"
 user = "bob"
-protocol = "https"
 "#,
     )
     .unwrap();
@@ -180,19 +172,17 @@ fn auth_status_json_includes_structured_effective_actor() {
         r#"
 default_profile = "work"
 
-[hosts."gitbucket.example.com"]
+[hosts."https://gitbucket.example.com"]
 token = "global-token"
 user = "global-user"
-protocol = "https"
 
 [profiles.work]
-default_host = "gitbucket.example.com"
+default_host = "https://gitbucket.example.com"
 default_repo = "alice/project"
 
-[profiles.work.hosts."gitbucket.example.com"]
+[profiles.work.hosts."https://gitbucket.example.com"]
 token = "work-token"
 user = "alice"
-protocol = "https"
 "#,
     )
     .unwrap();
@@ -210,7 +200,10 @@ protocol = "https"
     );
     let payload: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(payload["active_profile"], "work");
-    assert_eq!(payload["effective_actor"]["host"], "gitbucket.example.com");
+    assert_eq!(
+        payload["effective_actor"]["host"],
+        "https://gitbucket.example.com"
+    );
     assert_eq!(payload["effective_actor"]["stored_user"], "alice");
     assert_eq!(payload["effective_actor"]["protocol"], "https");
     assert_eq!(payload["effective_actor"]["credential_source"], "profile");
@@ -226,10 +219,9 @@ fn auth_status_json_global_credentials_includes_effective_actor() {
     fs::write(
         env.path().join("config.toml"),
         r#"
-[hosts."gitbucket.example.com"]
+[hosts."https://gitbucket.example.com"]
 token = "global-token"
 user = "global-user"
-protocol = "https"
 "#,
     )
     .unwrap();
@@ -266,20 +258,18 @@ fn auth_login_maps_401_to_user_friendly_error() {
     let (port, server) = spawn_server("401 Unauthorized", r#"{"message":"bad credentials"}"#);
 
     let host = format!("127.0.0.1:{port}");
-    let output = env
-        .command()
-        .args([
+    let output = with_stdin(
+        env.command().args([
             "auth",
             "login",
             "-H",
             &host,
-            "-t",
-            "secret-token",
+            "--with-token",
             "--protocol",
             "http",
-        ])
-        .output()
-        .unwrap();
+        ]),
+        b"secret-token",
+    );
 
     let request = server.join().unwrap();
 
@@ -296,20 +286,18 @@ fn auth_login_maps_404_to_base_path_hint() {
     let (port, server) = spawn_server("404 Not Found", r#"{"message":"not found"}"#);
 
     let host = format!("127.0.0.1:{port}");
-    let output = env
-        .command()
-        .args([
+    let output = with_stdin(
+        env.command().args([
             "auth",
             "login",
             "-H",
             &host,
-            "-t",
-            "secret-token",
+            "--with-token",
             "--protocol",
             "http",
-        ])
-        .output()
-        .unwrap();
+        ]),
+        b"secret-token",
+    );
 
     let request = server.join().unwrap();
 
@@ -359,7 +347,7 @@ fn repo_create_user_sends_expected_payload() {
 }
 
 #[test]
-fn repo_create_org_sends_expected_payload() {
+fn repo_create_group_sends_expected_payload() {
     let env = GbTestEnv::new();
     let (port, server) = spawn_server(
         "200 OK",
@@ -372,7 +360,7 @@ fn repo_create_org_sends_expected_payload() {
             "repo",
             "create",
             "demo",
-            "--org",
+            "--group",
             "my-org",
             "--description",
             "Org repo",

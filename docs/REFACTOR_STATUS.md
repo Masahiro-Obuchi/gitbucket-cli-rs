@@ -24,7 +24,7 @@ selected by this document. The manifest still says `0.6.1`.
 | PR-11 | [#50](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/50) | Immutable original API JSON, typed projections and explicit comment augmentation. [JSON contract](JSON_OUTPUT.md). |
 | PR-12 | [#51](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/51) | Visible inline/commit review reads with typed identities and explicit coverage. [Read limits](REVIEW_COMMENTS.md). |
 | PR-13 | [#52](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/52) | Inline create/edit/reply/delete, saved-position checks, principal checks and local retry receipts. [Write limits](REVIEW_WRITES.md). |
-| PR-14 | [#53](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/53) | Profile/global scope, verified auth status, explicit credential-key migration and guarded restore. [Scope and migration](AUTH_PROFILES.md). |
+| PR-14 | [#53](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/53) | Profile/global scope, verified auth status, explicit credential-key migration and guarded restore. [Authentication](AUTH_PROFILES.md). |
 | PR-15 | [#54](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/54) | Unified JSON errors, stable exit codes, closed-pipe handling and pager lifecycle. [Output contracts](CLI_ERRORS_OUTPUT.md). |
 | PR-16 | [#55](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/55) | File/stdin bodies and token input, noninteractive behavior, published-head/default-base checks, Unicode/control-character display. [Input contracts](INPUT_DISPLAY.md). Editor input followed separately in C3. |
 | PR-17 | [#56](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/56) | Reviewed-head merge checks, canonical readback and an explicit review/merge support matrix. [Guarantees and remaining limits](REVIEW_MERGE.md). |
@@ -44,9 +44,9 @@ Consult the selected release's notes and source revision.
 - **Authentication and scopes:** `auth status` verifies `/user` by default;
   `--offline` is inventory with an unknown actor. Auth/config mutations honor the
   selected profile; `--global` explicitly selects global storage. Logout can
-  leave environment tokens/global fallback active. Explicit credential-key
-  migration previews collisions and creates a guarded backup. Git with
-  `GB_TOKEN` alone also requires `GB_USER`. [Migration details](AUTH_PROFILES.md).
+  leave environment tokens/global fallback active. Saved hosts and defaults use
+  normalized HTTP(S) base URLs. Git with `GB_TOKEN` also requires `GB_USER`.
+  [Authentication](AUTH_PROFILES.md).
 - **Automation and JSON:** absent API fields remain absent rather than becoming
   synthetic null/false/empty values. Issue comment details use `comment_details`;
   the PR's legacy comments array retains the original count under `api_comments`
@@ -136,7 +136,7 @@ version, publishing a crate, tagging or dispatching a release is a separate
 maintainer action; the completed client/release-policy changes perform none of them.
 See [release gates](../RELEASE.md#preparation-gates).
 The [unreleased notes and upgrade guide](NEXT_RELEASE.md) now provide the
-release-note draft, migration sequence and candidate/publication handoff.
+release-note draft, configuration setup and candidate/publication handoff.
 They select no version and do not treat their own validation as a future
 release candidate's evidence.
 

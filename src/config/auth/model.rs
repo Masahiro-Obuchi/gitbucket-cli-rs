@@ -18,8 +18,6 @@ pub struct AuthConfig {
 pub struct HostConfig {
     pub token: String,
     pub user: String,
-    #[serde(default = "default_protocol")]
-    pub protocol: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -61,6 +59,8 @@ pub struct ResolvedCredential {
     pub source: CredentialSource,
 }
 
-pub(super) fn default_protocol() -> String {
-    "https".to_string()
+impl ResolvedCredential {
+    pub fn protocol(&self) -> &str {
+        super::instance_protocol(&self.instance)
+    }
 }

@@ -15,9 +15,16 @@ impl HostContext {
     pub fn resolve(cli_hostname: &Option<String>, cli_profile: &Option<String>) -> Result<Self> {
         let config = AuthConfig::load()?;
         let hostname = hostname_from_config(&config, cli_hostname, cli_profile)?;
-        let host = config.get_host_for_profile(&hostname, cli_profile.as_deref())?;
-        let client = ApiClient::new(&hostname, &host.token, &host.protocol)?;
-        Ok(Self { hostname, client })
+        let credential = config.credential_for_profile(&hostname, cli_profile.as_deref())?;
+        let client = ApiClient::new(
+            &credential.instance,
+            &credential.host.token,
+            credential.protocol(),
+        )?;
+        Ok(Self {
+            hostname: credential.instance,
+            client,
+        })
     }
 }
 
@@ -37,13 +44,17 @@ impl RepoContext {
     ) -> Result<Self> {
         let config = AuthConfig::load()?;
         let hostname = hostname_from_config(&config, cli_hostname, cli_profile)?;
-        let host = config.get_host_for_profile(&hostname, cli_profile.as_deref())?;
-        let target = resolve_target(&config, &hostname, &host.protocol, cli_repo, cli_profile)?;
+        let credential = config.credential_for_profile(&hostname, cli_profile.as_deref())?;
+        let target = resolve_target(&config, &credential.instance, cli_repo, cli_profile)?;
         let (owner, repo) = (target.name.owner, target.name.repo);
-        let client = ApiClient::new(&hostname, &host.token, &host.protocol)?;
-        let git_auth = GitAuth::new(target.instance.as_str(), &host)?;
+        let client = ApiClient::new(
+            &credential.instance,
+            &credential.host.token,
+            credential.protocol(),
+        )?;
+        let git_auth = GitAuth::new(target.instance, &credential.host);
         Ok(Self {
-            hostname,
+            hostname: credential.instance,
             git_auth,
             owner,
             repo,

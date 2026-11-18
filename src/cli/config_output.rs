@@ -4,7 +4,7 @@ use std::path::Path;
 use serde::Serialize;
 
 use crate::cli::config::HostField;
-use crate::config::auth::{AuthConfig, HostConfig, ProfileConfig};
+use crate::config::auth::{instance_protocol, AuthConfig, HostConfig, ProfileConfig};
 use crate::error::Result;
 use crate::output;
 
@@ -125,7 +125,7 @@ pub(crate) fn print_host(
     let output = HostOutput {
         hostname: hostname.to_string(),
         user: host.user.clone(),
-        protocol: host.protocol.clone(),
+        protocol: instance_protocol(hostname).to_owned(),
         has_token: !host.token.is_empty(),
     };
 
@@ -192,7 +192,7 @@ fn summarize_hosts(hosts: &HashMap<String, HostConfig>) -> BTreeMap<String, Host
                 hostname.clone(),
                 HostSummary {
                     user: host.user.clone(),
-                    protocol: host.protocol.clone(),
+                    protocol: instance_protocol(hostname).to_owned(),
                     has_token: !host.token.is_empty(),
                 },
             )

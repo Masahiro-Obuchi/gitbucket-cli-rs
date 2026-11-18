@@ -29,12 +29,10 @@ default_host = "https://gitbucket.example.com/gitbucket"
 [hosts."https://gitbucket.example.com/gitbucket"]
 token = "secret-token"
 user = "alice"
-protocol = "https"
 
-[hosts."localhost:8080"]
+[hosts."http://localhost:8080"]
 token = "other-token"
 user = "bob"
-protocol = "http"
 "#,
     )
     .unwrap();
@@ -75,13 +73,12 @@ fn config_list_json_shows_profiles_without_exposing_tokens() {
 default_profile = "work"
 
 [profiles.work]
-default_host = "gitbucket.example.com"
+default_host = "https://gitbucket.example.com"
 default_repo = "alice/project"
 
-[profiles.work.hosts."gitbucket.example.com"]
+[profiles.work.hosts."https://gitbucket.example.com"]
 token = "profile-token"
 user = "alice"
-protocol = "https"
 "#,
     )
     .unwrap();
@@ -97,18 +94,20 @@ protocol = "https"
     assert_eq!(payload["default_profile"], "work");
     assert_eq!(
         payload["profiles"]["work"]["default_host"],
-        "gitbucket.example.com"
+        "https://gitbucket.example.com"
     );
     assert_eq!(payload["profiles"]["work"]["default_repo"], "alice/project");
     assert_eq!(
-        payload["profiles"]["work"]["hosts"]["gitbucket.example.com"]["user"],
+        payload["profiles"]["work"]["hosts"]["https://gitbucket.example.com"]["user"],
         "alice"
     );
     assert_eq!(
-        payload["profiles"]["work"]["hosts"]["gitbucket.example.com"]["has_token"],
+        payload["profiles"]["work"]["hosts"]["https://gitbucket.example.com"]["has_token"],
         true
     );
-    assert!(payload["profiles"]["work"]["hosts"]["gitbucket.example.com"]["token"].is_null());
+    assert!(
+        payload["profiles"]["work"]["hosts"]["https://gitbucket.example.com"]["token"].is_null()
+    );
 }
 
 #[test]
@@ -117,12 +116,11 @@ fn config_list_ignores_runtime_env_overrides() {
     fs::write(
         env.path().join("config.toml"),
         r#"
-default_host = "stored.example.com"
+default_host = "https://stored.example.com"
 
-[hosts."stored.example.com"]
+[hosts."https://stored.example.com"]
 token = "secret-token"
 user = "alice"
-protocol = "https"
 "#,
     )
     .unwrap();
@@ -138,8 +136,8 @@ protocol = "https"
 
     assert!(output.status.success());
     let payload: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(payload["default_host"], "stored.example.com");
-    assert!(payload["hosts"]["stored.example.com"].is_object());
+    assert_eq!(payload["default_host"], "https://stored.example.com");
+    assert!(payload["hosts"]["https://stored.example.com"].is_object());
     assert!(payload["hosts"]["override.example.com"].is_null());
 }
 
@@ -152,7 +150,6 @@ fn config_get_host_field_resolves_equivalent_hostname() {
 [hosts."https://gitbucket.example.com/gitbucket"]
 token = "secret-token"
 user = "alice"
-protocol = "http"
 "#,
     )
     .unwrap();
@@ -172,7 +169,7 @@ protocol = "http"
         .unwrap();
 
     assert!(output.status.success());
-    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "http");
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "https");
 }
 
 #[test]
@@ -181,10 +178,9 @@ fn config_get_default_host_fails_when_unset() {
     fs::write(
         env.path().join("config.toml"),
         r#"
-[hosts."gitbucket.example.com"]
+[hosts."https://gitbucket.example.com"]
 token = "secret-token"
 user = "alice"
-protocol = "https"
 "#,
     )
     .unwrap();
@@ -210,7 +206,7 @@ fn config_set_get_and_unset_default_profile() {
         env.path().join("config.toml"),
         r#"
 [profiles.work]
-default_host = "gitbucket.example.com"
+default_host = "https://gitbucket.example.com"
 "#,
     )
     .unwrap();
@@ -281,7 +277,7 @@ fn config_set_profile_updates_defaults() {
         .unwrap();
     assert!(output.status.success());
     let payload: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(payload["default_host"], "gitbucket.example.com");
+    assert_eq!(payload["default_host"], "https://gitbucket.example.com");
     assert_eq!(payload["default_repo"], "alice/project");
 }
 
@@ -294,12 +290,10 @@ fn config_set_default_host_uses_matching_saved_key() {
 [hosts."https://gitbucket.example.com/gitbucket"]
 token = "secret-token"
 user = "alice"
-protocol = "https"
 
-[hosts."localhost:8080"]
+[hosts."http://localhost:8080"]
 token = "other-token"
 user = "bob"
-protocol = "http"
 "#,
     )
     .unwrap();
@@ -330,10 +324,9 @@ fn config_set_host_updates_fields_and_default() {
     fs::write(
         env.path().join("config.toml"),
         r#"
-[hosts."gitbucket.example.com/gitbucket"]
+[hosts."https://gitbucket.example.com/gitbucket"]
 token = "secret-token"
 user = "alice"
-protocol = "https"
 "#,
     )
     .unwrap();
@@ -348,8 +341,6 @@ protocol = "https"
             "gitbucket.example.com/gitbucket",
             "--user",
             "carol",
-            "--protocol",
-            "http",
             "--default",
         ])
         .output()
@@ -361,46 +352,9 @@ protocol = "https"
         String::from_utf8_lossy(&output.stderr)
     );
     let config = fs::read_to_string(env.path().join("config.toml")).unwrap();
-    assert!(config.contains("default_host = \"http://gitbucket.example.com/gitbucket\""));
+    assert!(config.contains("default_host = \"https://gitbucket.example.com/gitbucket\""));
     assert!(config.contains("user = \"carol\""));
-    assert!(config.contains("protocol = \"http\""));
-}
-
-#[test]
-fn config_set_host_rejects_invalid_protocol() {
-    let env = GbTestEnv::new();
-    fs::write(
-        env.path().join("config.toml"),
-        r#"
-[hosts."https://gitbucket.example.com/gitbucket"]
-token = "secret-token"
-user = "alice"
-protocol = "https"
-"#,
-    )
-    .unwrap();
-
-    let output = env
-        .command()
-        .args([
-            "config",
-            "set",
-            "host",
-            "--host",
-            "gitbucket.example.com/gitbucket",
-            "--protocol",
-            "ssh",
-        ])
-        .output()
-        .unwrap();
-
-    assert!(!output.status.success());
-    assert!(
-        String::from_utf8_lossy(&output.stderr)
-            .contains("invalid value 'ssh' for '--protocol <PROTOCOL>'"),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    assert!(!config.contains("protocol"));
 }
 
 #[test]
@@ -412,7 +366,6 @@ fn config_set_host_requires_an_explicit_change() {
 [hosts."https://gitbucket.example.com/gitbucket"]
 token = "secret-token"
 user = "alice"
-protocol = "https"
 "#,
     )
     .unwrap();
@@ -432,7 +385,7 @@ protocol = "https"
     assert!(!output.status.success());
     assert!(
         String::from_utf8_lossy(&output.stderr)
-            .contains("Nothing to update. Specify --user, --protocol, or --default."),
+            .contains("Nothing to update. Specify --user or --default."),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
@@ -449,7 +402,6 @@ default_host = "https://gitbucket.example.com/gitbucket"
 [hosts."https://gitbucket.example.com/gitbucket"]
 token = "secret-token"
 user = "alice"
-protocol = "https"
 "#,
     )
     .unwrap();

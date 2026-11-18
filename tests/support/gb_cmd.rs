@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
+use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::{Child, Command, Output, Stdio};
 
 use tempfile::TempDir;
 
@@ -83,4 +84,19 @@ pub fn stdout(output: &Output) -> String {
 
 pub fn stderr(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).to_string()
+}
+
+pub fn spawn_with_stdin(command: &mut Command, input: &[u8]) -> Child {
+    let mut child = command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(input).unwrap();
+    child
+}
+
+pub fn with_stdin(command: &mut Command, input: &[u8]) -> Output {
+    spawn_with_stdin(command, input).wait_with_output().unwrap()
 }

@@ -1,11 +1,8 @@
 mod support;
+
 use serde_json::{json, Value};
-use std::{
-    io::Write,
-    process::{Command, Output, Stdio},
-};
 use support::{
-    gb_cmd::{assert_failure, assert_success, GbTestEnv},
+    gb_cmd::{assert_failure, assert_success, with_stdin, GbTestEnv},
     git_repo::*,
     mock_http::{spawn_scripted_server, ScriptedResponse},
 };
@@ -16,16 +13,6 @@ fn response(method: &str, path: &str, body: Value) -> ScriptedResponse {
         "200 OK",
         &body.to_string(),
     )
-}
-fn stdin(command: &mut Command, text: &[u8]) -> Output {
-    let mut child = command
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    child.stdin.take().unwrap().write_all(text).unwrap();
-    child.wait_with_output().unwrap()
 }
 
 #[test]
@@ -77,7 +64,7 @@ fn create_preserves_file_and_stdin_markdown_and_optional_body_omission() {
                 command.args(["--body-file", "-"]);
             }
             let output = if mode == "stdin" {
-                stdin(&mut command, text.as_bytes())
+                with_stdin(&mut command, text.as_bytes())
             } else {
                 command.output().unwrap()
             };
@@ -119,7 +106,7 @@ fn edits_clear_body_from_an_empty_file_and_preserve_multiline_stdin() {
             let output = if text.is_empty() {
                 command.arg(file).output().unwrap()
             } else {
-                stdin(command.arg("-"), text.as_bytes())
+                with_stdin(command.arg("-"), text.as_bytes())
             };
             assert_success(&output);
             let requests = server.join().unwrap();
@@ -148,7 +135,7 @@ fn discussion_comments_preserve_multiline_stdin() {
             json!({"id":2,"body":text}),
         ));
         let (port, server) = spawn_scripted_server(responses);
-        let output = stdin(
+        let output = with_stdin(
             env.repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
                 .args([kind, "comment", "1", "--body-file", "-"]),
             text.as_bytes(),
@@ -183,7 +170,7 @@ fn noninteractive_missing_input_blank_comments_and_bad_utf8_fail_before_mutation
     }
     for kind in ["issue", "pr"] {
         let env = GbTestEnv::new();
-        let output = stdin(
+        let output = with_stdin(
             env.repo_api_command("127.0.0.1:1", "alice/project").args([
                 kind,
                 "comment",
@@ -195,7 +182,7 @@ fn noninteractive_missing_input_blank_comments_and_bad_utf8_fail_before_mutation
         );
         assert_failure(&output);
         assert!(String::from_utf8_lossy(&output.stderr).contains("must not be blank"));
-        let output = stdin(
+        let output = with_stdin(
             env.repo_api_command("127.0.0.1:1", "alice/project").args([
                 kind,
                 "create",
@@ -216,7 +203,7 @@ fn token_stdin_verifies_and_stores_without_echoing_the_secret() {
     let env = GbTestEnv::new();
     let (port, server) =
         spawn_scripted_server(vec![response("GET", "user", json!({"login":"alice"}))]);
-    let output = stdin(
+    let output = with_stdin(
         env.command().args([
             "auth",
             "login",
@@ -243,7 +230,7 @@ fn token_stdin_verifies_and_stores_without_echoing_the_secret() {
         "401 Unauthorized",
         r#"{"message":"rejected stdin-secret"}"#,
     )]);
-    let output = stdin(
+    let output = with_stdin(
         env.command().args([
             "--json-errors",
             "auth",
@@ -267,7 +254,7 @@ fn token_stdin_verifies_and_stores_without_echoing_the_secret() {
         b"secret\t",
         &[0xff],
     ] {
-        let output = stdin(
+        let output = with_stdin(
             env.command().args([
                 "--json-errors",
                 "auth",
@@ -284,54 +271,48 @@ fn token_stdin_verifies_and_stores_without_echoing_the_secret() {
     }
     let output = env
         .command()
-        .args(["auth", "login", "--token", "old", "--with-token"])
+        .args(["auth", "login", "--token", "old"])
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(2));
 }
 
 #[test]
-fn login_tokens_are_redacted_from_error_context_for_stdin_and_argv() {
+fn login_tokens_are_redacted_from_error_context_for_stdin() {
     let secret = "private-login-value";
     for status in ["401 Unauthorized", "404 Not Found"] {
         for json_errors in [true, false] {
-            for with_token in [false, true] {
-                let env = GbTestEnv::new();
-                // The transport already redacts its request context. The
-                // login command adds the configured URL to the final error.
-                let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
-                    &format!("GET /{secret}/api/v3/user HTTP/1.1"),
-                    status,
-                    r#"{"message":"rejected"}"#,
-                )]);
-                let host = format!("http://127.0.0.1:{port}/{secret}");
-                let mut command = env.command();
-                command
-                    .env_remove("GB_JSON_ERRORS")
-                    .args(["auth", "login", "--hostname", &host]);
-                if json_errors {
-                    command.arg("--json-errors");
-                }
-                let output = if with_token {
-                    stdin(command.arg("--with-token"), secret.as_bytes())
-                } else {
-                    command.args(["--token", secret]).output().unwrap()
-                };
-                assert_failure(&output);
-                assert_eq!(server.join().unwrap().len(), 1);
-                assert!(
-                    !String::from_utf8_lossy(&output.stderr).contains(secret),
-                    "stdin={with_token} json={json_errors}: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                );
-                assert!(!String::from_utf8_lossy(&output.stdout).contains(secret));
-                if json_errors {
-                    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-                    assert_eq!(error["error"]["code"], "auth_error");
-                    assert_eq!(error["error"]["exit_code"], 1);
-                }
-                assert!(!env.path().join("config.toml").exists());
+            let env = GbTestEnv::new();
+            // The transport already redacts its request context. The
+            // login command adds the configured URL to the final error.
+            let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
+                &format!("GET /{secret}/api/v3/user HTTP/1.1"),
+                status,
+                r#"{"message":"rejected"}"#,
+            )]);
+            let host = format!("http://127.0.0.1:{port}/{secret}");
+            let mut command = env.command();
+            command
+                .env_remove("GB_JSON_ERRORS")
+                .args(["auth", "login", "--hostname", &host]);
+            if json_errors {
+                command.arg("--json-errors");
             }
+            let output = with_stdin(command.arg("--with-token"), secret.as_bytes());
+            assert_failure(&output);
+            assert_eq!(server.join().unwrap().len(), 1);
+            assert!(
+                !String::from_utf8_lossy(&output.stderr).contains(secret),
+                "json={json_errors}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(!String::from_utf8_lossy(&output.stdout).contains(secret));
+            if json_errors {
+                let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+                assert_eq!(error["error"]["code"], "auth_error");
+                assert_eq!(error["error"]["exit_code"], 1);
+            }
+            assert!(!env.path().join("config.toml").exists());
         }
     }
 }

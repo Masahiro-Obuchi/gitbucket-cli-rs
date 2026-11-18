@@ -1,5 +1,5 @@
 use crate::cli::common::{
-    parse_owner_repo, resolve_host_config, resolve_hostname, validate_selected_profile,
+    parse_owner_repo, resolve_credential, resolve_hostname, validate_selected_profile,
 };
 use crate::error::Result;
 use crate::git::GitCommandExt;
@@ -24,9 +24,16 @@ pub(super) async fn clone(
         repo.to_string()
     } else {
         let hostname = resolve_hostname(hostname, cli_profile)?;
-        let host = resolve_host_config(&hostname, cli_profile)?;
-        git_auth = Some(crate::git::GitAuth::new(&hostname, &host)?);
-        let client = crate::api::client::ApiClient::new(&hostname, &host.token, &host.protocol)?;
+        let credential = resolve_credential(&hostname, cli_profile)?;
+        git_auth = Some(crate::git::GitAuth::new(
+            url::Url::parse(&credential.instance)?,
+            &credential.host,
+        ));
+        let client = crate::api::client::ApiClient::new(
+            &credential.instance,
+            &credential.host.token,
+            credential.protocol(),
+        )?;
         let (owner, name) = parse_owner_repo(repo)?;
         let r = client.get_repo(&owner, &name).await?;
         let fallback_clone_url = client.web_url(&format!("/{}/{}.git", owner, name));

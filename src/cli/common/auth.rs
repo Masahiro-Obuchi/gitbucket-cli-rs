@@ -1,4 +1,4 @@
-use crate::config::auth::{AuthConfig, HostConfig};
+use crate::config::auth::{AuthConfig, ResolvedCredential};
 use crate::error::{GbError, Result};
 
 /// Resolve GitBucket host or URL from CLI arg, env var, or config.
@@ -37,7 +37,10 @@ pub fn validate_selected_profile(cli_profile: &Option<String>) -> Result<()> {
     Ok(())
 }
 
-pub fn resolve_host_config(hostname: &str, cli_profile: &Option<String>) -> Result<HostConfig> {
+pub fn resolve_credential(
+    hostname: &str,
+    cli_profile: &Option<String>,
+) -> Result<ResolvedCredential> {
     let config = AuthConfig::load()?;
-    config.get_host_for_profile(hostname, cli_profile.as_deref())
+    config.credential_for_profile(hostname, cli_profile.as_deref())
 }

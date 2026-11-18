@@ -16,13 +16,13 @@ establish which crate versions are available.
 ## Draft release notes
 
 The release changes authentication scope and status verification, automation
-output/input contracts, and local Git behavior. Review the migration steps below
+output/input contracts, and local Git behavior. Review the setup steps below
 before replacing a binary used by scripts.
 
 - Authentication matches the selected scheme, host, port and deployment path.
   Git uses scoped credentials without embedding tokens in remote URLs. Profile
-  management addresses its selected scope, and instance-key migration is
-  explicit with a protected backup and guarded restore.
+  management addresses its selected scope. Saved hosts and defaults use full
+  base URLs. Authentication accepts token input through stdin or a prompt.
 - HTTP/Git operations have deadlines and cancellation. Collection reads finish
   pagination before returning results. Writes report confirmed, failed and
   unverified outcomes without automatically resending ambiguous mutations.
@@ -71,15 +71,7 @@ rather than assuming the default directory:
 
 ```sh
 gb config path
-gb config list --json
-gb auth status --offline --json
 ```
-
-The inventory commands omit token values, but their host/profile/user metadata
-can still be private. Do not attach actual configuration, migration backups,
-cookies or tokens to a release report. `--offline` does not verify a token or
-prove the actor's identity. Use a separate candidate executable path when
-comparing old and new behavior; the identical manifest version is insufficient.
 
 Inspect the intended `--profile`, `GB_PROFILE`, saved default profile and global
 fallback before changing credentials. An environment token wins at runtime, and
@@ -87,41 +79,21 @@ profile logout can leave environment/global fallback usable. `--global` selects
 global management and conflicts with explicit profile selection. Scope details
 and command examples are in [AUTH_PROFILES.md](AUTH_PROFILES.md).
 
-### 2. Preview instance-key migration, then apply only if needed
+### 2. Configure saved instances
 
-Use the **candidate executable** for these commands. Whole-file migration must
-run without `--profile`, `--global` or `GB_PROFILE`; temporarily clear an exported
-`GB_PROFILE` in the current shell if necessary. Saved default profiles remain
-part of the configuration being migrated.
-
-```sh
-gb config migrate
-```
-
-This previews the whole file without rewriting configuration or creating a
-backup. Review normalized schemes/base paths and any collisions. Resolve an
-ambiguous HTTP/HTTPS target explicitly rather than dropping one credential or
-guessing a scheme. Migration is optional when no normalization is needed.
-
-After reviewing the preview, the user can explicitly apply it:
+Saved host keys and defaults use normalized HTTP(S) base URLs. For a
+configuration with bare host keys or defaults, select a new private
+`GB_CONFIG_DIR`, log in to the full deployment URL, and set any profile defaults
+you use. For example:
 
 ```sh
-gb config migrate --apply
+gb auth login -H https://bucket.example/gitbucket --with-token < token.txt
+gb config list --json
+gb auth status --offline --json
 ```
 
-Apply recalculates under the configuration lock and reports a unique backup
-path. Keep that backup private: it contains original credential bytes. Migrated
-TOML can lose comments/formatting; the backup preserves the original bytes.
-The guarded recovery command is:
-
-```sh
-gb config migrate --restore /path/reported/by/apply.json
-```
-
-Restore refuses to overwrite subsequent configuration edits. Reconcile such
-edits explicitly instead of forcing an old backup over newer credentials.
-Do not use an older binary to rewrite migrated configuration as a rollback
-shortcut. [Migration and restore details](AUTH_PROFILES.md#explicit-migration-and-guarded-restore).
+Inventory omits tokens. Host, profile and user details may be private.
+`--offline` reports inventory without verifying the token or actor.
 
 ### 3. Verify the selected target and actor
 
@@ -149,7 +121,7 @@ also verify the Cookie actor; an explicit `GB_WEB_USER` permits a different acto
 | API JSON | Check field presence explicitly; missing keys no longer become synthesized null/false/empty values. Keep existing API fields instead of assuming a fixed projection. |
 | Comments | Issue discussion arrays use `comment_details`; PR view keeps its `comments` array and preserves an API count as `api_comments` when present. Review/all output has its own envelope and coverage. |
 | Errors | Handle exits 0/1/2 and `error.code`/`cause`; inspect `outcome=unverified` before any retry. `--json-errors` disables prompts and editor launch. |
-| Creation/input | Supply `--title` in automation. An omitted body is optional; stdin is consumed only with `--body-file -`. Do not combine body sources. Use `auth login --with-token` for token stdin. |
+| Creation/input | Supply `--title` in automation. An omitted body is optional; stdin is consumed only with `--body-file -`. Do not combine body sources. Use `auth login --with-token` for token stdin and `--group` for repo create/fork. |
 | PR selection | Omitted `--base` uses `default_branch`. An inferred head must match the published commit; explicit `--head` deliberately selects remote content. Push remains a separate user action. |
 | Checkout/diff | `pr diff` compares saved commits and excludes working-tree edits; it does not require a clean worktree. `pr checkout` requires a clean worktree/index, including untracked files, and refuses conflicting branches/worktrees. Rename or reconcile a legacy conflicting branch explicitly; no automatic branch reset is performed. |
 | Merge JSON | Consume the CLI report, with `atomic=false` and the API result under `result`. `--match-head-commit` pins a full reviewed SHA for client checks, not a server transaction. |
@@ -173,8 +145,6 @@ Switching back to a prior executable does not undo completed server mutations,
 restore removed credentials, erase retry uncertainty or make an unverified write
 safe to repeat. Keep the relevant operation result and inspect actual state.
 Do not reset user branches or remove retry receipts as an automatic rollback.
-Configuration restore has the guarded procedure above; deployment-specific
-backup/recovery remains the operator's responsibility.
 
 ## Maintainer handoff: still pending before publication
 

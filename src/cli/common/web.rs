@@ -5,21 +5,21 @@ use crate::api::web::GitBucketWebSession;
 use crate::error::{GbError, Result};
 use crate::models::issue::Issue;
 
-use super::resolve_host_config;
+use super::resolve_credential;
 
 pub async fn create_web_session(
     client: &ApiClient,
     hostname: &str,
     cli_profile: &Option<String>,
 ) -> Result<GitBucketWebSession> {
-    let host = resolve_host_config(hostname, cli_profile)?;
+    let credential = resolve_credential(hostname, cli_profile)?;
     let explicit_web_user = std::env::var("GB_WEB_USER").ok();
     let username = if let Some(user) = &explicit_web_user {
         user.clone()
     } else if let Ok(user) = std::env::var("GB_USER") {
         user
-    } else if !host.user.is_empty() {
-        host.user.clone()
+    } else if !credential.host.user.is_empty() {
+        credential.host.user.clone()
     } else {
         String::new()
     };
@@ -45,8 +45,13 @@ pub async fn create_web_session(
         }
     };
 
-    let session =
-        GitBucketWebSession::sign_in(hostname, &username, &password, &host.protocol).await?;
+    let session = GitBucketWebSession::sign_in(
+        &credential.instance,
+        &username,
+        &password,
+        credential.protocol(),
+    )
+    .await?;
     eprintln!(
         "Notice: Web actor {}; REST actor {}.",
         session.principal(),

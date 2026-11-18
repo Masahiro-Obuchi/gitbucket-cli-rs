@@ -1,12 +1,12 @@
 use clap::{Args, Subcommand};
 use dialoguer::{Input, Password};
 
-use crate::config::auth::{instance_key, AuthConfig, HostConfig, Scope};
+use crate::config::auth::{instance_key, instance_protocol, AuthConfig, HostConfig, Scope};
 use crate::error::{GbError, Result};
 
 #[derive(Args)]
 #[command(
-    after_help = "Storage scope follows --profile, GB_PROFILE, then default_profile. --global bypasses default_profile and conflicts with an explicit --profile/GB_PROFILE. Logout removes only the selected scope; environment tokens and global fallback may remain active. Retained or replacement defaults preserve their instance URL scheme."
+    after_help = "Storage scope follows --profile, GB_PROFILE, then default_profile. --global bypasses default_profile and conflicts with an explicit --profile/GB_PROFILE. Logout removes only the selected scope; environment tokens and global fallback may remain active. Logging out of the global default host clears that default."
 )]
 pub struct AuthArgs {
     /// Use global credentials, bypassing the saved default profile
@@ -20,15 +20,12 @@ pub struct AuthArgs {
 pub enum AuthCommand {
     /// Authenticate with a GitBucket instance
     #[command(
-        after_help = "Login tokens supplied by argv, stdin or prompts are redacted from final runtime errors in both text and JSON modes."
+        after_help = "Login tokens supplied by stdin or prompts are redacted from final runtime errors in both text and JSON modes."
     )]
     Login {
         /// GitBucket host or base URL
         #[arg(long, short = 'H', value_name = "HOST_OR_URL")]
         hostname: Option<String>,
-        /// Personal access token (legacy argv input; prefer --with-token)
-        #[arg(long, short, value_name = "TOKEN", conflicts_with = "with_token")]
-        token: Option<String>,
         /// Read a single personal access token from stdin
         #[arg(long)]
         with_token: bool,
@@ -73,18 +70,13 @@ pub async fn run(
     match args.command {
         AuthCommand::Login {
             hostname,
-            token,
             with_token,
             protocol,
         } => {
             login(
                 hostname.as_ref().or(cli_hostname.as_ref()),
                 &scope,
-                if with_token {
-                    Some(super::input::token_stdin().await?)
-                } else {
-                    token
-                },
+                with_token,
                 protocol,
                 diagnostic_token,
             )
@@ -113,7 +105,7 @@ pub async fn run(
 async fn login(
     hostname: Option<&String>,
     scope: &Scope,
-    token: Option<String>,
+    with_token: bool,
     protocol: String,
     diagnostic_token: &mut Option<String>,
 ) -> Result<()> {
@@ -129,29 +121,24 @@ async fn login(
         }).await?,
     };
 
-    let token = match token {
-        Some(t) => t,
-        None if !super::input::interactive() => {
-            return Err(super::input::required("--with-token or --token"))
-        }
-        None => {
-            crate::cancel::prompt(|| {
-                Password::new()
-                    .with_prompt("Personal access token")
-                    .interact()
-            })
-            .await?
-        }
+    let token = if with_token {
+        super::input::token_stdin().await?
+    } else if super::input::interactive() {
+        crate::cancel::prompt(|| {
+            Password::new()
+                .with_prompt("Personal access token")
+                .interact()
+        })
+        .await?
+    } else {
+        return Err(super::input::required("--with-token"));
     };
 
-    // Stdin and prompted tokens need the same final-error redaction as argv
-    // tokens, including context added after the transport has cleaned an error.
+    // Final diagnostics can include context beyond the transport's redaction.
     *diagnostic_token = Some(token.clone());
     let instance = instance_key(&hostname, &protocol)?;
-    let protocol = url::Url::parse(&instance)?.scheme().to_string();
-
-    // Verify the token by making a test API call
-    let client = crate::api::client::ApiClient::new(&hostname, &token, &protocol)?;
+    let client =
+        crate::api::client::ApiClient::new(&instance, &token, instance_protocol(&instance))?;
     let user: crate::models::user::User = client
         .get("/user")
         .await
@@ -160,13 +147,13 @@ async fn login(
     AuthConfig::update(|config| {
         config.save_login(
             scope,
-            &instance,
+            instance,
             HostConfig {
                 token,
                 user: user.login.clone(),
-                protocol,
             },
-        )
+        );
+        Ok(())
     })?;
 
     println!("✓ Logged in to {} as {}", hostname, user.login);
@@ -193,7 +180,7 @@ async fn logout(hostname: Option<&String>, scope: &Scope) -> Result<()> {
         let hostname = config
             .resolve_hostname_in(hostname.map(String::as_str), scope)?
             .ok_or_else(|| GbError::Auth("No hosts configured.".into()))?;
-        Ok(if config.remove_host(&hostname)? {
+        Ok(if config.remove_in(scope, &hostname)? {
             format!("✓ Logged out from {}", hostname)
         } else {
             format!("Not logged in to {}", hostname)
