@@ -9,7 +9,6 @@ use std::io::{self, Read, Write};
 use std::process::{Command, Output};
 use url::Url;
 
-use crate::api::client::normalize_web_base_url;
 use crate::config::auth::HostConfig;
 use crate::error::{GbError, Result};
 use crate::target::same_origin;
@@ -62,12 +61,12 @@ pub(crate) struct GitAuth {
 }
 
 impl GitAuth {
-    pub(crate) fn new(hostname: &str, host: &HostConfig) -> Result<Self> {
-        Ok(Self {
-            instance: Url::parse(&normalize_web_base_url(hostname, &host.protocol)?)?,
+    pub(crate) fn new(instance: Url, host: &HostConfig) -> Self {
+        Self {
+            instance,
             user: host.user.clone(),
             token: host.token.clone(),
-        })
+        }
     }
 
     fn permits(&self, target: &Url) -> bool {
@@ -376,14 +375,12 @@ mod tests {
     #[test]
     fn credentials_are_scoped_to_origin_and_deployment_path() {
         let auth = GitAuth::new(
-            "https://example.com/gitbucket",
+            Url::parse("https://example.com/gitbucket").unwrap(),
             &HostConfig {
                 user: "alice".into(),
                 token: "secret".into(),
-                protocol: "https".into(),
             },
-        )
-        .unwrap();
+        );
         assert!(auth.permits(&Url::parse("https://example.com/gitbucket/git/a/r.git").unwrap()));
         for target in [
             "https://other.example/gitbucket/git/a/r.git",
@@ -401,14 +398,12 @@ mod tests {
     #[test]
     fn command_never_contains_token_or_persists_helper_configuration() {
         let auth = GitAuth::new(
-            "https://example.com/gitbucket",
+            Url::parse("https://example.com/gitbucket").unwrap(),
             &HostConfig {
                 user: "alice".into(),
                 token: "secret-value".into(),
-                protocol: "https".into(),
             },
-        )
-        .unwrap();
+        );
         let command = auth
             .command("https://example.com/gitbucket/git/a/r.git")
             .unwrap();

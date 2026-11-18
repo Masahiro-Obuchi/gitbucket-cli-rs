@@ -77,7 +77,6 @@ default_host = "http://127.0.0.1:{port}"
 [hosts."http://127.0.0.1:{port}"]
 token = "test-token"
 user = "alice"
-protocol = "http"
 "#
         ),
     )

@@ -38,10 +38,9 @@ gb auth login --hostname https://gitbucket.example.com/gitbucket --with-token < 
 optional trailing LF or CRLF. Embedded whitespace/control characters, extra
 lines and inputs over 64 KiB are rejected without echoing the input. The token
 is verified with `/user` and saved using the existing protected config writer.
-It conflicts with the retained `--token/-t` compatibility option. Noninteractive
-login also requires an explicit hostname; stdin reads remain cancellable.
-Known login tokens are carried through final runtime-error reporting for stdin,
-argv and prompted input. Both text and JSON diagnostics redact them, including
+Noninteractive login also requires an explicit hostname. Stdin reads remain
+cancellable. Known login tokens from stdin and prompts are carried through
+final runtime-error reporting. Both text and JSON diagnostics redact them, including
 context added by the command after the HTTP layer has already cleaned an error.
 
 ## Explicit editor input

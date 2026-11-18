@@ -97,20 +97,16 @@ fn login_applies_verified_credentials_to_latest_config_without_locking_during_ht
         )
         .unwrap();
     });
-    let child = env
-        .command()
-        .args([
+    let child = support::gb_cmd::spawn_with_stdin(
+        env.command().args([
             "auth",
             "login",
             "-H",
             &format!("http://127.0.0.1:{port}"),
-            "-t",
-            "dummy-login-token",
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
+            "--with-token",
+        ]),
+        b"dummy-login-token",
+    );
     seen_rx.recv_timeout(Duration::from_secs(10)).unwrap();
     let changed = env
         .command()

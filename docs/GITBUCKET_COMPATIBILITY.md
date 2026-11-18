@@ -129,7 +129,7 @@ Relevant pinned upstream sources:
 
 PR-00–17 are merged through [PR #56](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/pull/56).
 Later tests cover saved positions/history limits, private reads, inline writes,
-profile/migration behavior, explicit input and merge checks. The original numbers
+profile and credential behavior, explicit input and merge checks. The original numbers
 below remain the initial baseline's record. See [the status and remaining-work
 register](REFACTOR_STATUS.md) and [TESTING.md](../TESTING.md) for later evidence,
 upgrade changes and unverified deployment/server requirements.

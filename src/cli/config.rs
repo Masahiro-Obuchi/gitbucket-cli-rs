@@ -8,7 +8,7 @@ use crate::error::{GbError, Result};
 
 #[derive(Args)]
 #[command(
-    after_help = "Host/default-host operations use --profile, GB_PROFILE, then default_profile. --global explicitly selects global settings and conflicts with --profile/GB_PROFILE. Management never edits fallback credentials. Default-host updates store the full instance URL, including its scheme. config list shows the full saved inventory.\n\nUpdates atomically replace config.toml and wait up to 5 seconds for an OS lock. The empty config.toml.lock file remains after exit; do not delete it. Configuration and lock files must be regular files (no symlinks/reparse points).\n\nconfig migrate previews the entire file; --apply saves a private backup before migration. --restore BACKUP restores the exact original only if configuration has not subsequently changed."
+    after_help = "Host/default-host operations use --profile, GB_PROFILE, then default_profile. --global explicitly selects global settings and conflicts with --profile/GB_PROFILE. Management never edits fallback credentials. Default-host updates store the full instance URL, including its scheme. config list shows the full saved inventory.\n\nUpdates atomically replace config.toml and wait up to 5 seconds for an OS lock. The empty config.toml.lock file remains after exit; do not delete it. Configuration and lock files must be regular files (no symlinks/reparse points)."
 )]
 pub struct ConfigArgs {
     /// Address global settings instead of the selected/default profile
@@ -20,15 +20,6 @@ pub struct ConfigArgs {
 
 #[derive(Subcommand)]
 pub enum ConfigCommand {
-    /// Preview/apply instance-key migration or restore its protected backup
-    Migrate {
-        /// Apply whole-file normalization after creating a protected backup
-        #[arg(long, conflicts_with = "restore")]
-        apply: bool,
-        /// Restore exact original bytes if no later configuration edit is present
-        #[arg(long, value_name = "BACKUP")]
-        restore: Option<std::path::PathBuf>,
-    },
     /// Print the config file path
     Path,
     /// List stored configuration values
@@ -105,9 +96,6 @@ pub enum ConfigSetKey {
         /// Username to store for web-session fallbacks
         #[arg(long)]
         user: Option<String>,
-        /// Protocol to store for this host
-        #[arg(long, value_parser = ["https", "http"])]
-        protocol: Option<String>,
         /// Also make this host the stored default
         #[arg(long)]
         default: bool,
@@ -161,12 +149,6 @@ pub async fn run(args: ConfigArgs, cli_profile: &Option<String>) -> Result<()> {
         ConfigCommand::Get { key } => get(key, &scope),
         ConfigCommand::Set { key } => set(key, &scope),
         ConfigCommand::Unset { key } => unset(key, &scope),
-        ConfigCommand::Migrate { apply, restore } => {
-            if cli_profile.is_some() || std::env::var_os("GB_PROFILE").is_some() || args.global {
-                return Err(GbError::Config("Migration covers the entire config; do not combine it with --profile/GB_PROFILE/--global.".into()));
-            }
-            crate::output::print_json(&AuthConfig::migrate(apply, restore.as_deref())?)
-        }
     }
 }
 
@@ -231,16 +213,13 @@ fn set(key: ConfigSetKey, scope: &Scope) -> Result<()> {
         let message = match key {
             ConfigSetKey::DefaultHost { hostname } => {
                 // Profile defaults can intentionally route to global credentials.
-                let (stored, hosts) = match config.saved_key(scope, &hostname)? {
-                    Some(key) => (key, config.hosts_in(scope)?),
-                    None if scope.profile().is_some() => (
-                        resolve_saved_hostname(config, &Scope::Global, &hostname)?,
-                        &config.hosts,
-                    ),
+                let instance = match config.saved_key(scope, &hostname)? {
+                    Some(key) => key,
+                    None if scope.profile().is_some() => {
+                        resolve_saved_hostname(config, &Scope::Global, &hostname)?
+                    }
                     None => return Err(GbError::Config("No matching saved host entry.".into())),
                 };
-                let instance =
-                    crate::config::auth::instance_key(&stored, &hosts[&stored].protocol)?;
                 *config.default_host_in_mut(scope)? = Some(instance.clone());
                 format!("✓ Set default host to {}", instance)
             }
@@ -257,12 +236,11 @@ fn set(key: ConfigSetKey, scope: &Scope) -> Result<()> {
             ConfigSetKey::Host {
                 host,
                 user,
-                protocol,
                 default,
             } => {
-                if user.is_none() && protocol.is_none() && !default {
+                if user.is_none() && !default {
                     return Err(GbError::Config(
-                        "Nothing to update. Specify --user, --protocol, or --default.".into(),
+                        "Nothing to update. Specify --user or --default.".into(),
                     ));
                 }
                 let stored = resolve_saved_hostname(config, scope, &host)?;
@@ -270,16 +248,8 @@ fn set(key: ConfigSetKey, scope: &Scope) -> Result<()> {
                 if let Some(user) = user {
                     entry.user = user;
                 }
-                if let Some(protocol) = protocol {
-                    validate_protocol(&protocol)?;
-                    if stored.contains("://") && !stored.starts_with(&format!("{protocol}://")) {
-                        return Err(GbError::Config("An explicit URL fixes the scheme. Log in to the new URL instead of moving its credentials across schemes.".into()));
-                    }
-                    entry.protocol = protocol;
-                }
                 if default {
-                    let instance = crate::config::auth::instance_key(&stored, &entry.protocol)?;
-                    *config.default_host_in_mut(scope)? = Some(instance);
+                    *config.default_host_in_mut(scope)? = Some(stored.clone());
                 }
                 format!("✓ Updated config for {}", stored)
             }
@@ -291,9 +261,10 @@ fn set(key: ConfigSetKey, scope: &Scope) -> Result<()> {
                 if name.is_empty() || name.trim() != name || name.chars().any(char::is_control) {
                     return Err(GbError::Config("Profile name cannot be empty or contain boundary whitespace/control characters.".into()));
                 }
-                if let Some(host) = default_host.as_deref() {
-                    crate::config::auth::instance_key(host, "https")?;
-                }
+                let default_host = default_host
+                    .as_deref()
+                    .map(|host| config.profile_default_instance(&name, host))
+                    .transpose()?;
                 if let Some(repo) = default_repo.as_deref() {
                     crate::cli::common::parse_owner_repo(repo)?;
                 }
@@ -367,13 +338,4 @@ fn resolve_saved_hostname(config: &AuthConfig, scope: &Scope, host: &str) -> Res
             host, host
         ))
     })
-}
-
-fn validate_protocol(protocol: &str) -> Result<()> {
-    match protocol {
-        "http" | "https" => Ok(()),
-        _ => Err(GbError::Config(
-            "Protocol must be `http` or `https`.".into(),
-        )),
-    }
 }

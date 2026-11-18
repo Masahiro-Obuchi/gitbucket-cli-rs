@@ -1,5 +1,5 @@
 //! Saved inventory is distinct from the actor verified for the selected token.
-use crate::config::auth::{AuthConfig, CredentialSource, HostConfig, Scope};
+use crate::config::auth::{instance_protocol, AuthConfig, CredentialSource, HostConfig, Scope};
 use crate::error::{GbError, Result};
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -56,7 +56,7 @@ fn inventory(
                 key.clone(),
                 SavedHost {
                     user: host.user.clone(),
-                    protocol: host.protocol.clone(),
+                    protocol: instance_protocol(key).to_owned(),
                     has_token: !host.token.is_empty(),
                     credential_source: source,
                     verification: "not_checked",
@@ -87,7 +87,7 @@ pub(crate) async fn print_status(
                         CredentialSource::Environment => None,
                         _ => Some(credential.host.user.clone()),
                     },
-                    protocol: credential.host.protocol.clone(),
+                    protocol: credential.protocol().to_owned(),
                     credential_source: credential.source,
                     verification: "offline",
                     error: None,
@@ -97,7 +97,7 @@ pub(crate) async fn print_status(
                         let client = crate::api::client::ApiClient::new(
                             &credential.instance,
                             &credential.host.token,
-                            &credential.host.protocol,
+                            credential.protocol(),
                         )?;
                         let user = client.current_user().await?;
                         if user.login.is_empty() {

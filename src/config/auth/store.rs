@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use crate::config::ensure_config_dir;
 use crate::error::{GbError, Result};
 
-use super::model::AuthConfig;
+use super::{instance::validate_saved_instance, model::AuthConfig};
 
 const LOCK_TIMEOUT: Duration = Duration::from_secs(5);
 const FILE_ACCESS_TIMEOUT: Duration = Duration::from_secs(1);
@@ -63,14 +63,23 @@ fn read_config(path: &Path) -> Result<AuthConfig> {
     };
     let mut content = String::new();
     file.read_to_string(&mut content)?;
-    Ok(toml::from_str(&content)?)
+    let config: AuthConfig = toml::from_str(&content)?;
+    for instance in config.hosts.keys().chain(config.default_host.iter()).chain(
+        config
+            .profiles
+            .values()
+            .flat_map(|profile| profile.hosts.keys().chain(profile.default_host.iter())),
+    ) {
+        validate_saved_instance(instance)?;
+    }
+    Ok(config)
 }
 
 fn update_config<T>(path: &Path, change: impl FnOnce(&mut AuthConfig) -> Result<T>) -> Result<T> {
     with_config_lock(path, || update_locked(path, change))
 }
 
-pub(super) fn with_config_lock<T>(path: &Path, operation: impl FnOnce() -> Result<T>) -> Result<T> {
+fn with_config_lock<T>(path: &Path, operation: impl FnOnce() -> Result<T>) -> Result<T> {
     // The lock uses a stable separate inode. Never unlink it on release: doing
     // so could let a new writer lock another inode while a waiter holds this one.
     let lock_path = path.with_file_name("config.toml.lock");
@@ -145,7 +154,7 @@ fn is_regular(metadata: &fs::Metadata) -> bool {
     metadata.is_file() && !metadata.file_type().is_symlink()
 }
 
-pub(super) fn open_regular(path: &Path, create: bool) -> Result<File> {
+fn open_regular(path: &Path, create: bool) -> Result<File> {
     check_regular(path)?;
     let mut options = OpenOptions::new();
     options.read(true);

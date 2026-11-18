@@ -232,7 +232,7 @@ fn json_mode_accepts_boolish_environment_values_and_suppresses_noninteractive_pr
 }
 
 #[test]
-fn malformed_config_and_explicit_login_tokens_are_not_exposed_in_runtime_json_errors() {
+fn malformed_config_is_not_exposed_in_runtime_json_errors() {
     let env = GbTestEnv::new();
     std::fs::write(
         env.path().join("config.toml"),
@@ -248,8 +248,7 @@ fn malformed_config_and_explicit_login_tokens_are_not_exposed_in_runtime_json_er
             "login",
             "-H",
             "example.invalid",
-            "-t",
-            "explicit-secret",
+            "--with-token",
         ])
         .output()
         .unwrap();
@@ -257,7 +256,6 @@ fn malformed_config_and_explicit_login_tokens_are_not_exposed_in_runtime_json_er
     assert_eq!(error["error"]["code"], "toml_deserialization_error");
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(!stderr.contains("private-unclosed-value"));
-    assert!(!stderr.contains("explicit-secret"));
 }
 
 #[test]

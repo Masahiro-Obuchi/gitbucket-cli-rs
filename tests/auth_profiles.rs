@@ -96,7 +96,7 @@ fn explicit_http_never_selects_a_saved_https_token() {
 fn explicit_default_host_does_not_lose_its_scheme_when_using_global_fallback() {
     let env = GbTestEnv::new();
     let path = env.path().join("config.toml");
-    fs::write(&path, "[hosts.'bucket.test']\ntoken='global-http'\nuser='global'\nprotocol='http'\n[profiles.work.hosts.'https://bucket.test']\ntoken='profile-https'\nuser='profile'\n").unwrap();
+    fs::write(&path, "[hosts.'http://bucket.test']\ntoken='global-http'\nuser='global'\n[profiles.work.hosts.'https://bucket.test']\ntoken='profile-https'\nuser='profile'\n").unwrap();
     assert_success(
         &command(&env)
             .args([
@@ -124,38 +124,16 @@ fn explicit_default_host_does_not_lose_its_scheme_when_using_global_fallback() {
         Some("http://bucket.test")
     );
     assert_eq!(
-        config["hosts"]["bucket.test"]["token"].as_str(),
+        config["hosts"]["http://bucket.test"]["token"].as_str(),
         Some("global-http")
     );
 }
 
 #[test]
-fn making_a_legacy_host_default_pins_the_selected_protocol() {
-    let env = GbTestEnv::new();
-    fs::write(env.path().join("config.toml"), "[hosts.'bucket.test']\ntoken='http-token'\nuser='a'\nprotocol='http'\n[hosts.'https://bucket.test']\ntoken='https-token'\nuser='b'\n").unwrap();
-    assert_success(
-        &command(&env)
-            .args([
-                "config",
-                "set",
-                "host",
-                "--host",
-                "http://bucket.test",
-                "--default",
-            ])
-            .output()
-            .unwrap(),
-    );
-    let out = command(&env).args(["auth", "token"]).output().unwrap();
-    assert_success(&out);
-    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "http-token");
-}
-
-#[test]
-fn profile_logout_does_not_change_a_legacy_default_to_another_scheme() {
+fn profile_logout_does_not_change_a_default_to_another_scheme() {
     let env = GbTestEnv::new();
     let path = env.path().join("config.toml");
-    fs::write(&path, "[hosts.'https://bucket.test']\ntoken='global-https'\nuser='global'\n[profiles.work]\ndefault_host='bucket.test'\n[profiles.work.hosts.'bucket.test']\ntoken='profile-http'\nuser='profile'\nprotocol='http'\n").unwrap();
+    fs::write(&path, "[hosts.'https://bucket.test']\ntoken='global-https'\nuser='global'\n[profiles.work]\ndefault_host='http://bucket.test'\n[profiles.work.hosts.'http://bucket.test']\ntoken='profile-http'\nuser='profile'\n").unwrap();
     assert_success(
         &command(&env)
             .args(["auth", "logout", "--profile", "work"])
@@ -181,55 +159,23 @@ fn profile_logout_does_not_change_a_legacy_default_to_another_scheme() {
 }
 
 #[test]
-fn global_logout_promotes_an_exact_instance_instead_of_an_ambiguous_bare_key() {
+fn global_logout_clears_default_without_selecting_another_host() {
     let env = GbTestEnv::new();
-    fs::write(env.path().join("config.toml"), "default_host='https://old.test'\n[hosts.'https://old.test']\ntoken='old'\nuser='old'\n[hosts.'bucket.test']\ntoken='http-token'\nuser='a'\nprotocol='http'\n[hosts.'https://bucket.test']\ntoken='https-token'\nuser='b'\n").unwrap();
+    let path = env.path().join("config.toml");
+    fs::write(&path, "default_host='https://old.test'\n[hosts.'https://old.test']\ntoken='old'\nuser='old'\n[hosts.'http://bucket.test']\ntoken='http-token'\nuser='a'\n").unwrap();
     assert_success(&command(&env).args(["auth", "logout"]).output().unwrap());
-    let out = command(&env).args(["auth", "token"]).output().unwrap();
-    assert_success(&out);
-    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "http-token");
-}
 
-#[test]
-fn migration_refuses_bare_defaults_that_match_multiple_schemes() {
-    for scope in ["", "profiles.work."] {
-        let env = GbTestEnv::new();
-        let path = env.path().join("config.toml");
-        let prefix = if scope.is_empty() {
-            String::new()
-        } else {
-            "[profiles.work]\n".into()
-        };
-        let original = format!("{prefix}default_host='bucket.test'\n[{scope}hosts.'bucket.test']\ntoken='http-token'\nuser='a'\nprotocol='http'\n[{scope}hosts.'https://bucket.test']\ntoken='https-token'\nuser='b'\n");
-        fs::write(&path, &original).unwrap();
-        for args in [
-            vec!["config", "migrate"],
-            vec!["config", "migrate", "--apply"],
-        ] {
-            let out = command(&env).args(args).output().unwrap();
-            assert_failure(&out);
-            assert_eq!(fs::read_to_string(&path).unwrap(), original);
-            assert!(!fs::read_dir(env.path()).unwrap().any(|entry| entry
-                .unwrap()
-                .file_name()
-                .to_string_lossy()
-                .starts_with("config.toml.migration-")));
-        }
-        fs::write(
-            &path,
-            original.replace(
-                "default_host='bucket.test'",
-                "default_host='http://bucket.test'",
-            ),
-        )
-        .unwrap();
-        assert_success(
-            &command(&env)
-                .args(["config", "migrate", "--apply"])
-                .output()
-                .unwrap(),
-        );
-    }
+    let value: toml::Value = toml::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+    assert!(value.get("default_host").is_none());
+    assert!(value["hosts"].get("https://old.test").is_none());
+    assert_eq!(
+        value["hosts"]["http://bucket.test"]["token"].as_str(),
+        Some("http-token")
+    );
+
+    let out = command(&env).args(["auth", "token"]).output().unwrap();
+    assert_failure(&out);
+    assert!(out.stdout.is_empty());
 }
 
 #[test]
@@ -384,7 +330,7 @@ fn status_probes_the_token_instead_of_trusting_saved_or_environment_user_hints()
         )]);
         let target = format!("http://127.0.0.1:{port}/gitbucket");
         if saved {
-            fs::write(env.path().join("config.toml"), format!("default_host = '{target}'\n[hosts.'{target}']\ntoken = 'saved-secret'\nuser = 'stale-user'\nprotocol = 'http'\n")).unwrap();
+            fs::write(env.path().join("config.toml"), format!("default_host = '{target}'\n[hosts.'{target}']\ntoken = 'saved-secret'\nuser = 'stale-user'\n")).unwrap();
         }
         let mut cmd = command(&env);
         cmd.env("GB_HOST", &target).env("GB_USER", "untrusted-hint");
@@ -443,7 +389,7 @@ fn offline_status_is_explicitly_unverified_and_never_contacts_the_target() {
 }
 
 #[test]
-fn scheme_port_deployment_and_alias_ambiguity_bound_credential_selection() {
+fn scheme_port_deployment_and_input_ambiguity_bound_credential_selection() {
     let env = GbTestEnv::new();
     fs::write(
         env.path().join("config.toml"),
@@ -454,7 +400,6 @@ user = "alice"
 [hosts."http://bucket.test/gitbucket"]
 token = "http-secret"
 user = "bob"
-protocol = "http"
 "#,
     )
     .unwrap();
@@ -490,273 +435,20 @@ protocol = "http"
 }
 
 #[test]
-fn migration_preserves_unknown_fields_and_original_bytes_and_is_idempotent() {
+fn config_rejects_legacy_and_noncanonical_instances_without_rewriting() {
     let env = GbTestEnv::new();
     let path = env.path().join("config.toml");
-    let original = r#"# original comments and spacing
-default_host = "BUCKET.test:443/gitbucket/api/v3/"
-future_option = "keep"
-[hosts."BUCKET.test:443/gitbucket/api/v3/"]
-token = "secret"
-user = "alice"
-future_host = [1, 2]
-[profiles.work]
-default_host = "[::1]:8080/gitbucket"
-future_profile = true
-[profiles.work.hosts."[::1]:8080/gitbucket"]
-token = "profile-secret"
-user = "bob"
-protocol = "http"
-"#;
-    fs::write(&path, original).unwrap();
-    let preview = command(&env).args(["config", "migrate"]).output().unwrap();
-    assert_success(&preview);
-    assert_eq!(fs::read_to_string(&path).unwrap(), original);
-    let report: Value = serde_json::from_slice(&preview.stdout).unwrap();
-    assert_eq!(report["changed"], true);
-    assert!(report["backup"].is_null());
-    let apply = command(&env)
-        .args(["config", "migrate", "--apply"])
-        .output()
-        .unwrap();
-    assert_success(&apply);
-    assert!(!String::from_utf8_lossy(&apply.stdout).contains("secret"));
-    let report: Value = serde_json::from_slice(&apply.stdout).unwrap();
-    let backup = report["backup"].as_str().unwrap();
-    let migrated: toml::Value = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-    assert_eq!(
-        migrated["default_host"].as_str(),
-        Some("https://bucket.test/gitbucket")
-    );
-    assert_eq!(
-        migrated["hosts"]["https://bucket.test/gitbucket"]["future_host"]
-            .as_array()
-            .unwrap()
-            .len(),
-        2
-    );
-    assert_eq!(
-        migrated["profiles"]["work"]["default_host"].as_str(),
-        Some("http://[::1]:8080/gitbucket")
-    );
-    assert_eq!(migrated["future_option"].as_str(), Some("keep"));
-    assert_eq!(
-        migrated["profiles"]["work"]["future_profile"].as_bool(),
-        Some(true)
-    );
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        assert_eq!(
-            fs::metadata(backup).unwrap().permissions().mode() & 0o777,
-            0o600
-        );
+    for original in [
+        "[hosts.'bucket.test']\ntoken='hidden'\nuser='alice'\n",
+        "[profiles.work.hosts.'https://BUCKET.test:443/gitbucket/api/v3/']\ntoken='hidden'\nuser='alice'\n",
+        "[profiles.work]\ndefault_host='bucket.test/gitbucket'\n",
+    ] {
+        fs::write(&path, original).unwrap();
+        let output = command(&env).args(["auth", "status", "--offline"]).output().unwrap();
+        assert_failure(&output);
+        let diagnostics = String::from_utf8_lossy(&output.stderr);
+        assert!(diagnostics.contains("Saved GitBucket instances must use normalized HTTP(S) base URLs"));
+        assert!(!diagnostics.contains("hidden"));
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
     }
-    let again = command(&env)
-        .args(["config", "migrate", "--apply"])
-        .output()
-        .unwrap();
-    assert_success(&again);
-    let again: Value = serde_json::from_slice(&again.stdout).unwrap();
-    assert_eq!(again["changed"], false);
-    assert!(again["backup"].is_null());
-    assert_success(
-        &command(&env)
-            .args(["config", "migrate", "--restore", backup])
-            .output()
-            .unwrap(),
-    );
-    assert_eq!(fs::read_to_string(&path).unwrap(), original);
-}
-
-#[test]
-fn migration_conflicts_and_restore_after_later_updates_never_overwrite_configuration() {
-    let env = GbTestEnv::new();
-    let path = env.path().join("config.toml");
-    let original = "[hosts.'bucket.test']\ntoken='one'\nuser='a'\n[hosts.'https://bucket.test']\ntoken='two'\nuser='b'\n";
-    fs::write(&path, original).unwrap();
-    assert_failure(
-        &command(&env)
-            .args(["auth", "token", "-H", "https://bucket.test"])
-            .output()
-            .unwrap(),
-    );
-    assert_failure(
-        &command(&env)
-            .args(["config", "migrate", "--apply"])
-            .output()
-            .unwrap(),
-    );
-    assert_eq!(fs::read_to_string(&path).unwrap(), original);
-    assert!(!fs::read_dir(env.path()).unwrap().any(|e| e
-        .unwrap()
-        .file_name()
-        .to_string_lossy()
-        .starts_with("config.toml.migration-")));
-    fs::write(&path, "[hosts.'bucket.test']\ntoken='one'\nuser='a'\n").unwrap();
-    let out = command(&env)
-        .args(["config", "migrate", "--apply"])
-        .output()
-        .unwrap();
-    assert_success(&out);
-    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
-    fs::write(
-        &path,
-        "# later edit\n[hosts.'bucket.test']\ntoken='new'\nuser='a'\n",
-    )
-    .unwrap();
-    let before = fs::read(&path).unwrap();
-    assert_failure(
-        &command(&env)
-            .args([
-                "config",
-                "migrate",
-                "--restore",
-                report["backup"].as_str().unwrap(),
-            ])
-            .output()
-            .unwrap(),
-    );
-    assert_eq!(fs::read(&path).unwrap(), before);
-}
-
-#[test]
-fn changing_an_explicit_url_scheme_is_rejected_without_saving_partial_fields() {
-    let env = GbTestEnv::new();
-    let path = env.path().join("config.toml");
-    fs::write(&path, SCOPED).unwrap();
-    let out = command(&env)
-        .args([
-            "config",
-            "set",
-            "host",
-            "--host",
-            "https://bucket.test/gitbucket",
-            "--user",
-            "changed",
-            "--protocol",
-            "http",
-        ])
-        .output()
-        .unwrap();
-    assert_failure(&out);
-    assert_eq!(fs::read_to_string(&path).unwrap(), SCOPED);
-}
-
-#[test]
-fn migration_merges_only_identical_aliases_and_keeps_http_and_https_separate() {
-    let env = GbTestEnv::new();
-    let path = env.path().join("config.toml");
-    fs::write(&path, "[hosts.'bucket.test']\ntoken='one'\nuser='a'\n[hosts.'https://BUCKET.test:443/api/v3']\ntoken='one'\nuser='a'\n[hosts.'http://bucket.test']\ntoken='two'\nuser='b'\nprotocol='http'\n").unwrap();
-    let out = command(&env)
-        .args(["config", "migrate", "--apply"])
-        .output()
-        .unwrap();
-    assert_success(&out);
-    let value: toml::Value = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-    assert_eq!(value["hosts"].as_table().unwrap().len(), 2);
-    assert_eq!(
-        value["hosts"]["https://bucket.test"]["token"].as_str(),
-        Some("one")
-    );
-    assert_eq!(
-        value["hosts"]["http://bucket.test"]["token"].as_str(),
-        Some("two")
-    );
-}
-
-#[cfg(unix)]
-#[test]
-fn migration_rejects_symlinked_config_and_backup_paths() {
-    use std::os::unix::fs::symlink;
-    let env = GbTestEnv::new();
-    let external = tempfile::tempdir().unwrap();
-    let original = "[hosts.'bucket.test']\ntoken='one'\nuser='a'\n";
-    let target = external.path().join("original.toml");
-    fs::write(&target, original).unwrap();
-    let path = env.path().join("config.toml");
-    symlink(&target, &path).unwrap();
-    assert_failure(
-        &command(&env)
-            .args(["config", "migrate", "--apply"])
-            .output()
-            .unwrap(),
-    );
-    assert_eq!(fs::read_to_string(&target).unwrap(), original);
-    fs::remove_file(&path).unwrap();
-    fs::write(&path, original).unwrap();
-    let out = command(&env)
-        .args(["config", "migrate", "--apply"])
-        .output()
-        .unwrap();
-    assert_success(&out);
-    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
-    let link = env.path().join("backup-link.json");
-    symlink(report["backup"].as_str().unwrap(), &link).unwrap();
-    let before = fs::read(&path).unwrap();
-    assert_failure(
-        &command(&env)
-            .args(["config", "migrate", "--restore", link.to_str().unwrap()])
-            .output()
-            .unwrap(),
-    );
-    assert_eq!(fs::read(&path).unwrap(), before);
-}
-
-#[test]
-fn migration_never_guesses_the_scheme_of_an_uncredentialed_bare_default() {
-    let env = GbTestEnv::new();
-    let path = env.path().join("config.toml");
-    let original = "[profiles.work]\ndefault_host='bucket.test/gitbucket'\n";
-    fs::write(&path, original).unwrap();
-    let out = command(&env)
-        .env("GB_PROTOCOL", "http")
-        .args(["config", "migrate", "--apply"])
-        .output()
-        .unwrap();
-    assert_failure(&out);
-    assert_eq!(fs::read_to_string(&path).unwrap(), original);
-}
-
-#[test]
-fn global_logout_reconciles_a_normalized_default_with_a_legacy_storage_key() {
-    let env = GbTestEnv::new();
-    let path = env.path().join("config.toml");
-    fs::write(&path, "default_host='https://bucket.test'\n[hosts.'bucket.test']\ntoken='old'\nuser='a'\n[hosts.'next.test']\ntoken='next'\nuser='b'\n").unwrap();
-    assert_success(
-        &command(&env)
-            .args(["auth", "logout", "--global", "-H", "https://bucket.test"])
-            .output()
-            .unwrap(),
-    );
-    let value: toml::Value = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-    assert_eq!(value["default_host"].as_str(), Some("https://next.test"));
-    let out = command(&env).args(["auth", "token"]).output().unwrap();
-    assert_success(&out);
-    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "next");
-}
-
-#[test]
-fn a_corrupt_backup_never_echoes_its_secret_contents_or_changes_configuration() {
-    let env = GbTestEnv::new();
-    let path = env.path().join("config.toml");
-    fs::write(&path, "[hosts.'bucket.test']\ntoken='one'\nuser='a'\n").unwrap();
-    let out = command(&env)
-        .args(["config", "migrate", "--apply"])
-        .output()
-        .unwrap();
-    assert_success(&out);
-    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
-    let backup_path = report["backup"].as_str().unwrap();
-    let mut backup: Value = serde_json::from_slice(&fs::read(backup_path).unwrap()).unwrap();
-    backup["original"] = Value::String("token = 'sensitive-unclosed-backup-value".into());
-    fs::write(backup_path, serde_json::to_vec(&backup).unwrap()).unwrap();
-    let before = fs::read(&path).unwrap();
-    let out = command(&env)
-        .args(["config", "migrate", "--restore", backup_path])
-        .output()
-        .unwrap();
-    assert_failure(&out);
-    assert!(!String::from_utf8_lossy(&out.stderr).contains("sensitive"));
-    assert_eq!(fs::read(&path).unwrap(), before);
 }

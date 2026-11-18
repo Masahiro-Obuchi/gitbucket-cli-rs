@@ -658,17 +658,11 @@ default_host = "https://gitbucket.example.com/gitbucket"
 [hosts."https://gitbucket.example.com/gitbucket"]
 token = "your-personal-access-token"
 user = "alice"
-protocol = "https"
 ```
 
-Plain host keys also work:
-
-```toml
-[hosts."gitbucket.example.com"]
-token = "your-personal-access-token"
-user = "alice"
-protocol = "https"
-```
+Saved host keys and default hosts are normalized HTTP(S) base URLs. Use a fresh
+configuration directory and log in again if your old configuration uses bare
+host keys or bare defaults.
 
 Profiles can select host and repository defaults, and can optionally carry credentials scoped to that profile:
 
@@ -676,13 +670,12 @@ Profiles can select host and repository defaults, and can optionally carry crede
 default_profile = "work"
 
 [profiles.work]
-default_host = "gitbucket.example.com"
+default_host = "https://gitbucket.example.com"
 default_repo = "alice/project"
 
-[profiles.work.hosts."gitbucket.example.com"]
+[profiles.work.hosts."https://gitbucket.example.com"]
 token = "your-work-token"
 user = "alice"
-protocol = "https"
 ```
 
 `--hostname` / `GB_HOST` and `--repo` / `GB_REPO` override profile defaults. Profile-scoped credentials are tried before global `[hosts]` credentials for the same host.
@@ -690,8 +683,8 @@ protocol = "https"
 The same GitBucket host can be used with multiple accounts by storing credentials under different profiles:
 
 ```sh
-gb auth login --profile work -H gitbucket.example.com -t "$WORK_TOKEN"
-gb auth login --profile personal -H gitbucket.example.com -t "$PERSONAL_TOKEN"
+gb auth login --profile work -H https://gitbucket.example.com --with-token < work-token.txt
+gb auth login --profile personal -H https://gitbucket.example.com --with-token < personal-token.txt
 
 gb auth status --profile work
 gb auth status --profile personal --json
@@ -708,8 +701,8 @@ default profile and conflicts with explicit --profile/GB_PROFILE. Host settings
 and logout affect only their selected scope; profile logout preserves global
 credentials and reports remaining environment/fallback authentication.
 Default-host updates retain the selected instance's full URL, including when a
-profile uses global credentials. Logout also preserves a legacy default's
-scheme, so removing an HTTP credential cannot select an HTTPS fallback instead.
+profile uses global credentials. Profile logout retains the default URL.
+Removing the global default credential clears that default.
 
 ```sh
 gb config get host --host https://bucket.example/gitbucket --profile work
@@ -717,17 +710,11 @@ gb config unset default-repo --profile work
 gb config unset host --host https://bucket.example/gitbucket --profile work
 gb config unset profile personal
 gb auth logout --global -H https://bucket.example/gitbucket
-gb config migrate          # preview all instance-key changes
-gb config migrate --apply  # save a private backup, then apply
-gb config migrate --restore /path/from/the/backup/result.json
 ```
 
-New credential keys include the URL scheme. HTTP and HTTPS, ports and deployment
-paths remain distinct; ambiguous aliases are refused. Migration preserves unknown
-TOML fields, stops on conflicting credentials, and supports exact restoration
-only if configuration has not changed since migration. Backups contain secrets
-and use the same protection as configuration. See
-[authentication, profile and migration contracts](docs/AUTH_PROFILES.md).
+HTTP and HTTPS, ports and deployment paths identify distinct saved instances.
+When a bare host matches both schemes in the selected scope, pass a full URL.
+See [authentication and profile settings](docs/AUTH_PROFILES.md).
 
 For bare targets, protocol selection uses this order:
 
@@ -763,7 +750,7 @@ gb config get default-host
 gb config get default-profile
 gb config get host --host gitbucket.example.com/gitbucket --field protocol
 gb config get profile work --json
-gb config set host --host gitbucket.example.com/gitbucket --protocol http --default
+gb config set host --host https://gitbucket.example.com/gitbucket --user alice --default
 gb config set profile work --default-host gitbucket.example.com --default-repo alice/project
 gb config set default-profile work
 gb config unset default-host

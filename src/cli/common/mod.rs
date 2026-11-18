@@ -4,7 +4,7 @@ mod edit_values;
 mod repo_resolution;
 mod web;
 
-pub use auth::{resolve_host_config, resolve_hostname, validate_selected_profile};
+pub use auth::{resolve_credential, resolve_hostname, validate_selected_profile};
 pub use context::{HostContext, RepoContext};
 pub use edit_values::{
     merge_named_values, normalize_edit_state, normalize_list_state, normalize_str_vec,

@@ -73,7 +73,6 @@ gb auth login [OPTIONS]
 | Option | Short | Default | Description |
 | --- | --- | --- | --- |
 | `--hostname <HOST>` | `-H` | interactive prompt | Hostname or base URL |
-| `--token <TOKEN>` | `-t` | interactive prompt | Legacy argv token; conflicts with --with-token |
 | `--with-token` | — | false | Read one token from UTF-8 stdin, optional final LF/CRLF |
 | `--protocol <PROTOCOL>` | — | `https` | `https` or `http` |
 
@@ -81,7 +80,7 @@ Behavior:
 
 1. Prompt for hostname/token when omitted only with terminal stdin/stderr. Otherwise return input_required with an option hint. --with-token reads stdin explicitly, without echoing it; blank, multiline, whitespace/control-containing or oversized (>64 KiB) tokens fail before HTTP.
 2. Validate credentials by calling `GET /user`.
-3. Save a normalized full base-URL key and actual protocol on success, preserving an existing unique legacy key on re-login. Set the selected scope default host to the normalized URL.
+3. Save the credential under its normalized HTTP(S) base URL and set the selected scope default host to that URL.
 
 The selected login token is retained for final runtime-error redaction regardless
 of argv, stdin or prompt input. Text and JSON diagnostics both redact it,
@@ -91,9 +90,9 @@ Examples:
 
 ```bash
 gb auth login
-gb auth login -H gitbucket.example.com -t <TOKEN>
+gb auth login -H gitbucket.example.com --with-token < token.txt
 gb auth login -H localhost:8080 --protocol http
-gb auth login -H https://gitbucket.example.com/gitbucket -t <TOKEN>
+gb auth login -H https://gitbucket.example.com/gitbucket --with-token < token.txt
 ```
 
 #### `gb auth logout`
@@ -229,14 +228,13 @@ Set the stored default profile. The target profile must already exist in saved c
 #### `gb config set host`
 
 ```text
-gb config set host --host <HOST> [--user <USER>] [--protocol <PROTOCOL>] [--default]
+gb config set host --host <HOST> [--user <USER>] [--default]
 ```
 
 | Option | Description |
 | --- | --- |
 | `--host <HOST>` | Host or base URL to update |
 | `--user <USER>` | Username stored for GitBucket web-session fallbacks |
-| `--protocol <PROTOCOL>` | Stored protocol (`http` or `https`) |
 | `--default` | Also make this host the stored default host |
 
 The target host must already exist in saved config.
@@ -248,6 +246,8 @@ gb config set profile <NAME> [--default-host <HOST>] [--default-repo <OWNER/REPO
 ```
 
 Create or update a saved profile. `--default-repo` must use `OWNER/REPO` format.
+A bare `--default-host` uses a unique saved instance in the profile or global
+scope, then HTTPS if neither matches. The selected URL is stored with its scheme.
 
 #### `gb config unset default-host`
 
@@ -306,21 +306,12 @@ explicit profile. Host settings and logout never write/remove fallback entries.
 Profile logout retains its target and reports remaining global/environment
 fallback. `config get/set/unset default-host` respects the selected scope.
 `config set default-host` and `config set host --default` store full instance
-URLs even for legacy keys or global fallback. Profile logout pins any retained
-legacy default to its original scheme; replacement global defaults use full URLs.
+URLs, including profile defaults that route to global credentials. Removing
+the global default credential clears the default.
 `config get/unset default-repo` targets the selected profile. `config unset host
 --host URL` removes only scoped credentials, and `config unset profile NAME`
 removes that profile and clears a matching default-profile. Named profile
 operations and default-profile address the registry; list remains full inventory.
-
-`config migrate` previews whole-file instance-key normalization. --apply checks
-all collisions, saves a private exact backup, and atomically replaces the file
-under the shared lock. --restore BACKUP checks the migrated digest before
-restoring the original bytes; subsequent edits refuse automatic restoration.
-Unknown TOML fields survive migration, while comments/formatting may change in
-the migrated version. A bare default matching both HTTP and HTTPS is refused,
-even if one original storage key matches it exactly. See
-[complete migration contract](docs/AUTH_PROFILES.md).
 
 ### 3.5 `gb completion` — shell completion generation
 
@@ -401,7 +392,7 @@ gb repo create [NAME] [OPTIONS]
 | `--description <TEXT>` | `-d` | none | Repository description |
 | `--private` | — | `false` | Create as private |
 | `--add-readme` | — | `false` | Auto-initialize README |
-| `--group <GROUP>` | — | none | Create under a group (`--org` remains accepted as an alias) |
+| `--group <GROUP>` | — | none | Create under a group |
 
 #### `gb repo clone`
 
@@ -457,7 +448,7 @@ gb repo fork [OWNER/REPO] [OPTIONS]
 | Argument/Option | Short | Description |
 | --- | --- | --- |
 | `OWNER/REPO` | — | Repository to fork (or pass globally with `gb -R OWNER/REPO repo fork`) |
-| `--group <GROUP>` | — | Group to fork into (defaults to the REST token user; `--org` remains accepted as an alias) |
+| `--group <GROUP>` | — | Group to fork into (defaults to the REST token user) |
 
 Fork resolves the default destination from the REST token's `/user` response.
 `--group` is sent as the REST `organization` body field and is retained for the
@@ -1268,7 +1259,6 @@ default_profile = "work"
 [hosts."https://gitbucket.example.com/gitbucket"]
 token = "your-token"
 user = "alice"
-protocol = "https"
 
 [profiles.work]
 default_host = "https://gitbucket.example.com/gitbucket"
@@ -1277,19 +1267,12 @@ default_repo = "alice/project"
 [profiles.work.hosts."https://gitbucket.example.com/gitbucket"]
 token = "your-work-token"
 user = "alice"
-protocol = "https"
 ```
 
-Existing configuration can contain legacy host-plus-path keys. New login writes
-a full base-URL key; use the explicit migration/restore flow in
-[AUTH_PROFILES.md](docs/AUTH_PROFILES.md) rather than merging ambiguous aliases:
-
-```toml
-[hosts."gitbucket.example.com/gitbucket"]
-token = "your-token"
-user = "alice"
-protocol = "https"
-```
+Configuration stores host keys and default-host values as normalized HTTP(S)
+base URLs. The URL supplies the protocol. Start with a fresh configuration
+directory and log in again if an older configuration contains bare host keys
+or defaults. See [authentication profiles](docs/AUTH_PROFILES.md).
 
 Configuration mutations use a single `AuthConfig::update` transaction: acquire
 an OS lock on the stable sibling `config.toml.lock`, reload the latest TOML,
@@ -1351,14 +1334,12 @@ If a selected profile does not exist, commands fail with a clear configuration e
 2. `GB_HOST`
 3. Active profile's `default_host`
 4. Saved `default_host` in `config.toml` when no profile is active
-5. Lexicographically first configured host in `config.toml` as a backward-compatible fallback when no profile is active
 
-Stored hosts match a normalized scheme/host/port/deployment identity. API suffix
-and trailing slash aliases are accepted when unambiguous, but HTTP and HTTPS
-credentials never match each other. Bare targets use an explicit GB_PROTOCOL or
-one unambiguous saved instance; multiple aliases require repair/migration. New
-login keys are full base URLs; unique legacy keys remain readable. See
-[instance matching and migration](docs/AUTH_PROFILES.md).
+A target is required when none of these sources supplies one. The CLI accepts
+a trailing slash and the optional `/api/v3` suffix in input. Stored credentials
+are indexed by normalized scheme, host, port and deployment path. A bare target
+uses `GB_PROTOCOL` or a unique scheme in the selected credential scope.
+See [instance matching](docs/AUTH_PROFILES.md#scheme-and-instance-matching).
 
 ### 4.6 Authenticated request URL boundaries
 
@@ -1685,7 +1666,7 @@ src/
   git.rs, git/            # scoped credentials, supervised processes and snapshots
   models/                 # REST DTOs and immutable original JSON projections
   config/
-    auth/                 # scopes, instance matching, migration and storage
+    auth/                 # scopes, instance matching and storage
     review_receipt.rs     # local inline-write intent/retry records
   output/                 # JSON/errors, Unicode text/tables, stdout and pager
 ```

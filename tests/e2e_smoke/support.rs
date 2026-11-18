@@ -46,12 +46,16 @@ pub(super) fn run_and_assert_failure(command: &mut std::process::Command) -> Str
     String::from_utf8_lossy(&output.stderr).into_owned()
 }
 
-pub(super) fn login(temp: &std::path::Path) {
+pub(super) fn login(temp: &Path) {
+    login_scoped(temp, &[]);
+}
+
+pub(super) fn login_scoped(temp: &Path, scope: &[&str]) {
     let host = required_env("GB_E2E_HOST");
     let token = required_env("GB_E2E_TOKEN");
     let protocol = optional_env("GB_E2E_PROTOCOL", "http");
 
-    let _ = run_and_assert_success(
+    let output = crate::gb_cmd::with_stdin(
         gb_command()
             .current_dir(temp)
             .env("GB_CONFIG_DIR", temp)
@@ -61,12 +65,14 @@ pub(super) fn login(temp: &std::path::Path) {
                 "login",
                 "-H",
                 &host,
-                "-t",
-                &token,
                 "--protocol",
                 &protocol,
-            ]),
+                "--with-token",
+            ])
+            .args(scope),
+        token.as_bytes(),
     );
+    crate::gb_cmd::assert_success(&output);
 }
 
 pub(super) fn e2e_env(temp: &std::path::Path) -> Vec<(&'static str, String)> {

@@ -3,14 +3,13 @@ use std::collections::HashMap;
 use crate::test_support::TestEnv;
 
 use super::instance_key;
+use super::model::Scope;
 use super::model::{AuthConfig, HostConfig, ProfileConfig};
-use super::resolve::protocol_from_hostname;
 
 fn host(user: &str) -> HostConfig {
     HostConfig {
         token: "token".into(),
         user: user.into(),
-        protocol: "https".into(),
     }
 }
 
@@ -19,11 +18,15 @@ fn set_host_updates_default_host() {
     let _env = TestEnv::new();
     let mut config = AuthConfig::default();
 
-    config.set_host("gitbucket.example.com".into(), host("alice"));
+    config.save_login(
+        &Scope::Global,
+        "https://gitbucket.example.com".into(),
+        host("alice"),
+    );
 
     assert_eq!(
         config.resolve_hostname(None, None).unwrap().as_deref(),
-        Some("gitbucket.example.com")
+        Some("https://gitbucket.example.com")
     );
 }
 
@@ -32,28 +35,36 @@ fn default_hostname_prefers_explicit_default() {
     let _env = TestEnv::new();
     let mut config = AuthConfig {
         hosts: HashMap::new(),
-        default_host: Some("b.example.com".into()),
+        default_host: Some("https://b.example.com".into()),
         ..Default::default()
     };
-    config.hosts.insert("a.example.com".into(), host("alice"));
-    config.hosts.insert("b.example.com".into(), host("bob"));
+    config
+        .hosts
+        .insert("https://a.example.com".into(), host("alice"));
+    config
+        .hosts
+        .insert("https://b.example.com".into(), host("bob"));
 
     assert_eq!(
         config.resolve_hostname(None, None).unwrap().as_deref(),
-        Some("b.example.com")
+        Some("https://b.example.com")
     );
 }
 
 #[test]
-fn default_hostname_falls_back_to_sorted_hostnames() {
+fn default_hostname_requires_an_explicit_default() {
     let _env = TestEnv::new();
     let mut config = AuthConfig::default();
-    config.hosts.insert("z.example.com".into(), host("zoe"));
-    config.hosts.insert("a.example.com".into(), host("alice"));
+    config
+        .hosts
+        .insert("https://z.example.com".into(), host("zoe"));
+    config
+        .hosts
+        .insert("https://a.example.com".into(), host("alice"));
 
     assert_eq!(
         config.resolve_hostname(None, None).unwrap().as_deref(),
-        Some("a.example.com")
+        None
     );
 }
 
@@ -61,7 +72,9 @@ fn default_hostname_falls_back_to_sorted_hostnames() {
 fn default_hostname_prefers_environment_variable() {
     let env = TestEnv::new();
     let mut config = AuthConfig::default();
-    config.hosts.insert("a.example.com".into(), host("alice"));
+    config
+        .hosts
+        .insert("https://a.example.com".into(), host("alice"));
 
     env.set("GB_HOST", "env.example.com");
 
@@ -69,19 +82,6 @@ fn default_hostname_prefers_environment_variable() {
         config.resolve_hostname(None, None).unwrap().as_deref(),
         Some("env.example.com")
     );
-}
-
-#[test]
-fn protocol_can_be_derived_from_hostname() {
-    assert_eq!(
-        protocol_from_hostname("http://localhost:8080/gitbucket").as_deref(),
-        Some("http")
-    );
-    assert_eq!(
-        protocol_from_hostname("https://gitbucket.example.com").as_deref(),
-        Some("https")
-    );
-    assert_eq!(protocol_from_hostname("gitbucket.example.com"), None);
 }
 
 #[test]
@@ -94,25 +94,27 @@ fn instance_keys_preserve_scheme_and_remove_api_suffix() {
         instance_key("gitbucket.example.com/gitbucket", "http").unwrap(),
         "http://gitbucket.example.com/gitbucket"
     );
+    assert!(instance_key(
+        "https://gitbucket.example.com/gitbucket/api/v3//api/v3",
+        "https"
+    )
+    .is_err());
 }
 
 #[test]
 fn get_host_matches_equivalent_hostnames() {
     let _env = TestEnv::new();
     let mut config = AuthConfig::default();
-    config.set_host(
+    config.save_login(
+        &Scope::Global,
         "https://gitbucket.example.com/gitbucket".into(),
-        HostConfig {
-            token: "token".into(),
-            user: "alice".into(),
-            protocol: "http".into(),
-        },
+        host("alice"),
     );
 
     let host = config
-        .get_host_for_profile("gitbucket.example.com/gitbucket", None)
+        .credential_for_profile("gitbucket.example.com/gitbucket", None)
         .unwrap();
-    assert_eq!(host.protocol, "https");
+    assert_eq!(host.protocol(), "https");
 }
 
 #[test]
@@ -123,11 +125,11 @@ fn get_host_prefers_environment_token() {
     env.set("GB_TOKEN", "env-token");
 
     let host = config
-        .get_host_for_profile("https://gitbucket.example.com/gitbucket", None)
+        .credential_for_profile("https://gitbucket.example.com/gitbucket", None)
         .unwrap();
-    assert_eq!(host.token, "env-token");
-    assert_eq!(host.protocol, "https");
-    assert_eq!(host.user, "");
+    assert_eq!(host.host.token, "env-token");
+    assert_eq!(host.protocol(), "https");
+    assert_eq!(host.host.user, "");
 }
 
 #[test]
@@ -137,7 +139,7 @@ fn resolve_hostname_uses_selected_profile_default_host() {
     config.profiles.insert(
         "work".into(),
         ProfileConfig {
-            default_host: Some("work.example.com".into()),
+            default_host: Some("https://work.example.com".into()),
             ..Default::default()
         },
     );
@@ -147,7 +149,7 @@ fn resolve_hostname_uses_selected_profile_default_host() {
             .resolve_hostname(None, Some("work"))
             .unwrap()
             .as_deref(),
-        Some("work.example.com")
+        Some("https://work.example.com")
     );
 }
 
@@ -182,19 +184,19 @@ fn get_host_prefers_profile_scoped_credentials() {
     let mut config = AuthConfig::default();
     config
         .hosts
-        .insert("gitbucket.example.com".into(), host("global"));
+        .insert("https://gitbucket.example.com".into(), host("global"));
     config.profiles.insert(
         "work".into(),
         ProfileConfig {
-            hosts: HashMap::from([("gitbucket.example.com".into(), host("profile"))]),
+            hosts: HashMap::from([("https://gitbucket.example.com".into(), host("profile"))]),
             ..Default::default()
         },
     );
 
     let host = config
-        .get_host_for_profile("gitbucket.example.com", Some("work"))
+        .credential_for_profile("gitbucket.example.com", Some("work"))
         .unwrap();
-    assert_eq!(host.user, "profile");
+    assert_eq!(host.host.user, "profile");
 }
 
 #[test]
@@ -207,24 +209,6 @@ fn selected_missing_profile_returns_clear_error() {
         .unwrap_err()
         .to_string();
     assert!(err.contains("Profile 'missing' is not configured"));
-}
-
-#[test]
-fn remove_host_promotes_next_sorted_host() {
-    let _env = TestEnv::new();
-    let mut config = AuthConfig {
-        hosts: HashMap::new(),
-        default_host: Some("b.example.com".into()),
-        ..Default::default()
-    };
-    config.hosts.insert("a.example.com".into(), host("alice"));
-    config.hosts.insert("b.example.com".into(), host("bob"));
-
-    assert!(config.remove_host("b.example.com").unwrap());
-    assert_eq!(
-        config.resolve_hostname(None, None).unwrap().as_deref(),
-        Some("https://a.example.com")
-    );
 }
 
 #[cfg(unix)]

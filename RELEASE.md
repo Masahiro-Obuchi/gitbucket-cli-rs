@@ -12,7 +12,7 @@ version of `0.6.1` does not imply that an existing `v0.6.1` binary contains late
 refactor commits.
 
 [Draft next-release notes and the upgrade procedure](docs/NEXT_RELEASE.md)
-describe the merged changes, migration order and automation compatibility.
+describe the merged changes, configuration setup and automation changes.
 They remain unreleased until a maintainer selects a new version and candidate
 commit. The document's handoff table separates that pending work from tests of
 an earlier preparation PR.

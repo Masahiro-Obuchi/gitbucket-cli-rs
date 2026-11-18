@@ -1,3 +1,6 @@
+#[path = "support/gb_cmd.rs"]
+mod gb_cmd;
+
 #[path = "e2e_smoke/support.rs"]
 mod support;
 

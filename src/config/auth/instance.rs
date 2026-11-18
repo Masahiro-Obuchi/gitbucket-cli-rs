@@ -1,4 +1,4 @@
-//! Credential keys retain scheme, port and deployment; aliases never widen scope.
+//! Normalize targets at input and look up credentials by canonical base URL.
 use std::collections::HashMap;
 
 use super::HostConfig;
@@ -14,49 +14,59 @@ pub(crate) fn instance_key(host: &str, protocol: &str) -> Result<String> {
         return Err(invalid());
     }
     let base = crate::api::url::normalize_web_base_url(host, protocol).map_err(|_| invalid())?;
-    crate::api::url::normalize_origin_path_or_url(&base, &base).map_err(|_| invalid())?;
-    Ok(base)
-}
-
-pub(super) fn stored_instance(key: &str, host: &HostConfig) -> Result<String> {
-    instance_key(key, &host.protocol)
-}
-
-pub(super) fn matching_keys(
-    hosts: &HashMap<String, HostConfig>,
-    target: &str,
-    protocol: Option<&str>,
-) -> Result<Vec<String>> {
-    // Validate even an empty table, before any credential is selected.
-    instance_key(target, protocol.unwrap_or("https"))?;
-    let mut matches = Vec::new();
-    for (key, host) in hosts {
-        let stored = stored_instance(key, host)?;
-        let scheme = protocol.unwrap_or_else(|| {
-            if stored.starts_with("http://") {
-                "http"
-            } else {
-                "https"
-            }
-        });
-        if instance_key(target, scheme)? == stored {
-            matches.push(key.clone());
-        }
+    // Removing the API suffix can expose trailing slashes. Store a URL
+    // that normalizes to itself when loaded on the next invocation.
+    let base = base.trim_end_matches('/');
+    if base.ends_with("/api/v3") {
+        return Err(invalid());
     }
-    matches.sort();
-    Ok(matches)
+    crate::api::url::normalize_origin_path_or_url(base, base).map_err(|_| invalid())?;
+    Ok(base.to_owned())
 }
 
-pub(super) fn unique_key(
-    hosts: &HashMap<String, HostConfig>,
-    target: &str,
-    protocol: Option<&str>,
-) -> Result<Option<String>> {
-    let matches = matching_keys(hosts, target, protocol)?;
-    if matches.len() > 1 {
+pub(crate) fn instance_protocol(instance: &str) -> &str {
+    instance
+        .split_once("://")
+        .expect("canonical instance URL")
+        .0
+}
+
+pub(super) fn validate_saved_instance(value: &str) -> Result<()> {
+    if !value.contains("://") || instance_key(value, "https")? != value {
         return Err(GbError::Config(
-            "Ambiguous saved credentials for this instance. Specify an explicit scheme or inspect `gb config migrate`; conflicting aliases must be resolved before use.".into(),
+            "Saved GitBucket instances must use normalized HTTP(S) base URLs. Use a fresh GB_CONFIG_DIR and run `gb auth login` to set up credentials again.".into(),
         ));
     }
-    Ok(matches.into_iter().next())
+    Ok(())
+}
+
+pub(super) fn instance_candidates(
+    target: &str,
+    protocol: Option<&str>,
+) -> Result<(String, Option<String>)> {
+    if target.contains("://") {
+        return Ok((instance_key(target, "https")?, None));
+    }
+    let preferred = instance_key(target, protocol.unwrap_or("https"))?;
+    let alternate = if protocol.is_none() {
+        Some(instance_key(target, "http")?)
+    } else {
+        None
+    };
+    Ok((preferred, alternate))
+}
+
+pub(super) fn matching_instance<'a>(
+    hosts: &HashMap<String, HostConfig>,
+    candidates: &'a (String, Option<String>),
+) -> Result<Option<&'a str>> {
+    let (preferred, alternate) = candidates;
+    let preferred = hosts.contains_key(preferred).then_some(preferred.as_str());
+    let alternate = alternate.as_deref().filter(|url| hosts.contains_key(*url));
+    if preferred.is_some() && alternate.is_some() {
+        return Err(GbError::Config(
+            "The saved instance scheme is ambiguous. Specify an explicit HTTP(S) URL.".into(),
+        ));
+    }
+    Ok(preferred.or(alternate))
 }

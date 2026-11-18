@@ -32,10 +32,8 @@ and environment variables. Logout reports the remaining possibility of fallback
 and the presence of `GB_TOKEN`. Removing a profile also clears default-profile
 when it points to that profile; it does not delete global or other profiles'
 credentials. Clearing profile default-host instead removes that routing choice.
-When logout removes a legacy credential used by a profile default, it first pins
-that default to its actual full URL. An HTTP target cannot become an HTTPS
-fallback merely because its own credential was removed. Global logout likewise
-stores the full URL of any replacement default.
+Removing the global default credential clears the global default. Set another
+default explicitly with `gb config set default-host` when needed.
 
 ## Verified status and offline inventory
 
@@ -73,67 +71,28 @@ behavior and the old assumption that effective_actor.user was a saved username.
 
 ## Scheme and instance matching
 
-Instance keys normalize scheme, host case, default port, trailing slash and the
-optional `/api/v3` suffix. Ports, deployment paths and HTTP versus HTTPS remain
-distinct. Legacy bare keys use their stored protocol; an explicit URL's scheme
-defines its actual instance even if its legacy protocol field disagrees.
+Saved host keys and default-host values are normalized HTTP(S) base URLs.
+The URL supplies the scheme. HTTP and HTTPS, custom ports and deployment paths
+identify distinct instances. CLI inputs normalize host case, default ports,
+trailing slashes and the optional `/api/v3` suffix.
 
-A bare runtime target uses an explicit URL scheme or `GB_PROTOCOL` when supplied;
-otherwise it must identify one saved instance in the selected scope/fallback.
-Without stored credentials an environment token defaults to HTTPS. Multiple
-HTTP/HTTPS candidates require an explicit scheme. Multiple aliases for one
-instance are rejected for credential use until explicitly repaired/migrated,
-even when one alias exactly matches the input. No HTTPS credential is selected
-for an explicit HTTP request.
+For a bare runtime target, `GB_PROTOCOL` selects the scheme when set. Otherwise,
+the CLI checks for a unique match in the selected credential scope, then the
+global scope when a profile is active. A bare target that matches both schemes
+in the same scope requires a full URL. An environment token with no saved
+match defaults to HTTPS.
 
-New login entries use normalized full URL keys and actual protocols. Re-login
-updates an existing unique legacy alias without silently migrating the file.
-`config get host` exposes the stored protocol; runtime status reports the actual
-instance protocol. `config set host --protocol` can update a legacy bare key;
-changing the scheme of an explicit URL requires login to the new URL.
-`config set default-host` and `config set host --default` store the selected
-instance's normalized full URL, even when the credential remains under a legacy
-bare key. This also applies when a profile default selects a global credential:
-the scheme must survive later profile/global lookup.
+`config set default-host` and `config set host --default` save the selected
+credential's canonical URL. `config set profile --default-host` also accepts a
+URL without a matching credential. A bare input to that command uses a unique
+saved instance or HTTPS if no credential matches. `config get host --field
+protocol` displays the scheme derived from the URL.
 
 ```text
 $ gb config set default-host http://bucket.example/gitbucket --profile work
 ✓ Set default host to http://bucket.example/gitbucket
 ```
 
-## Explicit migration and guarded restore
-
-```sh
-gb config migrate
-gb config migrate --apply
-gb config migrate --restore /path/from/the/backup/result.json
-```
-
-Migration covers the whole file and cannot be combined with --profile,
-GB_PROFILE or --global. Preview changes no configuration bytes and creates no
-backup. Apply recalculates the complete plan under the ordinary configuration
-OS lock, normalizes global/profile keys and default-host references, and retains
-unknown TOML fields. It may reformat TOML and remove comments in the migrated
-file; the backup retains exact original bytes. Different credentials or differing
-unknown fields that would collide at one key stop the entire migration before
-any backup/config write. Only identical normalized records are merged. A bare
-default without matching saved credentials, or an ambiguous default, is refused;
-set an explicit HTTP(S) URL first instead of guessing its scheme.
-An exact legacy bare key does not disambiguate a default when both HTTP and
-HTTPS instances match. Both preview and apply refuse it without creating a
-backup or changing configuration.
-
-Apply writes and syncs a unique `config.toml.migration-*.json` backup before
-atomically replacing config.toml. The backup contains the original secrets and
-a digest of the expected migrated file: protect it like config.toml. On Unix it
-uses 0600; on Windows it inherits the parent directory ACL. Config, lock and
-backup reads reject symlinks/reparse points and non-regular files. The parent
-directory must be trusted. The command reports the backup path and key changes,
-without credential values. An already normalized file is a no-op.
-
-Restore acquires the same lock and checks that the current bytes still match
-the migrated digest. A later edit refuses automatic restore instead of erasing
-new credentials/settings. A retry after an already completed restore is a no-op.
-The original bytes are restored atomically; backup files remain available. An
-external editor or older client that ignores the lock can still race; filesystem
-durability and locking have the same limits as ordinary configuration writes.
+For configurations with bare host keys or defaults, set `GB_CONFIG_DIR` to a
+fresh directory, run `gb auth login` with the full deployment URL, and recreate
+any profile defaults you use.

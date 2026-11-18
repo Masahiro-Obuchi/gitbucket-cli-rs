@@ -127,17 +127,15 @@ fn auth_token_uses_gb_host_over_default_host() {
     write_config(
         env.path(),
         r#"
-default_host = "default.example.com"
+default_host = "https://default.example.com"
 
-[hosts."default.example.com"]
+[hosts."https://default.example.com"]
 token = "default-token"
 user = "default-user"
-protocol = "https"
 
-[hosts."env.example.com"]
+[hosts."https://env.example.com"]
 token = "env-host-token"
 user = "env-user"
-protocol = "https"
 "#,
     );
 
@@ -161,12 +159,11 @@ fn issue_list_uses_environment_precedence_for_host_repo_token_and_protocol() {
     write_config(
         env.path(),
         r#"
-default_host = "bad host"
+default_host = "https://stored.example.com"
 
-[hosts."bad host"]
+[hosts."https://stored.example.com"]
 token = "file-token"
 user = "file-user"
-protocol = "https"
 "#,
     );
 
@@ -212,13 +209,12 @@ fn issue_list_uses_default_profile_host_repo_and_scoped_credentials() {
 default_profile = "work"
 
 [profiles.work]
-default_host = "127.0.0.1:{port}"
+default_host = "http://127.0.0.1:{port}"
 default_repo = "profile-owner/profile-repo"
 
-[profiles.work.hosts."127.0.0.1:{port}"]
+[profiles.work.hosts."http://127.0.0.1:{port}"]
 token = "profile-token"
 user = "profile-user"
-protocol = "http"
 "#
         ),
     );
@@ -257,18 +253,16 @@ fn environment_host_and_repo_override_profile_defaults() {
 default_profile = "work"
 
 [profiles.work]
-default_host = "bad.example.com"
+default_host = "https://bad.example.com"
 default_repo = "profile-owner/profile-repo"
 
-[profiles.work.hosts."bad.example.com"]
+[profiles.work.hosts."https://bad.example.com"]
 token = "bad-token"
 user = "bad-user"
-protocol = "https"
 
-[hosts."127.0.0.1:{port}"]
+[hosts."http://127.0.0.1:{port}"]
 token = "env-host-token"
 user = "env-user"
-protocol = "http"
 "#
         ),
     );

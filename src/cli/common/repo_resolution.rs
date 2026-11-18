@@ -7,14 +7,11 @@ use crate::error::{GbError, Result};
 /// Resolve an explicit name, or validate origin against the configured instance.
 pub(super) fn resolve_target(
     config: &AuthConfig,
-    hostname: &str,
-    protocol: &str,
+    instance: &str,
     cli_repo: &Option<String>,
     cli_profile: &Option<String>,
 ) -> Result<crate::target::RepositoryTarget> {
-    let instance = url::Url::parse(&crate::api::client::normalize_web_base_url(
-        hostname, protocol,
-    )?)?;
+    let instance = url::Url::parse(instance)?;
     if let Some(repo) = config.resolve_repo(cli_repo.as_deref(), cli_profile.as_deref())? {
         return crate::target::RepositoryTarget::explicit(instance, &repo);
     }
