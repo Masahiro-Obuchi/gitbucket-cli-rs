@@ -187,7 +187,7 @@ fn view_and_list_share_review_collection_with_typed_ids_and_explicit_limits() {
     let mut view: Value = serde_json::from_slice(&view.stdout).unwrap();
     normalize_target(&mut list);
     normalize_target(&mut view);
-    assert_eq!(view["comments"], list["comments"]);
+    assert_eq!(view["comment_details"], list["comments"]);
     assert_eq!(view["review_comments"], list["review_comments"]);
     assert_eq!(view["comment_coverage"], list["comment_coverage"]);
     assert_eq!(list["comments"][0]["id"], 1);
@@ -238,6 +238,17 @@ fn explicit_review_filter_does_not_fetch_discussion_and_empty_fork_details_can_r
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert!(value["head"].is_null());
     assert_eq!(value["review_comments"].as_array().unwrap().len(), 5);
+    let (output, requests) = run("review-only", true);
+    assert_success(&output);
+    let view: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(view.get("comment_details").is_none());
+    assert_eq!(
+        view["comment_coverage"]["discussion"]["status"],
+        "not_requested"
+    );
+    assert!(!requests
+        .iter()
+        .any(|r| r.target.contains("/issues/1/comments")));
 }
 #[test]
 fn layout_auth_http_and_head_change_fail_without_partial_json_or_mutation() {
@@ -275,7 +286,7 @@ fn layout_auth_http_and_head_change_fail_without_partial_json_or_mutation() {
     }
 }
 #[test]
-fn default_discussion_keeps_root_array_and_does_not_require_web_credentials() {
+fn default_discussion_reports_coverage_without_web_credentials() {
     let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         get(PR, &json!({"number":1,"title":"ordinary","state":"open"})),
@@ -290,9 +301,13 @@ fn default_discussion_keeps_root_array_and_does_not_require_web_credentials() {
         .output()
         .unwrap();
     assert_success(&output);
-    assert!(serde_json::from_slice::<Value>(&output.stdout)
-        .unwrap()
-        .is_array());
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["comments"], json!([{"id":1,"body":"ordinary"}]));
+    assert_eq!(value["review_comments"], json!([]));
+    assert_eq!(
+        value["comment_coverage"]["review"]["status"],
+        "not_requested"
+    );
     assert!(String::from_utf8_lossy(&output.stderr).contains("ordinary discussion comments only"));
     assert!(server.join().unwrap().iter().all(|r| r.method == "GET"));
 }

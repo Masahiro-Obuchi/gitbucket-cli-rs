@@ -266,10 +266,8 @@ gb issue view 1 --web
 API-backed `--json` retains unknown fields and the API's distinction between
 missing, null and false. Unknown numbers retain their integer/decimal precision.
 Previously synthesized defaults are no longer inserted.
-`issue view --comments --json` adds `comment_details` while retaining `comments`
-as its original count/null/absence. PR view keeps its existing `comments` array;
-if the API also returns a `comments` value, that original is saved as
-`api_comments`. These arrays currently contain ordinary discussion comments.
+Both Issue and PR view add fetched discussion under `comment_details` when
+requested. The API's `comments` field keeps its original value or absence.
 See [JSON contracts and compatibility](docs/JSON_OUTPUT.md).
 
 PR text view also displays reported draft, labels, assignees and merged-by data;
@@ -415,7 +413,7 @@ gb issue edit 1 --add-label needs-review --remove-assignee bob
 gb pr edit 5 --add-assignee alice,bob --remove-assignee carol --web
 ```
 
-`gb pr create --head` accepts a branch name for same-repository PRs. For cross-repository PRs, pass `OWNER:BRANCH` or use `--head-owner OWNER --head BRANCH`; after creation, the CLI prints the resolved `Head:` and `Base:` repositories and refs. Use `gb pr create --detect-existing` to return an existing open PR for the same head/base instead of creating a duplicate, including candidates on later pages. Candidates require canonical PR details because the GitBucket 4.44.0 PR collection can misidentify fork ownership; an incomplete search fails before creating a PR. `gb pr create --json` and `gb pr view --json` print the API payload for automation; `gb pr view --comments --json` also includes a top-level `comments` array. `gb pr list --json` fetches each listed PR detail for all state filters before printing JSON so fork head/base repository information matches `gb pr view --json` more closely.
+`gb pr create --head` accepts a branch name for same-repository PRs. For cross-repository PRs, pass `OWNER:BRANCH` or use `--head-owner OWNER --head BRANCH`; after creation, the CLI prints the resolved `Head:` and `Base:` repositories and refs. Use `gb pr create --detect-existing` to return an existing open PR for the same head/base instead of creating a duplicate, including candidates on later pages. Candidates require canonical PR details because the GitBucket 4.44.0 PR collection can misidentify fork ownership; an incomplete search fails before creating a PR. `gb pr create --json` and `gb pr view --json` print the API payload for automation. `gb pr view --comments --json` adds fetched discussion under `comment_details` and preserves the API's `comments` field. `gb pr list --json` fetches each listed PR detail for all state filters before printing JSON so fork head/base repository information matches `gb pr view --json` more closely.
 `gb pr comment --json` prints the created or edited comment object; normal text output includes the comment ID and URL when GitBucket returns one. Use `gb pr comment list <NUMBER> --json` to inspect existing PR comments before retrying a comment mutation. `gb issue list`, `gb issue view`, `gb pr list`, `gb pr view`, and `gb pr comment list` accept `--no-pager` to force direct stdout output.
 
 ## Pull Request Edits and Target Validation
@@ -446,14 +444,13 @@ explicit `GB_WEB_USER`. Operation errors retain the completed and unverified ste
 
 ## Pull Request Review Comments
 
-`pr view --comments` and `pr comment list` default to ordinary discussion for
-compatibility. Add `--kind review` or `--kind all` to read the GitBucket 4.44 Web
+`pr view --comments` and `pr comment list` default to ordinary discussion. Add `--kind review` or `--kind all` to read the GitBucket 4.44 Web
 conversation too. Public/token-readable pages require no Web password; only a
 401/403 response starts the existing Cookie sign-in flow. Unknown HTML or other
 read failures return an error without partial results.
 
-Expanded JSON includes `review_comments` and `comment_coverage`; the default
-ordinary JSON array remains unchanged. Review identities include kind, instance,
+PR comment list JSON always reports `comments`, `review_comments` and
+`comment_coverage`. PR view adds review data and coverage when requested. Review identities include kind, instance,
 repository and ID. Body HTML/plain text is distinguished from original Markdown.
 Web positions are marked as unverified against Git; original positions, stored
 PR association and reply-parent IDs stay unknown when the page omits them.

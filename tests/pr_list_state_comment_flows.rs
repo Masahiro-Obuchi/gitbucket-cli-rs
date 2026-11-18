@@ -238,9 +238,9 @@ fn pr_comment_list_json_prints_comments() {
     );
     assert_eq!(requests.len(), 2);
     let stdout: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(stdout[0]["id"], 10);
-    assert_eq!(stdout[0]["body"], "First");
-    assert_eq!(stdout[1]["user"]["login"], "bob");
+    assert_eq!(stdout["comments"][0]["id"], 10);
+    assert_eq!(stdout["comments"][0]["body"], "First");
+    assert_eq!(stdout["comments"][1]["user"]["login"], "bob");
 }
 
 #[test]

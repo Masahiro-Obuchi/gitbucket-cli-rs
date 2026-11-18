@@ -82,9 +82,6 @@ pub(super) async fn list_comments(
     let (_, head) = load_comment_target(&ctx, number, selection).await?;
     let comments = load_comments(&ctx, cli_profile, number, selection, head.as_ref()).await?;
     if json {
-        if selection == CommentSelection::Discussion {
-            return output::page_json(&comments.comments, no_pager);
-        }
         return output::page_json(&comments, no_pager);
     }
     page_or_print(&format_comments(&comments, selection), no_pager)?;
@@ -252,15 +249,15 @@ pub(super) async fn view(
         None
     };
     if options.json {
-        let value = if let Some(comments) = &comments {
-            let mut value = output::comments::pull_request(&pr, &comments.comments)?;
+        let mut value = serde_json::to_value(&pr)?;
+        if let Some(comments) = &comments {
+            if selection.discussion() {
+                output::comments::add_discussion(&mut value, &comments.comments)?;
+            }
             if selection.review() {
                 output::comments::add_reviews(&mut value, comments)?;
             }
-            value
-        } else {
-            serde_json::to_value(&pr)?
-        };
+        }
         return output::page_json(&value, options.no_pager);
     }
     let mut text = format_pr_view(&pr);

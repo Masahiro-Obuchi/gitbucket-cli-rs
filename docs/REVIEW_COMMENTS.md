@@ -34,18 +34,15 @@ describe how a complete token-only reader could replace this adapter.
 
 ## Output contracts
 
-The default discussion JSON retains its previous shape: `pr comment list --json`
-is a raw root array, and PR view adds the existing `comments` array. A scope notice
-on stderr identifies the default as ordinary discussion only.
+`pr comment list --json` always returns an object containing `comments`,
+`review_comments` and `comment_coverage`. An unrequested source has an empty
+array and coverage status `not_requested`. A notice on stderr identifies the
+default as ordinary discussion.
 
-With `--kind review` or `all`, list JSON is an object containing `comments`,
-`review_comments` and `comment_coverage`. View JSON retains the PR's API fields,
-the established ordinary `comments` array, and adds `review_comments` and
-`comment_coverage`. An original API `comments` value remains in `api_comments` per
-the [JSON contract](JSON_OUTPUT.md). Reserved augmentation fields are checked;
-server metadata is never silently overwritten. A filtered-out discussion array
-is empty with coverage status `not_requested`, not a claim that no discussion
-comments exist.
+`pr view --comments --json` preserves the PR's API fields, including any
+`comments` value. It adds `comment_details` when discussion is requested and
+`review_comments` and `comment_coverage` when reviews are requested. Field name
+collisions return a composition error. See [the JSON contract](JSON_OUTPUT.md).
 
 Both commands use the same application reader and ordering: ordinary comments by
 ID ascending, then reviews by CommitComment ID ascending. This groups sources
@@ -119,7 +116,7 @@ hidden records by guessing IDs. These limits were reproduced in dedicated fixtur
   User-body markup cannot add records. Zero reviews still require recognizable
   PR identity and conversation structure. The adapter does not infer a binary
   server version from asset filenames; other layouts/releases are unverified.
-- CLI/output: shared view/list records, kind filter, legacy discussion JSON and
+- CLI/output: shared view/list records, kind filter, JSON records and
   explicit scope notices. Parsing/auth/read failures print no partial collection.
 
 Unit and HTTP regressions cover old/new and nullable lines, same numeric IDs in

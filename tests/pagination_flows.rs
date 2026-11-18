@@ -102,11 +102,10 @@ fn comments_without_links_are_all_rows_even_when_count_matches_a_page_boundary()
             .unwrap();
         assert_success(&output);
         let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(value.as_array().unwrap().len(), count as usize);
+        let comments = value["comments"].as_array().unwrap();
+        assert_eq!(comments.len(), count as usize);
         assert_eq!(
-            value
-                .as_array()
-                .unwrap()
+            comments
                 .iter()
                 .map(|v| v["id"].as_u64().unwrap())
                 .collect::<Vec<_>>(),
@@ -616,9 +615,9 @@ fn view_comment_list_and_edit_last_share_linked_comment_enumeration() {
         if mode != "edit-last" {
             let value: Value = serde_json::from_slice(&output.stdout).unwrap();
             let items = if mode == "view" {
-                &value["comments"]
+                &value["comment_details"]
             } else {
-                &value
+                &value["comments"]
             };
             assert_eq!(items.as_array().unwrap().len(), 2);
             assert_eq!(items[1]["id"], 51);

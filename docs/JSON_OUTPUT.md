@@ -55,22 +55,21 @@ With the flag, the command completes ordinary discussion retrieval before printi
 | Command | Array location | Existing response field |
 | --- | --- | --- |
 | `issue view N --comments --json` | `comment_details` | `comments` stays the API count, null or absent; no count is invented |
-| `pr view N --comments --json` | `comments`, preserving the CLI's prior array location | If the API object has `comments`, its original value is retained as `api_comments` |
-| `pr comment list N --json` | Root array, unchanged | Each comment object retains API fields |
+| `pr view N --comments --json` | `comment_details` when discussion is requested | `comments` stays the API count, null or absent |
+| `pr comment list N --json` | `comments` in the object | Each comment object retains API fields |
 | `pr comment N --json` | Created/edited object, unchanged | Mutation response retains API fields |
 
-The Issue count and fetched array are separate observations and can disagree if
+The API count and fetched array are separate observations and can disagree if
 comments change between requests. Arrays are ordered by comment ID ascending,
 with pagination/deduplication from the shared reader. A failed later page prints
-no partial JSON. A server field already occupying `comment_details`, or occupying
-`api_comments` when it is needed, causes an explicit composition error; no server
-field is silently overwritten. View without `--comments` or raw `gb api` remains
+no partial JSON. A collision with a field the CLI needs to add causes an
+explicit composition error and preserves the original server field. View without `--comments` or raw `gb api` remains
 available to inspect such a response.
 
 `tests/fixtures/json/issue-with-comments.json` and `pr-with-comments.json` pin the
-ordinary augmented object shapes. With --kind review/all, the separate
-[review reader](REVIEW_COMMENTS.md) adds review_comments and comment_coverage;
-the default ordinary shape remains compatible. API fields such
+ordinary augmented object shapes. PR comment list always includes
+`review_comments` and `comment_coverage`. The PR view adds these fields when
+reviews are requested. See [review scope](REVIEW_COMMENTS.md). API fields such
 as review_comments_url are retained as data, not interpreted as proof that the
 advertised route works on the deployed server.
 

@@ -223,7 +223,7 @@ fn pr_view_json_prints_pull_request_payload() {
 }
 
 #[test]
-fn pr_view_json_with_comments_includes_comments_array() {
+fn pr_view_json_with_comments_includes_comment_details() {
     let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         ScriptedResponse::json(
@@ -254,9 +254,9 @@ fn pr_view_json_with_comments_includes_comments_array() {
     );
     let stdout: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(stdout["number"], 5);
-    assert_eq!(stdout["comments"][0]["id"], 11);
-    assert_eq!(stdout["comments"][0]["body"], "Please rebase");
-    assert_eq!(stdout["comments"][0]["user"]["login"], "carol");
+    assert_eq!(stdout["comment_details"][0]["id"], 11);
+    assert_eq!(stdout["comment_details"][0]["body"], "Please rebase");
+    assert_eq!(stdout["comment_details"][0]["user"]["login"], "carol");
 }
 
 #[test]

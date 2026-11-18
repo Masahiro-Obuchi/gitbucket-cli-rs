@@ -2,7 +2,7 @@
 use serde_json::{Map, Value};
 
 use crate::error::{GbError, Result};
-use crate::models::{comment::Comment, issue::Issue, pull_request::PullRequest};
+use crate::models::comment::Comment;
 
 fn insert_details(object: &mut Map<String, Value>, name: &str, value: Value) -> Result<()> {
     if object.contains_key(name) {
@@ -14,27 +14,11 @@ fn insert_details(object: &mut Map<String, Value>, name: &str, value: Value) -> 
     Ok(())
 }
 
-pub(crate) fn issue(issue: &Issue, comments: &[Comment]) -> Result<Value> {
-    let mut value = serde_json::to_value(issue)?;
+pub(crate) fn add_discussion(value: &mut Value, comments: &[Comment]) -> Result<()> {
     let object = value
         .as_object_mut()
-        .ok_or_else(|| GbError::Other("Expected Issue JSON object".into()))?;
-    insert_details(object, "comment_details", serde_json::to_value(comments)?)?;
-    Ok(value)
-}
-
-pub(crate) fn pull_request(pr: &PullRequest, comments: &[Comment]) -> Result<Value> {
-    let mut value = serde_json::to_value(pr)?;
-    let object = value
-        .as_object_mut()
-        .ok_or_else(|| GbError::Other("Expected PR JSON object".into()))?;
-    if let Some(original) = object.get("comments").cloned() {
-        insert_details(object, "api_comments", original)?;
-    }
-    // Preserve the PR CLI's established ordinary comments array. Review records
-    // are added separately by add_reviews without changing this legacy shape.
-    object.insert("comments".into(), serde_json::to_value(comments)?);
-    Ok(value)
+        .ok_or_else(|| GbError::Other("Expected Issue or PR JSON object".into()))?;
+    insert_details(object, "comment_details", serde_json::to_value(comments)?)
 }
 
 pub(crate) fn add_reviews(

@@ -527,8 +527,7 @@ API/Git boundaries and unrecoverable object loss.
 
 `tests/json_contract.rs` compares complete response objects: unknown/nested data,
 Unicode, missing/null/false, unchanged collection arrays, canonical PR identity
-with unknown summary metadata, Issue count plus comment_details, PR comments plus
-api_comments, pagination failure without partial JSON, reserved-key conflicts,
+with unknown summary metadata, API count plus comment_details for Issues and PRs, pagination failure without partial JSON, reserved-key conflicts,
 create wrappers and comment POST responses. Pinned augmented shapes are under
 `tests/fixtures/json/`. Existing mutation tests continue checking exact request
 DTOs, and PR metadata text tests distinguish known draft from missing draft.
@@ -540,7 +539,7 @@ cargo test --locked --test json_contract
 ```
 
 The ignored live case
-`contract_cli_json_preserves_api_fields_and_separates_issue_comment_details`
+`contract_cli_json_preserves_api_fields_and_adds_comment_details`
 compares CLI JSON with REST for a real draft PR and Issue, including ordinary
 comments. It verifies preserved id/URL metadata, nullable mergeability and the
 4.44 Issue's absent comment count at root and /gitbucket. See

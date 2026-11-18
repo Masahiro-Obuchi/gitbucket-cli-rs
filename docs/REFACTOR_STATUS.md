@@ -48,9 +48,9 @@ Consult the selected release's notes and source revision.
   normalized HTTP(S) base URLs. Git with `GB_TOKEN` also requires `GB_USER`.
   [Authentication](AUTH_PROFILES.md).
 - **Automation and JSON:** absent API fields remain absent rather than becoming
-  synthetic null/false/empty values. Issue comment details use `comment_details`;
-  the PR's legacy comments array retains the original count under `api_comments`
-  when present. Incomplete pagination fails instead of returning a partial
+  synthetic null/false/empty values. Issue and PR views add discussion under
+  `comment_details`. PR comment lists report both source arrays and coverage.
+  Incomplete pagination fails instead of returning a partial
   collection. [JSON](JSON_OUTPUT.md), [pagination](PAGINATION.md).
 - **Input and failures:** noninteractive creation requires a title and omits an
   unspecified optional body. Use `--body-file -` for explicit UTF-8 stdin and
