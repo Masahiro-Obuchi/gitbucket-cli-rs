@@ -95,6 +95,13 @@ gb auth status --offline --json
 Inventory omits tokens. Host, profile and user details may be private.
 `--offline` reports inventory without verifying the token or actor.
 
+If you switch `GB_CONFIG_DIR`, keep the previous directory and carry its private
+`review-writes/` receipts into the new directory before resuming inline writes.
+Pause inline writes during the copy and keep receipts already present at the
+destination. A new directory starts with no record of an earlier submission.
+Inspect uncertain submissions before retrying if you cannot carry their receipts
+forward. See [retry records](REVIEW_WRITES.md#retry-records).
+
 ### 3. Verify the selected target and actor
 
 An online status probe now verifies the effective token against the selected
