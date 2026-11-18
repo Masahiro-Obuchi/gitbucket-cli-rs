@@ -92,10 +92,9 @@ pub(super) async fn view(
                 .client
                 .list_issue_comments(&ctx.owner, &ctx.repo, options.number)
                 .await?;
-            return output::page_json(
-                &output::comments::issue(&issue, &comments)?,
-                options.no_pager,
-            );
+            let mut value = serde_json::to_value(&issue)?;
+            output::comments::add_discussion(&mut value, &comments)?;
+            return output::page_json(&value, options.no_pager);
         }
         return output::page_json(&issue, options.no_pager);
     }

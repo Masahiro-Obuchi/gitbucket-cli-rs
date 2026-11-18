@@ -147,7 +147,7 @@ also verify the Cookie actor; an explicit `GB_WEB_USER` permits a different acto
 | --- | --- |
 | Status | Use `auth status --offline` for inventory; default status now makes a live request. Do not equate successful JSON parsing with exit 0 or verified identity. |
 | API JSON | Check field presence explicitly; missing keys no longer become synthesized null/false/empty values. Keep existing API fields instead of assuming a fixed projection. |
-| Comments | Issue discussion arrays use `comment_details`; PR view keeps its `comments` array and preserves an API count as `api_comments` when present. Review/all output has its own envelope and coverage. |
+| Comments | Issue and PR view use `comment_details` for discussion. PR comment list always returns an object with `comments`, `review_comments` and `comment_coverage`. |
 | Errors | Handle exits 0/1/2 and `error.code`/`cause`; inspect `outcome=unverified` before any retry. `--json-errors` disables prompts and editor launch. |
 | Creation/input | Supply `--title` in automation. An omitted body is optional; stdin is consumed only with `--body-file -`. Do not combine body sources. Use `auth login --with-token` for token stdin. |
 | PR selection | Omitted `--base` uses `default_branch`. An inferred head must match the published commit; explicit `--head` deliberately selects remote content. Push remains a separate user action. |

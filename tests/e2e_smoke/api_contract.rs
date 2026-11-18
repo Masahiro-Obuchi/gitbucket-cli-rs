@@ -1166,7 +1166,8 @@ async fn contract_fixed_pages_all_comments_and_canonical_fork_identity() {
         );
         let rows: Value = serde_json::from_str(&listed).unwrap();
         assert_eq!(
-            rows.as_array()
+            rows["comments"]
+                .as_array()
                 .unwrap()
                 .iter()
                 .map(|v| v["id"].as_u64().unwrap())
@@ -1188,7 +1189,7 @@ async fn contract_fixed_pages_all_comments_and_canonical_fork_identity() {
         ],
     );
     assert_eq!(
-        serde_json::from_str::<Value>(&viewed).unwrap()["comments"]
+        serde_json::from_str::<Value>(&viewed).unwrap()["comment_details"]
             .as_array()
             .unwrap()
             .len(),
@@ -1306,7 +1307,7 @@ async fn contract_fixed_pages_all_comments_and_canonical_fork_identity() {
 
 #[tokio::test]
 #[ignore = "requires the pinned Docker GitBucket fixture"]
-async fn contract_cli_json_preserves_api_fields_and_separates_issue_comment_details() {
+async fn contract_cli_json_preserves_api_fields_and_adds_comment_details() {
     let temp = tempdir().unwrap();
     login(temp.path());
     let client = client();
@@ -1346,24 +1347,22 @@ async fn contract_cli_json_preserves_api_fields_and_separates_issue_comment_deta
             &[kind, "view", &number_arg, "--comments", "--json"],
         );
         let mut expected = api.clone();
+        expected["comment_details"] = comments.clone();
         if kind == "issue" {
-            expected["comment_details"] = comments;
             // 4.44.0 omits the count; the CLI must not invent one.
             assert!(api.get("comments").is_none());
         } else {
             assert_eq!(api["draft"], true);
             assert!(api["labels"].is_array() && api["assignees"].is_array());
             assert!(api["mergeable"].is_null());
-            if let Some(original) = api.get("comments") {
-                expected["api_comments"] = original.clone();
-            }
-            expected["comments"] = comments.clone();
             let listed = gb_output_with_env(
                 temp.path(),
                 temp.path(),
                 &["pr", "comment", "list", &number_arg, "--json"],
             );
-            assert_eq!(serde_json::from_str::<Value>(&listed).unwrap(), comments);
+            let listed: Value = serde_json::from_str(&listed).unwrap();
+            assert_eq!(listed["comments"], comments);
+            assert_eq!(listed["comment_coverage"]["requested"], "discussion");
             let view = gb_output_with_env(
                 temp.path(),
                 temp.path(),
@@ -1594,7 +1593,7 @@ async fn contract_review_comment_markup_and_visibility() {
         ],
     );
     let viewed: Value = serde_json::from_str(&viewed).unwrap();
-    assert_eq!(viewed["comments"], listed["comments"]);
+    assert_eq!(viewed["comment_details"], listed["comments"]);
     assert_eq!(viewed["review_comments"], listed["review_comments"]);
     let only = gb_output_with_env(
         temp.path(),

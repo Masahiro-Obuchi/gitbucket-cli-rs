@@ -891,12 +891,13 @@ gb pr view <NUMBER> [OPTIONS]
 | `--json` | — | Print JSON |
 | `--no-pager` | — | Do not use a pager |
 
-With `--json`, `gb` prints the pull request API payload. When `--comments` is also passed, the JSON object includes the complete ordinary discussion `comments` array, sorted by ID ascending. If the API response itself includes a `comments` value, its original is retained
-as `api_comments`. Comment view/list/edit-last use the same collection reader.
+With `--json`, `gb` prints the pull request API payload. When ordinary discussion
+is requested with `--comments`, `comment_details` contains the complete discussion
+array in ID order. The API's `comments` field keeps its original value or absence.
+View/list/edit-last use the same collection reader.
 
-Review/all selects the verified 4.44 Web conversation reader. View and comment
-list share data/order and add `review_comments` plus `comment_coverage`, preserving
-the ordinary `comments` array. Public/token reads need no password; only Web
+Review/all selects the GitBucket 4.44 Web conversation reader. View and comment
+list both expose `review_comments` and `comment_coverage` in JSON. Public/token reads need no password; only Web
 401/403 enters verified Cookie sign-in. Known head identity is checked before and
 after reading. Unknown layouts, read/auth failures and changed heads return no
 partial JSON. See [review contracts](docs/REVIEW_COMMENTS.md).
@@ -1211,10 +1212,10 @@ after an applied write but not rolled back automatically. See
 [full write contract and server boundaries](docs/REVIEW_WRITES.md).
 
 `gb pr comment list <NUMBER> [--kind discussion|review|all]` selects comment sources.
-The discussion default preserves the root JSON array. review/all return an object
-with comments, review_comments and comment_coverage. Pass `--json` to print the
-selected records and, for expanded sources, their coverage. The ordinary array can
-be used to check whether a previous discussion mutation succeeded before retrying.
+The default is `discussion`. Every `--json` result is an object containing
+`comments`, `review_comments` and `comment_coverage`. An unrequested source has
+an empty array and coverage status `not_requested`. Check `comments` to verify
+whether a previous discussion mutation succeeded before retrying.
 Pass `--no-pager` to force direct stdout output.
 
 ---
@@ -1453,16 +1454,17 @@ numbers retain integer/decimal precision; known IDs still require unsigned
 | Command | Ordinary discussion array | Original API metadata |
 | --- | --- | --- |
 | `issue view --comments --json` | `comment_details` | `comments` remains the API count, null or absent |
-| `pr view --comments --json` | `comments` (existing CLI contract) | If the response has `comments`, preserve its original value in `api_comments` |
-| `pr comment list --json` | Root array, unchanged | Each comment retains its unknown fields |
+| `pr view --comments --json` | `comment_details` when discussion is requested | `comments` remains the API count, null or absent |
+| `pr comment list --json` | `comments` in the object | Each comment retains its unknown fields |
 
 The original response is not a snapshot of the separately fetched discussion
 array; a count may differ during concurrent updates. No inline/review array is
 invented before those comments can actually be fetched. Server collisions with
-`comment_details` or the required `api_comments` augmentation fail without
+CLI-added fields fail without
 partial output; use view without `--comments` or `gb api` to inspect that response.
 The fixtures in `tests/fixtures/json/` pin the ordinary augmented shapes.
-Review/all additionally include separate review_comments and comment_coverage.
+PR comment list always includes `review_comments` and `comment_coverage`.
+PR view adds these fields when reviews are requested.
 Review IDs carry kind/instance/repository/id; visible_on_pull_request identifies
 the page, while stored pull_request association remains null when not exposed.
 Rendered bodies and Web display positions are labelled; original Markdown,

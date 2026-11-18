@@ -86,12 +86,11 @@ fn issue_comments_keep_count_and_match_the_pinned_json_shape() {
 }
 
 #[test]
-fn pr_comments_keep_the_legacy_array_and_preserve_api_metadata() {
+fn pr_view_adds_comment_details_and_preserves_api_metadata() {
     let expected: Value =
         serde_json::from_str(include_str!("fixtures/json/pr-with-comments.json")).unwrap();
     let mut api = expected.clone();
-    api.as_object_mut().unwrap().remove("api_comments");
-    api["comments"] = json!(12);
+    api.as_object_mut().unwrap().remove("comment_details");
     let output = run(
         vec![
             response(&format!("{REPO}/pulls/7"), &api),
@@ -120,7 +119,14 @@ fn pr_comments_keep_the_legacy_array_and_preserve_api_metadata() {
         ],
         &["pr", "comment", "list", "7", "--json"],
     );
-    assert_eq!(value(&output), details());
+    let listed = value(&output);
+    assert_eq!(listed["comments"], details());
+    assert_eq!(listed["review_comments"], json!([]));
+    assert_eq!(listed["comment_coverage"]["requested"], "discussion");
+    assert_eq!(
+        listed["comment_coverage"]["review"]["status"],
+        "not_requested"
+    );
 }
 
 #[test]
@@ -247,12 +253,7 @@ fn reserved_augmentation_fields_are_never_silently_overwritten() {
     for kind in ["issue", "pr"] {
         let mut api = if kind == "issue" { issue() } else { pr() };
         let route = if kind == "issue" { "issues" } else { "pulls" };
-        if kind == "issue" {
-            api["comment_details"] = json!({"server":"data"});
-        } else {
-            api["comments"] = json!(12);
-            api["api_comments"] = json!({"server":"data"});
-        }
+        api["comment_details"] = json!({"server":"data"});
         let output = run(
             vec![
                 response(&format!("{REPO}/{route}/7"), &api),

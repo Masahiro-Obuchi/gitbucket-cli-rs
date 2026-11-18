@@ -45,7 +45,7 @@ pub enum PrCommand {
     },
     /// View a pull request
     #[command(
-        after_help = "JSON preserves API fields. --comments defaults to ordinary discussion. --comments --kind all adds review_comments and comment_coverage from the verified GitBucket 4.44 Web conversation. Public/token-readable pages need no password; only 401/403 starts Web sign-in. Visible reviews do not prove complete stored history or valid Git positions."
+        after_help = "JSON preserves API fields. --comments adds ordinary discussion under comment_details. --comments --kind review or all adds review_comments and comment_coverage using the GitBucket 4.44 Web conversation. Public/token-readable pages need no password; only 401/403 starts Web sign-in. Visible reviews do not prove complete stored history or valid Git positions."
     )]
     View {
         /// PR number
@@ -261,7 +261,7 @@ pub enum PrCommentCommand {
     Delete(ReviewTargetArgs),
     /// List comments on a pull request
     #[command(
-        after_help = "discussion preserves the legacy JSON array. review/all return comments, review_comments and comment_coverage. Review HTML follows the verified GitBucket 4.44 layout; public reads need no Web password, while private reads may need GB_PASSWORD. Historical completeness, raw Markdown and original positions can be unknown."
+        after_help = "JSON returns comments, review_comments and comment_coverage for every kind. Review HTML follows the verified GitBucket 4.44 layout; public reads need no Web password, while private reads may need GB_PASSWORD. Historical completeness, raw Markdown and original positions can be unknown."
     )]
     List {
         /// PR number
