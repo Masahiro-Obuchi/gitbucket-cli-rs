@@ -34,10 +34,9 @@ win conflicts. Nested head/base/repository data comes from canonical details;
 unverified summary objects are not merged back into it. Collection ordering,
 deduplication and complete-traversal guarantees remain unchanged.
 
-The existing ordinary null-detail compatibility lookup explicitly withholds the
-unverified head as JSON null, updating the projection and original JSON together.
-The saved-snapshot reader and its narrow 200/empty exception remain separate;
-see [snapshot contracts](PR_SNAPSHOTS.md). Verified PR create/merge envelopes are
+Ordinary numbered PR commands require a detail object. The saved-snapshot
+reader can also recover from a 200/empty response after fork deletion. See
+[snapshot contracts](PR_SNAPSHOTS.md). Verified PR create/merge envelopes are
 unwrapped according to their existing route contracts, then the inner resource's
 fields are preserved. Config/auth summaries are CLI-defined JSON and are not raw
 API resources. Raw `gb api` retains its existing behavior.

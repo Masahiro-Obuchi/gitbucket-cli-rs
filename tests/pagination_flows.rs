@@ -1,7 +1,7 @@
 mod support;
 
 use serde_json::{json, Value};
-use support::gb_cmd::{assert_failure, assert_success, stderr, GbTestEnv};
+use support::gb_cmd::{assert_failure, assert_success, stderr, stdout, GbTestEnv};
 use support::mock_http::{spawn_scripted_server, ScriptedResponse};
 
 const ISSUES: &str = "/bucket/api/v3/repos/alice/project/issues";
@@ -458,55 +458,35 @@ fn unsafe_or_malformed_links_and_changed_filters_are_rejected_without_echoing_ur
 }
 
 #[test]
-fn detect_existing_and_null_detail_fallback_search_the_second_fixed_page() {
-    for lookup in [false, true] {
-        let env = GbTestEnv::new();
-        let mut responses = Vec::new();
-        let state = if lookup { "all" } else { "open" };
-        if lookup {
-            responses.push(response(&format!("{PULLS}/1"), Value::Null));
-        }
-        responses.push(response(
-            &format!("{PULLS}?state={state}"),
+fn detect_existing_searches_the_second_fixed_page() {
+    let env = GbTestEnv::new();
+    let (port, server) = spawn_scripted_server(vec![
+        response(
+            &format!("{PULLS}?state=open"),
             json!((2..=26).map(|n| pr(n, "unrelated")).collect::<Vec<_>>()),
-        ));
-        responses.push(response(
-            &format!("{PULLS}?state={state}&page=2"),
+        ),
+        response(
+            &format!("{PULLS}?state=open&page=2"),
             json!([pr(1, "topic")]),
-        ));
-        if !lookup {
-            responses.push(response(&format!("{PULLS}/1"), pr(1, "topic")));
-        }
-        let (port, server) = spawn_scripted_server(responses);
-        let mut command = env.repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project");
-        if lookup {
-            command.args(["pr", "view", "1", "--json"]);
-        } else {
-            command.args([
-                "pr",
-                "create",
-                "--head",
-                "topic",
-                "--base",
-                "main",
-                "--detect-existing",
-            ]);
-        }
-        let output = command.output().unwrap();
-        assert_success(&output);
-        if lookup {
-            assert!(serde_json::from_slice::<Value>(&output.stdout).unwrap()["head"].is_null());
-            assert_eq!(
-                serde_json::from_slice::<Value>(&output.stdout).unwrap()["number"],
-                1
-            );
-        } else {
-            assert!(
-                String::from_utf8_lossy(&output.stdout).contains("Found existing pull request #1")
-            );
-        }
-        assert!(server.join().unwrap().iter().all(|r| r.method == "GET"));
-    }
+        ),
+        response(&format!("{PULLS}/1"), pr(1, "topic")),
+    ]);
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
+        .args([
+            "pr",
+            "create",
+            "--head",
+            "topic",
+            "--base",
+            "main",
+            "--detect-existing",
+        ])
+        .output()
+        .unwrap();
+    assert_success(&output);
+    assert!(stdout(&output).contains("Found existing pull request #1"));
+    assert!(server.join().unwrap().iter().all(|r| r.method == "GET"));
 }
 
 #[test]
@@ -680,30 +660,6 @@ fn absolute_links_and_multiple_header_fields_are_supported_but_credentials_are_r
             if credentials { 1 } else { 2 }
         );
     }
-}
-
-#[test]
-fn null_detail_does_not_return_an_early_match_if_a_later_page_fails() {
-    let env = GbTestEnv::new();
-    let (port, server) = spawn_scripted_server(vec![
-        response(&format!("{PULLS}/1"), Value::Null),
-        response(
-            &format!("{PULLS}?state=all"),
-            json!((1..=25).map(item).collect::<Vec<_>>()),
-        ),
-        ScriptedResponse::json(
-            &format!("GET {PULLS}?state=all&page=2 HTTP/1.1"),
-            "503 Service Unavailable",
-            "{}",
-        ),
-    ]);
-    let output = env
-        .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
-        .args(["--json-errors", "pr", "view", "1", "--json"])
-        .output()
-        .unwrap();
-    assert_eq!(error(&output)["status"], 503);
-    assert_eq!(server.join().unwrap().len(), 3);
 }
 
 #[test]

@@ -946,12 +946,12 @@ recheck retains the original POST error/status/outcome. Lookup diagnostics do no
 claim that a prior creation was not applied. The POST is not retried.
 Detection and creation are not atomic under concurrent writers.
 
-Numbered PR operations validate the target through `GET /repos/{owner}/{repo}/pulls/{number}`
-first and reject returned-number mismatches. The compatibility lookup for null
-single-PR responses searches the complete PR collection, not ordinary issues,
-and withholds head metadata that cannot prove fork identity. Git operations
-requiring it may fail. This check also precedes comment list/post/edit, merge, checkout/diff and browser view;
-comment subresources still use the Issue comments API after validation.
+Numbered PR operations read `GET /repos/{owner}/{repo}/pulls/{number}` and
+verify the returned number. Ordinary view, edit, merge and discussion commands
+require a detail object. Discussion commands call the Issue comments API only
+after that validation. Saved comparisons and review reads have their own
+absent-detail rules. See [snapshot design](docs/PR_SNAPSHOTS.md) and
+[review contracts](docs/REVIEW_COMMENTS.md).
 
 #### `gb pr edit`
 

@@ -498,6 +498,23 @@ async fn contract_deleted_fork_keeps_saved_shas_and_fetchable_pr_ref() {
     .await;
     assert_eq!(missing.status(), StatusCode::OK);
     assert!(missing.bytes().await.unwrap().is_empty());
+    let mut view = gb_command();
+    view.current_dir(temp.path()).args([
+        "--json-errors",
+        "pr",
+        "view",
+        &number_arg,
+        "--repo",
+        &repo,
+        "--json",
+    ]);
+    view.envs(e2e_env(temp.path()));
+    let output = view.output().unwrap();
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["code"], "json_error");
+    assert_eq!(error["error"]["status"], 200);
     let listed = stored(&client, &format!("repos/{repo}/pulls?state=all")).await;
     assert_eq!(listed[0]["head"]["sha"], saved_head);
     let local = temp.path().join("local");

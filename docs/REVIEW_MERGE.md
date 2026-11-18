@@ -41,9 +41,8 @@ Use the head you actually reviewed. Without the option, the first saved head
 read during this invocation becomes the comparison value; this cannot bind the
 operation to an earlier human review.
 
-1. Read the numbered PR and validate its number/base target and saved head.
-   Unknown summary head data from the null-detail compatibility path cannot
-   authorize a merge. Refuse closed/merged PRs, reported drafts and an explicit
+1. Read canonical PR details and validate the number, base target and saved head.
+   Refuse closed/merged PRs, reported drafts and an explicit
    `mergeable=false`. Missing/null readiness is not interpreted as approval;
    the server still decides whether the merge is permitted.
 2. Compare with the supplied head, then re-read canonical details immediately

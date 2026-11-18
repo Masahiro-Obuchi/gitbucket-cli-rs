@@ -371,8 +371,8 @@ traversal fails without printing a partial list.
 Reaching the bound with another page pending is an error, not successful
 truncation. `pr list --json` also verifies each PR with the detail API; table
 output uses summary fields. This can increase request counts for large lists.
-See [pagination and existing-PR detection](docs/PAGINATION.md) for contracts,
-null-detail compatibility, and limitations under concurrent changes.
+See [pagination and existing-PR detection](docs/PAGINATION.md) for traversal
+contracts and limits under concurrent changes.
 
 ## GitBucket Web Fallbacks
 
@@ -803,10 +803,9 @@ JSON responses are pretty-printed, and zero-byte success responses (including
 204) print `null`. Top-level strings and objects containing `status`/`body` are
 preserved as returned. `gb api` does not apply PR-command wrapper compatibility
 or treat non-JSON text as JSON. Internal diff/HTML reads use a separate text
-contract; typed JSON endpoints reject missing or invalid JSON instead of silently
-switching to another endpoint. Ordinary PR detail fallback is limited to a JSON `null`;
-the [saved-snapshot reader](docs/PR_SNAPSHOTS.md) also handles the verified
-200/zero-byte detail response after fork deletion.
+contract. Typed JSON endpoints reject missing or invalid JSON. Ordinary PR commands
+require a detail object. The [saved-snapshot reader](docs/PR_SNAPSHOTS.md) can
+recover the saved commits when detail is absent after fork deletion.
 
 ## Completion command
 

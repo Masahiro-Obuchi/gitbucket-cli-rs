@@ -42,7 +42,6 @@ fn numbered_pr_operations_validate_the_target_before_using_issue_subresources() 
             let env = GbTestEnv::new();
             let (status, body) = match mode {
                 "404" => ("404 Not Found", json!({"message":"not a PR"})),
-                // The pinned server returns 200/null for an ordinary Issue number.
                 "null" => ("200 OK", json!(null)),
                 "mismatch" => (
                     "200 OK",
@@ -50,12 +49,13 @@ fn numbered_pr_operations_validate_the_target_before_using_issue_subresources() 
                 ),
                 _ => ("403 Forbidden", json!({"message":"denied"})),
             };
+            let snapshot_lookup = mode == "null" && matches!(args[1], "checkout" | "diff");
             let mut responses = vec![ScriptedResponse::json(
                 "GET /bucket/api/v3/repos/alice/project/pulls/5 HTTP/1.1",
                 status,
                 &body.to_string(),
             )];
-            if mode == "null" {
+            if snapshot_lookup {
                 responses.push(ScriptedResponse::json(
                     "GET /bucket/api/v3/repos/alice/project/pulls?state=all HTTP/1.1",
                     "200 OK",
@@ -81,14 +81,16 @@ fn numbered_pr_operations_validate_the_target_before_using_issue_subresources() 
             assert!(
                 message.contains(match mode {
                     "404" => "API error (404)",
-                    "null" => "Pull request #5 not found",
+                    "null" if snapshot_lookup => "Pull request #5 not found",
+                    "null" if args[1] == "merge" => "Canonical PR details are unavailable",
+                    "null" => "Canonical details for pull request #5 are unavailable",
                     "mismatch" => "PR target mismatch",
                     _ => "API error (403)",
                 }),
                 "{args:?}, {mode}: {message}"
             );
             let requests = server.join().unwrap();
-            assert_eq!(requests.len(), if mode == "null" { 2 } else { 1 });
+            assert_eq!(requests.len(), if snapshot_lookup { 2 } else { 1 });
             assert!(requests
                 .iter()
                 .all(|request| request.method == "GET" && request.target.contains("/pulls")));

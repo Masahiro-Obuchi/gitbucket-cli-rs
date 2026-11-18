@@ -370,8 +370,9 @@ title/body pairing for the pinned server, empty-body clears, absent-body retenti
 no-op state/assignee requests, closed/merged handling, HTTP failures, Web permission
 and sign-in failures before REST mutation, and mixed edit results/partial failures.
 `tests/pr_target_validation.rs` checks all numbered PR command paths against 404,
-200/null, mismatched-number and forbidden responses. The null compatibility lookup
-may read only the PR collection; it must not reach Issue writes, comments or prompts.
+200/null, mismatched-number and forbidden responses. Ordinary commands stop at
+the detail request when it returns null. Diff and checkout can consult the PR
+collection for saved snapshot recovery.
 
 ```bash
 cargo test --locked --test pr_edit_flows --test pr_target_validation --test pr_list_state_comment_flows
