@@ -51,4 +51,4 @@ Some GitBucket actions are not fully covered by the REST API on every server ver
 
 Read `references/command-patterns.md` when you need concrete command examples for common GitBucket workflows.
 
-For full user-facing details, prefer the repository `README.md`, `SPEC.md`, and live CLI help over copying command reference material into this skill.
+For full user-facing details, prefer the repository's documentation index at `docs/README.md` and live CLI help over copying command reference material into this skill.

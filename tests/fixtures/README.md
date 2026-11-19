@@ -1,20 +1,9 @@
 # Focused GitBucket HTML fixtures
 
-`gitbucket-4.44-label-row.html` and `gitbucket-4.44-label-edit.html` were captured
-from the disposable pinned GitBucket 4.44.0 fixture during PR-06 validation.
-Only the label row and edit fragment were retained. Numeric IDs were replaced
-with 42, repository paths with `alice/project`, and any origin with
-`https://example.test/gitbucket`. Scripts were removed from the edit fragment.
-There are no authentication fields, cookies or tokens in these fixtures.
+`gitbucket-4.44-label-row.html` and `gitbucket-4.44-label-edit.html` record the label row and edit form served by the Docker GitBucket 4.44.0 fixture. The fragments use the dummy ID `42`, the repository `alice/project`, and the base URL `https://example.test/gitbucket`. The edit fragment excludes scripts and authentication data.
 
-The row intentionally retains the server's root-relative link even when fetched
-through `/gitbucket`. The parser resolves this as metadata within the configured
-base; network requests still use the selected deployment URL. Entity escaping,
-input IDs, values and HTML structure are retained to detect layout drift.
+The label row retains the server's root-relative link when requested through `/gitbucket`. The parser resolves the link against the configured deployment. The fixtures retain entity escaping, input IDs, values, and HTML structure so parser tests can detect layout changes.
 
-`gitbucket-4.44-fork-header.html` retains the focused repository identity and
-`forked from` structure observed during PR-07 E2E, with targets replaced by
-`alice/project` and `bob/project` and unrelated header controls removed. The
-pinned `src/main/twirl/gitbucket/core/menu.scala.html` renders the immediate
-parent here; REST `ApiRepository` omits fork/parent/source. Root-relative links
-are retained as emitted through the proxy. No authentication material is included.
+`gitbucket-4.44-fork-header.html` records the repository link and immediate `forked from` link with the dummy targets `alice/project` and `bob/project`. GitBucket renders this evidence in the repository header and omits `fork`, `parent`, and `source` in the corresponding API response.
+
+`gitbucket-4.44-review-conversation.html` captures visible review markup for the supported server layout. The review tests exercise sanitized identities, old and new line positions, and the separation of discussion and commit comments.

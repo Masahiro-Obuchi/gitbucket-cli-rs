@@ -7,10 +7,7 @@
 - Repository flows support list/view/create/clone/delete/fork.
 - Issue flows support list/view/create/edit/close/reopen/comment.
 - Pull request flows support list/view/create/edit/close/reopen/merge/checkout/diff/comment.
-- Formal review approval/request-changes/dismissal, atomic expected-head merges,
-  and complete stored review history are not implemented by the verified adapter.
-  See `docs/REVIEW_MERGE.md` for GitBucket 4.44.0 core support and limits; other
-  versions, plugins and SSO integrations require separate verification.
+- Formal review approval/request-changes/dismissal, atomic expected-head merges, and complete stored review history are not implemented by the verified adapter. See `docs/reference/merge.md` for GitBucket 4.44.0 core support and limits; other versions, plugins and SSO integrations require separate verification.
 
 ## Project Structure & Module Organization
 
@@ -21,11 +18,10 @@
 - `src/config/`: local auth/config file handling.
 - `src/output/`: table and display helpers.
 - `src/application/`, `src/domain/`, `src/git/`: operation verification, domain identities, and Git adapters.
-- `docs/REFACTOR_STATUS.md`: merged refactor units, upgrade notes, and remaining release/server/deployment work.
-- `README.md`: user-facing usage guide.
-- `SPEC.md`: detailed functional specification.
+- `README.md`: project overview, prerequisites, installation and Quick Start.
+- `docs/README.md`: documentation index for usage, reference and maintenance.
 
-Keep `README.md`, `SPEC.md`, and CLI help text aligned whenever command behavior or options change.
+Keep CLI help and the relevant pages under `docs/` aligned with command changes. Keep the README brief. Use one line per prose paragraph and use Markdown line breaks for structure or intentional display. Describe features by name in public documentation.
 
 ## Build, Test, and Development Commands
 
@@ -36,23 +32,14 @@ Keep `README.md`, `SPEC.md`, and CLI help text aligned whenever command behavior
 - `cargo fmt --all`: format Rust code.
 - `cargo clippy --all-targets --all-features -- -D warnings`: lint and fail on warnings.
 - `cargo package --locked --offline`: build and verify the source archive after dependencies are cached.
-- `cargo +1.88.0 check --locked --all-targets --all-features` and
-  `cargo +1.88.0 test --locked --all-features`: verify the declared MSRV.
-- `python3 -B -m unittest discover -s scripts/tests -v`: test binary-archive
-  selection, link rewriting and extracted navigation without publishing.
+- `cargo +1.88.0 check --locked --all-targets --all-features` and `cargo +1.88.0 test --locked --all-features`: verify the declared MSRV.
+- `python3 -B -m unittest discover -s scripts/tests -v`: test binary-archive selection, link rewriting and extracted navigation without publishing.
 
-The MSRV is Rust 1.88.0 with the committed lockfile. Keep `package.rust-version`,
-the MSRV CI toolchain and `docs/RUST_VERSION.md` aligned. Dependency updates must
-pass MSRV CI; raising the minimum requires an explicit compatibility change.
+The MSRV is Rust 1.88.0 with the committed lockfile. Keep `package.rust-version`, the MSRV CI toolchain and `docs/maintainers/testing.md` aligned. Dependency updates must pass MSRV CI; raising the minimum requires an explicit compatibility change.
 
-Source-package paths are explicitly permitted by `package.include` in `Cargo.toml`.
-When adding public file types or directories, update that policy deliberately and
-run `cargo test --test package_contents`; keep local material outside the public
-source/docs/fixture trees. See `docs/PACKAGE_CONTENTS.md`.
+Source-package paths are explicitly permitted by `package.include` in `Cargo.toml`. When adding public file types or directories, update that policy deliberately and run `cargo test --test package_contents`; keep local material outside the public source/docs/fixture trees. See `docs/maintainers/packaging.md`.
 
-Binary archives use `scripts/package-release.py` and the reusable
-`.github/workflows/archive.yml` from both PR CI and Release. Keep bundled
-documentation/link checks aligned; see `docs/BINARY_ARCHIVES.md`.
+Binary archives use `scripts/package-release.py` and the reusable `.github/workflows/archive.yml` from both PR CI and Release. Keep bundled documentation/link checks aligned; see `docs/maintainers/packaging.md`.
 
 ## Coding Style & Naming Conventions
 
@@ -69,9 +56,7 @@ documentation/link checks aligned; see `docs/BINARY_ARCHIVES.md`.
 - Auth config is stored in `~/.config/gb/config.toml` (or `GB_CONFIG_DIR`) under `[hosts."<normalized-http(s)-base-url>"]`.
 - Repository auto-resolution supports HTTPS, SSH, and GitBucket `/git/` clone URLs.
 - `issue list` and `pr list` support `--state open|closed|all` and pass that filter through to the API.
-- Issue/PR bodies support mutually exclusive `--body`, `--body-file` and explicit
-  `--editor/-e`. Editor input requires terminal stdin/stderr, is disabled by
-  `--json-errors`, and preloads existing bodies for edits. See `docs/INPUT_DISPLAY.md`.
+- Issue/PR bodies support mutually exclusive `--body`, `--body-file` and explicit `--editor/-e`. Editor input requires terminal stdin/stderr, is disabled by `--json-errors`, and preloads existing bodies for edits. See `docs/usage/input-and-display.md`.
 
 ## Testing Guidelines
 

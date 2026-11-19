@@ -13,7 +13,7 @@ mod write;
 
 #[derive(Args)]
 #[command(
-    after_help = "Ordinary numbered commands require canonical PR details that match the requested number and any reported base repository. Diff, checkout and review reads have separate saved-snapshot rules. Discussion and visible inline review comments are supported. Approval, request-changes and dismissal decisions have no verified core API in GitBucket 4.44.0 and are not implemented by posting comments. Human view reports review decision as unknown. See docs/REVIEW_MERGE.md for the tested support matrix."
+    after_help = "Ordinary numbered commands require canonical PR details that match the requested number and any reported base repository. Diff, checkout and review reads have separate saved-snapshot rules. Discussion and visible inline review comments are supported. Approval, request-changes and dismissal decisions have no verified core API in GitBucket 4.44.0 and are not implemented by posting comments. Human view reports review decision as unknown. See docs/reference/merge.md for the tested support matrix."
 )]
 pub struct PrArgs {
     #[command(subcommand)]
@@ -68,7 +68,7 @@ pub enum PrCommand {
     },
     /// Create a pull request
     #[command(
-        after_help = "Omitted --base uses the target repository's default_branch, without a prompt or a main fallback. An inferred local head must match the live published ref; no push is performed. Explicit --head selects a published branch without checking local commits. Non-terminal input requires --title; an omitted body is optional. --body-file - reads stdin. See docs/INPUT_DISPLAY.md."
+        after_help = "Omitted --base uses the target repository's default_branch, without a prompt or a main fallback. An inferred local head must match the live published ref; no push is performed. Explicit --head selects a published branch without checking local commits. Non-terminal input requires --title; an omitted body is optional. --body-file - reads stdin. See docs/usage/input-and-display.md."
     )]
     Create {
         /// PR title (prompts when omitted)
@@ -143,7 +143,7 @@ pub enum PrCommand {
     },
     /// Merge a pull request
     #[command(
-        after_help = "Checks the saved head at start and immediately before merge, refuses reported draft/closed/unmergeable PRs, then verifies canonical merged state and saved head. --match-head-commit pins the head you reviewed. GitBucket 4.44.0 ignores the merge sha parameter: these client checks are NOT atomic and do not prevent a subsequent server-side race. No approval is inferred from comments, no merge is retried, and unverified results require inspection. See docs/REVIEW_MERGE.md."
+        after_help = "Checks the saved head at start and immediately before merge, refuses reported draft/closed/unmergeable PRs, then verifies canonical merged state and saved head. --match-head-commit pins the head you reviewed. GitBucket 4.44.0 ignores the merge sha parameter: these client checks are NOT atomic and do not prevent a subsequent server-side race. No approval is inferred from comments, no merge is retried, and unverified results require inspection. See docs/reference/merge.md."
     )]
     Merge {
         /// PR number
@@ -185,7 +185,7 @@ pub enum PrCommand {
 #[command(
     args_conflicts_with_subcommands = true,
     subcommand_negates_reqs = true,
-    after_help = "Ordinary discussion writes use REST. --file/--line/--side select an inline Web write and require --web and a local Git repository. Rename paths use the destination; deleted files use the old path. Only UTF-8 text diff hunks with 3 context lines are supported. GIT_DIFF_OPTS and diff.suppressBlankEmpty do not change validation. Paths match exact case regardless of GIT_ICASE_PATHSPECS. Create/reply recheck that the PR is open and unmerged immediately before POST. The saved head is checked before/after, but the server has no atomic head guard.\n\nCreate/reply intents are reserved under GB_CONFIG_DIR/review-writes before POST. The same intent is only reconciled on retry; an uncertain result is never automatically resent. Keep this directory and use a stable --request-id for automation. A new key deliberately permits another identical submission. See docs/REVIEW_WRITES.md."
+    after_help = "Ordinary discussion writes use REST. --file/--line/--side select an inline Web write and require --web and a local Git repository. Rename paths use the destination; deleted files use the old path. Only UTF-8 text diff hunks with 3 context lines are supported. GIT_DIFF_OPTS and diff.suppressBlankEmpty do not change validation. Paths match exact case regardless of GIT_ICASE_PATHSPECS. Create/reply recheck that the PR is open and unmerged immediately before POST. The saved head is checked before/after, but the server has no atomic head guard.\n\nCreate/reply intents are reserved under GB_CONFIG_DIR/review-writes before POST. The same intent is only reconciled on retry; an uncertain result is never automatically resent. Keep this directory and use a stable --request-id for automation. A new key deliberately permits another identical submission. See docs/reference/review-writes.md."
 )]
 pub struct PrCommentArgs {
     #[command(subcommand)]
