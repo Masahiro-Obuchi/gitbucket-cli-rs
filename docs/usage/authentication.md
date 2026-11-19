@@ -49,7 +49,7 @@ gb config list --json
 
 At runtime, the explicit `--hostname/-H`, `GB_HOST`, and the selected scope's saved default host are tried in that order. `--profile`, `GB_PROFILE`, and `default_profile` select the profile in that order. `GB_TOKEN` takes precedence over saved credentials, followed by credentials in the selected profile and global credentials for the selected target.
 
-`gb config path` prints the path to `config.toml` under `GB_CONFIG_DIR` or the default configuration directory (`~/.config/gb`). Each host entry stores `token` and `user`. The URL key carries the scheme. For example:
+`gb config path` prints the path to `config.toml`. The file lives under `GB_CONFIG_DIR` when set and in the platform's configuration directory otherwise, such as `~/.config/gb` on Linux. Each host entry stores `token` and `user`, and its URL key carries the scheme.
 
 ```toml
 default_host = "https://bucket.example/gitbucket"
@@ -131,6 +131,8 @@ For configurations with bare host keys or defaults, set `GB_CONFIG_DIR` to a
 fresh directory, run `gb auth login` with the full deployment URL, and recreate
 any profile defaults you use.
 
+
+When switching `GB_CONFIG_DIR`, pause inline PR comment writes and copy the private [retry records](../reference/review-writes.md#retry-records) to the new directory while preserving its existing records. If you cannot carry the records over, inspect unresolved submissions before retrying them.
 
 ## Git authentication
 

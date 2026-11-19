@@ -13,6 +13,11 @@ const PUBLIC_FILES: &[(&str, &str)] = &[
     ("tests/fixtures/README.md", "# Fixtures\n"),
     ("docs/README.md", "# Documentation index\n"),
     ("docs/usage/guide.md", "# Public documentation\n"),
+    ("skills/gitbucket-cli/SKILL.md", "# Public skill\n"),
+    (
+        "skills/gitbucket-cli/references/command-patterns.md",
+        "# Public command patterns\n",
+    ),
     ("README.md", "# Package policy fixture\n"),
     ("LICENSE", "MIT\n"),
 ];
@@ -36,6 +41,7 @@ const LOCAL_FILES: &[&str] = &[
     "docker/local.env",
     "scripts/private.py",
     "skills/private.md",
+    "skills/gitbucket-cli/references/local.md",
     ".tmp/runtime.env",
     "src/.env",
     "src/.private.rs",

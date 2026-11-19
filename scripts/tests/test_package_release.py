@@ -82,6 +82,25 @@ class ReleaseArchiveTests(unittest.TestCase):
                 self.assertNotIn(b"main/", files["docs/usage/contract.md"])
         self.assertIn("../../tests/evidence.rs", (self.root / "docs/usage/contract.md").read_text())
 
+    def test_sample_skill_links_use_the_release_tag(self):
+        paths = (
+            "skills/gitbucket-cli/SKILL.md",
+            "skills/gitbucket-cli/references/command-patterns.md",
+        )
+        for path in paths:
+            self.write(path, "# Sample skill\n")
+        self.write(
+            "docs/usage/contract.md",
+            "## Details\n\n" + "".join(f"[Sample](../../{path})\n" for path in paths),
+        )
+        files = self.contents(self.package())
+        for path in paths:
+            self.assertNotIn(path, files)
+            self.assertIn(
+                f"/blob/v1.2.3-rc.1%2Bdocs/{path}".encode(),
+                files["docs/usage/contract.md"],
+            )
+
     def test_only_public_documents_are_selected(self):
         for name in [
             "review/private.md", ".codex", ".tmp/runtime.env", "docs/.private.md",
@@ -106,7 +125,11 @@ class ReleaseArchiveTests(unittest.TestCase):
     def test_local_notes_and_escaping_links_are_rejected(self):
         self.write("review/private.md", "# Private\n")
         self.write("tests/.private.rs", "// local\n")
-        for url in ["review/private.md", "../outside.md", "tests/.private.rs", "/README.md"]:
+        self.write("skills/gitbucket-cli/references/local.md", "# Local notes\n")
+        for url in [
+            "review/private.md", "../outside.md", "tests/.private.rs", "/README.md",
+            "skills/gitbucket-cli/references/local.md",
+        ]:
             with self.subTest(url=url):
                 self.write("README.md", f"[Bad]({url})\n")
                 with self.assertRaises(ValueError):

@@ -17,6 +17,11 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
 ROOT_FILES = ("README.md", "LICENSE")
+SOURCE_LINK_FILES = {
+    "Cargo.toml",
+    "skills/gitbucket-cli/SKILL.md",
+    "skills/gitbucket-cli/references/command-patterns.md",
+}
 TARGETS = {
     "x86_64-unknown-linux-gnu": ("gb", "tar.gz"),
     "x86_64-apple-darwin": ("gb", "tar.gz"),
@@ -124,8 +129,10 @@ def documentation(root, tag):
             raise ValueError(f"link escapes source tree in {current}: {url}")
         name = path.relative_to(root).as_posix()
         if name not in names:
-            # Only source evidence may leave the bundle; never link local notes.
-            if name != "Cargo.toml" and not name.startswith(("src/", "tests/", "scripts/")):
+            # Only approved repository paths may leave the bundle.
+            if name not in SOURCE_LINK_FILES and not name.startswith(
+                ("src/", "tests/", "scripts/")
+            ):
                 raise ValueError(f"unapproved source link in {current}: {url}")
             if any(part.startswith(".") for part in PurePosixPath(name).parts):
                 raise ValueError(f"hidden source link in {current}: {url}")

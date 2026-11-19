@@ -2,7 +2,7 @@
 
 ## Source package
 
-The Cargo manifest's explicit [include list](../../Cargo.toml) permits `Cargo.toml`, `Cargo.lock`, `README.md`, `LICENSE`, Rust sources under `src/` and `tests/`, Markdown under `docs/`, and public JSON, HTML, and Markdown fixtures under `tests/fixtures/`. Put credentials and workspace files outside those public paths.
+The Cargo manifest's explicit [include list](../../Cargo.toml) permits `Cargo.toml`, `Cargo.lock`, `README.md`, `LICENSE`, Rust sources under `src/` and `tests/`, Markdown under `docs/`, the two Markdown pages for the sample skill, and public JSON, HTML, and Markdown fixtures under `tests/fixtures/`. Put credentials and workspace files outside those public paths.
 
 The patterns exclude hidden files and descendants of directories with file extensions such as `.md` or `.rs`. Cargo's include rules take precedence over Git ignore rules. Review what is published by inspecting the files as well as the paths.
 
@@ -16,7 +16,7 @@ The package tests exercise the manifest policy with both Git and Git-free tempor
 
 ## Binary archives
 
-Release archives contain the native executable (`gb` or `gb.exe`), `LICENSE`, `README.md`, and public Markdown under `docs/`, preserving their directory layout. Open the extracted README to navigate the [documentation index](../README.md). Links between bundled pages and their headings work offline. Links to source and test evidence point to the corresponding GitHub tag.
+Release archives contain the native executable (`gb` or `gb.exe`), `LICENSE`, `README.md`, and public Markdown under `docs/`, preserving their directory layout. Open the extracted README to navigate the [documentation index](../README.md). Links between bundled pages and their headings work offline. Links to source, test evidence, and the sample skill point to the corresponding GitHub tag.
 
 | Target | Archive |
 | --- | --- |

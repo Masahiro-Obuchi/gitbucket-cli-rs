@@ -1,7 +1,8 @@
 # Writing inline review comments
 
 ```sh
-gb pr comment 42 --file src/lib.rs --line 18 --side new --commit <FULL_HEAD_SHA> --body-file review.md --web --json
+# Replace the example SHA with the full saved PR head.
+gb pr comment 42 --file src/lib.rs --line 18 --side new --commit 0123456789abcdef0123456789abcdef01234567 --body-file review.md --web --json
 gb pr comment edit 42 --kind inline --id 123 --body 'Updated **review**' --web --json
 gb pr comment reply 42 --kind inline --id 123 --body '確認しました' --request-id review-42-followup --web --json
 gb pr comment delete 42 --kind inline --id 123 --web --json

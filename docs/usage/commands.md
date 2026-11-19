@@ -138,4 +138,4 @@ Load the generated file according to your shell's completion configuration. `gb 
 
 ## Agent skill example
 
-The [sample GitBucket CLI skill](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/blob/main/skills/gitbucket-cli/SKILL.md) documents commands for a shell-enabled assistant. Its [command patterns](https://github.com/Masahiro-Obuchi/gitbucket-cli-rs/blob/main/skills/gitbucket-cli/references/command-patterns.md) include authentication, issue and PR workflows.
+The [sample GitBucket CLI skill](../../skills/gitbucket-cli/SKILL.md) documents commands for a shell-enabled assistant. Its [command patterns](../../skills/gitbucket-cli/references/command-patterns.md) include authentication, issue and PR workflows.

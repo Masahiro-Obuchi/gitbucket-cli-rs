@@ -22,6 +22,8 @@ include = [
   "/tests/fixtures/**/*.html",
   "/tests/fixtures/**/*.md",
   "/docs/**/*.md",
+  "/skills/gitbucket-cli/SKILL.md",
+  "/skills/gitbucket-cli/references/command-patterns.md",
   # A file glob also matches directories: never include their descendants.
   "!**/*.rs/**",
   "!**/*.json/**",

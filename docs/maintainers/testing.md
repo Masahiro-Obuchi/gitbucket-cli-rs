@@ -37,15 +37,15 @@ For focused tests, use `cargo test --locked --test pr_checkout` or an applicable
 
 The ignored [E2E tests](../../tests/e2e_smoke.rs) require Git, Docker with Compose, Bash, curl, and Python 3. The scripts start GitBucket 4.44.0 behind a local proxy and provision disposable accounts, tokens, and repositories. Run the tests against the fixture. The generated `runtime.env` contains disposable credentials and belongs with the local fixture.
 
-Run the site root and `/gitbucket` variants separately. Each command block uses its own environment, port, and Compose project. The exit trap tears down the fixture and removes its data.
+From the repository root, run the site root and `/gitbucket` variants separately. Each command block uses its own environment, port, and Compose project. The exit trap tears down the fixture and removes its data.
 
 ```bash
 (
-  export GB_E2E_ROOT=.tmp/e2e-root GB_E2E_COMPOSE_PROJECT=gb-e2e-root GB_E2E_HTTP_PORT=18080 GB_E2E_PATH_PREFIX=
+  export GB_E2E_ROOT="$PWD/.tmp/e2e-root" GB_E2E_COMPOSE_PROJECT=gb-e2e-root GB_E2E_HTTP_PORT=18080 GB_E2E_PATH_PREFIX=
   trap './scripts/e2e/down.sh' EXIT
   ./scripts/e2e/bootstrap.sh || exit
   set -a
-  source "$GB_E2E_ROOT/runtime.env"
+  source "$GB_E2E_ROOT/runtime.env" || exit
   set +a
   cargo test --locked --test e2e_smoke -- --ignored --nocapture
 )
@@ -53,11 +53,11 @@ Run the site root and `/gitbucket` variants separately. Each command block uses 
 
 ```bash
 (
-  export GB_E2E_ROOT=.tmp/e2e-prefix GB_E2E_COMPOSE_PROJECT=gb-e2e-prefix GB_E2E_HTTP_PORT=18081 GB_E2E_PATH_PREFIX=/gitbucket
+  export GB_E2E_ROOT="$PWD/.tmp/e2e-prefix" GB_E2E_COMPOSE_PROJECT=gb-e2e-prefix GB_E2E_HTTP_PORT=18081 GB_E2E_PATH_PREFIX=/gitbucket
   trap './scripts/e2e/down.sh' EXIT
   ./scripts/e2e/bootstrap.sh || exit
   set -a
-  source "$GB_E2E_ROOT/runtime.env"
+  source "$GB_E2E_ROOT/runtime.env" || exit
   set +a
   cargo test --locked --test e2e_smoke -- --ignored --nocapture
 )

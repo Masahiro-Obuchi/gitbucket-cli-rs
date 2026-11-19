@@ -170,7 +170,7 @@ The 4.44.0 PR collection can report a fork's head repository and label as belong
 
 Ordinary numbered PR commands require a detail object and verify its number and any reported base repository. A separate [saved-snapshot reader](pull-request-snapshots.md) can recover the verified 200/empty deleted-fork detail response using saved SHAs from the PR collection and retained Git objects. It verifies the saved comparison independently of the collection's fork ownership metadata.
 
-Traversal is not a snapshot: concurrent creation/deletion/state changes can move rows between pages. Deduplication removes repeated observations but cannot recover records the server never exposes. Detection and creation are not atomic, so this option cannot guarantee uniqueness under concurrent writers. Review-thread and inline-comment types are separate from ordinary discussion comments; they belong to subsequent remediation units.
+Traversal is not a snapshot: concurrent creation/deletion/state changes can move rows between pages. Deduplication removes repeated observations but cannot recover records the server never exposes. Detection and creation are not atomic, so this option cannot guarantee uniqueness under concurrent writers. See [review comments](review-comments.md) for the separate inline and commit comment source.
 
 ### Upstream evidence
 

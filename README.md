@@ -33,6 +33,8 @@ Enter your token when prompted. If your instance uses a path prefix, use the ful
 
 See the [documentation index](docs/README.md) for command examples, configuration, automation, and the tested GitBucket compatibility baseline.
 
+These guides describe this source revision. For a released binary, use the documentation bundled with its archive or browse the repository at its release tag.
+
 ## License and Acknowledgements
 
 [MIT](LICENSE). Thanks to the [GitBucket](https://gitbucket.github.io/) project and its community.
