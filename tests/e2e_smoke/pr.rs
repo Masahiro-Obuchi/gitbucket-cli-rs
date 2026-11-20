@@ -140,7 +140,7 @@ fn e2e_pr_comment_and_view_comments_against_live_instance() {
         "stdout: {view_without_comments}"
     );
     assert!(
-        !view_without_comments.contains("--- Comments ---"),
+        !view_without_comments.contains("--- Comments"),
         "stdout: {view_without_comments}"
     );
     assert!(
@@ -154,7 +154,7 @@ fn e2e_pr_comment_and_view_comments_against_live_instance() {
         &["pr", "view", &number.to_string(), "--comments"],
     );
     assert!(
-        view_with_comments.contains("--- Comments ---"),
+        view_with_comments.contains("--- Comments (1) ---"),
         "stdout: {view_with_comments}"
     );
     assert!(

@@ -1642,7 +1642,11 @@ async fn contract_review_comment_markup_and_visibility() {
         ],
     );
     let only: Value = serde_json::from_str(&only).unwrap();
-    assert_eq!(only["comments"], json!([]));
+    assert!(only["comments"].is_null());
+    assert_eq!(
+        only["comment_coverage"]["discussion"]["status"],
+        "not_requested"
+    );
     assert_eq!(only["review_comments"], listed["review_comments"]);
     gb_output_with_env(
         temp.path(),
