@@ -32,7 +32,7 @@ fn manager_error() -> crate::error::GbError {
     )
 }
 
-pub(super) async fn read(key: &Key) -> Result<Option<Vec<u8>>> {
+pub(super) fn read(key: &Key) -> Result<Option<Vec<u8>>> {
     let target = target(key);
     let mut value = ptr::null_mut();
     // The target is NUL-terminated and CredReadW owns the returned allocation.

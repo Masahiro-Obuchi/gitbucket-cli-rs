@@ -28,6 +28,7 @@ pub(crate) async fn create_web_session_with_prompt(
         Some(password) => password,
         None => match Key::new(&credential.instance, &username)?.read().await {
             Ok(Some(password)) if !password.is_empty() => password,
+            Err(error @ GbError::Cancelled) => return Err(error),
             _ if allow_prompt => prompt_password(&username).await?,
             _ => return Err(GbError::WebPasswordRequired),
         },

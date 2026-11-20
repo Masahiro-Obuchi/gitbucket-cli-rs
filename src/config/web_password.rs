@@ -10,6 +10,7 @@ mod platform;
 #[path = "web_password/windows.rs"]
 mod platform;
 
+#[derive(Clone)]
 pub(crate) struct Key {
     instance: String,
     user: String,
@@ -30,9 +31,13 @@ impl Key {
     }
 
     pub(crate) async fn read(&self) -> Result<Option<String>> {
-        let value = tokio::time::timeout(std::time::Duration::from_secs(3), platform::read(self))
-            .await
-            .map_err(|_| error("timeout", "Reading the Web password timed out."))??;
+        let read = tokio::time::timeout(std::time::Duration::from_secs(3), self.read_bytes());
+        let value = tokio::select! {
+            biased;
+            _ = crate::cancel::notified() => return Err(GbError::Cancelled),
+            result = read => result
+                .map_err(|_| error("timeout", "Reading the Web password timed out."))??,
+        };
         value
             .map(|bytes| {
                 String::from_utf8(bytes).map_err(|_| {
@@ -45,11 +50,36 @@ impl Key {
             .transpose()
     }
 
+    #[cfg(any(target_os = "macos", windows))]
+    async fn read_bytes(&self) -> Result<Option<Vec<u8>>> {
+        // Native calls are synchronous. An OS thread lets the deadline and
+        // cancellation take effect without waiting for Tokio to join the call.
+        let key = self.clone();
+        let (send, receive) = tokio::sync::oneshot::channel();
+        std::thread::Builder::new().spawn(move || {
+            let _ = send.send(platform::read(&key));
+        })?;
+        receive
+            .await
+            .map_err(|_| error("read_failed", "Reading the Web password failed."))?
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
+    async fn read_bytes(&self) -> Result<Option<Vec<u8>>> {
+        platform::read(self).await
+    }
+
     pub(crate) async fn save(&self, password: &str) -> Result<()> {
+        if crate::cancel::requested() {
+            return Err(GbError::Cancelled);
+        }
         platform::save(self, password.as_bytes()).await
     }
 
     pub(crate) async fn delete(&self) -> Result<bool> {
+        if crate::cancel::requested() {
+            return Err(GbError::Cancelled);
+        }
         platform::delete(self).await
     }
 }

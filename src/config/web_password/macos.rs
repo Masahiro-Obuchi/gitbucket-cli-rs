@@ -17,7 +17,7 @@ fn keychain_error(_: security_framework::base::Error) -> crate::error::GbError {
     )
 }
 
-pub(super) async fn read(key: &Key) -> Result<Option<Vec<u8>>> {
+pub(super) fn read(key: &Key) -> Result<Option<Vec<u8>>> {
     // Keeping the guard alive prevents the native read from showing a dialog.
     let _interaction = if SecKeychain::user_interaction_allowed().map_err(keychain_error)? {
         Some(SecKeychain::disable_user_interaction().map_err(keychain_error)?)

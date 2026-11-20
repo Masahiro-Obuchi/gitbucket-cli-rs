@@ -99,7 +99,7 @@ gb auth web-logout --hostname https://bucket.example/gitbucket --user alice
 
 The store is Keychain on macOS, Credential Manager on Windows, and the default Secret Service collection on Linux. Open and unlock the store before registering a password. Linux requires a Secret Service provider in the current D-Bus session. A headless shell can supply `GB_PASSWORD` without a credential store.
 
-When a command needs Web sign-in, it tries `GB_PASSWORD` first, then a stored password, then terminal input if permitted. Automatic reads do not request a graphical unlock. If the store is locked or unavailable, unlock it outside the command or supply `GB_PASSWORD`. With no usable password and no prompt, the command reports `web_password_required`.
+When a command needs Web sign-in, it tries `GB_PASSWORD` first, then a stored password, then terminal input if permitted. Automatic reads allow up to three seconds and avoid graphical unlock prompts. Cancelling the read stops Web sign-in. If the store is locked or unavailable, unlock it outside the command or supply `GB_PASSWORD`. With no usable password and no prompt, the command reports `web_password_required`.
 
 ## Git authentication
 
