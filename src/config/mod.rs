@@ -1,5 +1,6 @@
 pub mod auth;
 pub(crate) mod review_receipt;
+pub(crate) mod web_password;
 
 use std::path::PathBuf;
 

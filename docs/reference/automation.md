@@ -117,7 +117,7 @@ Runtime errors retain their existing `code`, optional `cause`, HTTP `status`, mu
 
 ### Prompts, subprocesses and exit status
 
-With JSON errors enabled, interactive input returns `input_required` with `cause: interactive_input_disabled`, exit 1, before invoking a prompt. Supply the required options and explicit confirmations (`--yes` where supported). A Web sign-in that needs a password returns `web_password_required` when `GB_PASSWORD` is unset or empty and a prompt is unavailable. Supply `GB_PASSWORD` for the authorized operation. Explicit `gb api --input -` stdin reading remains available and cancellable.
+With JSON errors enabled, interactive input returns `input_required` with `cause: interactive_input_disabled`, exit 1, before invoking a prompt. Supply the required options and explicit confirmations (`--yes` where supported). A Web sign-in returns `web_password_required` when it has neither `GB_PASSWORD` nor a readable stored password and cannot prompt. Supply `GB_PASSWORD` for the authorized operation. Explicit `gb api --input -` stdin reading remains available and cancellable.
 
 The existing Git adapter captures subprocess stdout/stderr. JSON-error mode suppresses notices and raw Git/pager stderr, leaving one error record. A pager failure returns `pager_failed`, `cause: nonzero_exit`, exit 1, and `child_exit_code` when the OS supplies a numeric status. A signal termination can omit that child code. Other subprocess failures keep their existing error codes.
 
