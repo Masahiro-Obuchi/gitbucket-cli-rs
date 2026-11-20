@@ -59,6 +59,18 @@ fn pr_help_mentions_edit_and_comment_edit_last() {
 }
 
 #[test]
+fn short_comment_help_keeps_options_and_long_help_points_to_inline_write_details() {
+    for (flag, long) in [("-h", false), ("--help", true)] {
+        let output = gb_command().args(["pr", "comment", flag]).output().unwrap();
+        assert!(output.status.success());
+        let text = String::from_utf8_lossy(&output.stdout);
+        assert!(text.contains("--request-id"));
+        assert_eq!(text.contains("docs/reference/review-writes.md"), long);
+        assert_eq!(text.contains("original retry receipt"), long);
+    }
+}
+
+#[test]
 fn pr_diff_help_mentions_no_pager() {
     let diff_output = gb_command()
         .args(["pr", "diff", "--help"])

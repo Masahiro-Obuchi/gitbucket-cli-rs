@@ -54,7 +54,7 @@ user = "alice"
 
 Writers wait up to five seconds for the OS lock, reload the current file, sync a private temporary file, and atomically replace the configuration. Keep the empty `config.toml.lock` file in place so concurrent writers lock the same file. The configuration and lock paths must be regular files. On Unix, the files use mode `0600` and newly created configuration directories use `0700`. On Windows, they inherit access permissions from the parent directory.
 
-## Verified status and offline inventory
+## Authentication status
 
 ```sh
 gb auth status --profile work --json
@@ -62,11 +62,13 @@ gb auth status --offline --profile work --json
 gb auth status --global --json
 ```
 
-Status normally sends one `GET /api/v3/user` to the selected instance with the effective token. Other saved hosts/profiles are inventory and receive no probes. The selected profile can use global fallback, and an environment-only token and `GB_HOST` work without a saved login. A stale stored user or `GB_USER` cannot establish ownership of a token. Web operations with an environment token and no username hint use the verified REST login; explicit Web actor rules still apply. Git HTTP authentication with `GB_TOKEN` requires `GB_USER`; a saved user's name is no longer inherited as the username for an unrelated environment token.
+Status normally sends one `GET /api/v3/user` to the selected instance with the effective token. Use `gb config list` to inspect saved hosts and profiles. The selected profile can use global fallback, and an environment-only token and `GB_HOST` work without a saved login. A stale stored user or `GB_USER` cannot establish ownership of a token. Web operations with an environment token and no username hint use the verified REST login; explicit Web actor rules still apply. Git HTTP authentication with `GB_TOKEN` requires `GB_USER`; a saved user's name is no longer inherited as the username for an unrelated environment token.
 
-JSON retains `active_profile`, `effective_actor`, `hosts` and `profiles`, and adds `offline`. The selected actor contains `host`, normalized `instance`, nullable `user`, nullable `stored_user`, `protocol`, `credential_source`, `verification` and nullable `error` (`code`, `status`, `cause`). `user` is populated only after verification; `stored_user` is an unverified saved hint and is null for an environment token. The active profile's actor mirrors the selected result; inactive profiles have no effective actor. Inventory `user` fields remain saved hints and are labelled `verification: not_checked`.
+For scripts upgrading from 0.7.0, read saved `hosts` and `profiles` from `gb config list --json` and read the verified actor from `gb auth status --json`. The inventory includes saved usernames and default repositories.
 
-Verification is `verified`, `offline`, `rejected` (401/403), or `unverified` (transport, decoding or other server failures). Offline mode makes no request and leaves `user: null`. Online verification failure or missing effective credentials exits 1; `--json` still prints the status record before the error on stderr. Offline inventory exits 0 when readable, even without credentials. Status omits tokens.
+Status JSON contains `active_profile`, `offline` and `effective_actor`. The selected actor contains `host`, normalized `instance`, nullable `user`, nullable `stored_user`, `protocol`, `credential_source`, `verification` and nullable `error` (`code`, `status`, `cause`). `user` is populated only after verification; `stored_user` is an unverified saved hint and is null for an environment token.
+
+Verification is `verified`, `offline`, `rejected` (401/403), or `unverified` (transport, decoding or other server failures). Offline mode makes no request and leaves `user: null`. Online verification failure or missing effective credentials exits 1; `--json` still prints the status record before the error on stderr. Offline status exits 0 when the configuration is readable, even without credentials. Status omits tokens.
 
 ## Scheme and instance matching
 

@@ -12,9 +12,7 @@ mod worktree;
 mod write;
 
 #[derive(Args)]
-#[command(
-    after_help = "Ordinary numbered commands require canonical PR details that match the requested number and any reported base repository. Diff, checkout and review reads have separate saved-snapshot rules. Discussion and visible inline review comments are supported. Approval, request-changes and dismissal decisions have no verified core API in GitBucket 4.44.0 and are not implemented by posting comments. Human view reports review decision as unknown. See docs/reference/merge.md for the tested support matrix."
-)]
+#[command(after_long_help = "See docs/usage/pull-requests.md for supported PR workflows.")]
 pub struct PrArgs {
     #[command(subcommand)]
     pub command: PrCommand,
@@ -24,7 +22,7 @@ pub struct PrArgs {
 pub enum PrCommand {
     /// List pull requests
     #[command(
-        after_help = "Fetches all PR pages and sorts by number descending. JSON verifies each PR with canonical detail, including fork ownership. Incomplete traversal or detail verification fails without a partial list. GB_PAGINATION_MAX_PAGES sets the traversal safety cap (default 1000)."
+        after_long_help = "JSON verifies canonical details for every PR. See docs/reference/automation.md."
     )]
     List {
         /// Filter by state (open, closed, all)
@@ -45,7 +43,7 @@ pub enum PrCommand {
     },
     /// View a pull request
     #[command(
-        after_help = "With --comments, the default is --kind all. JSON adds comment_details, review_comments and comment_coverage while preserving the API fields."
+        after_long_help = "With --comments, the default is --kind all. JSON adds comment_coverage."
     )]
     View {
         /// PR number
@@ -68,7 +66,7 @@ pub enum PrCommand {
     },
     /// Create a pull request
     #[command(
-        after_help = "Omitted --base uses the target repository's default_branch, without a prompt or a main fallback. An inferred local head must match the live published ref; no push is performed. Explicit --head selects a published branch without checking local commits. Non-terminal input requires --title; an omitted body is optional. --body-file - reads stdin. See docs/usage/input-and-display.md."
+        after_long_help = "Omitted --base uses the target default branch. An inferred head must match the published commit. See docs/usage/pull-requests.md."
     )]
     Create {
         /// PR title (prompts when omitted)
@@ -100,9 +98,7 @@ pub enum PrCommand {
         detect_existing: bool,
     },
     /// Edit a pull request
-    #[command(
-        after_help = "Title, body and state always use the PR REST API. --web permits only assignee changes; it does not force REST-supported fields through the Web UI."
-    )]
+    #[command(after_long_help = "--web permits assignee changes. Title, body and state use REST.")]
     Edit {
         /// PR number
         number: u64,
@@ -143,7 +139,7 @@ pub enum PrCommand {
     },
     /// Merge a pull request
     #[command(
-        after_help = "Checks the saved head at start and immediately before merge, refuses reported draft/closed/unmergeable PRs, then verifies canonical merged state and saved head. --match-head-commit pins the head you reviewed. GitBucket 4.44.0 ignores the merge sha parameter: these client checks are NOT atomic and do not prevent a subsequent server-side race. No approval is inferred from comments, no merge is retried, and unverified results require inspection. See docs/reference/merge.md."
+        after_long_help = "Head checks are client-side and non-atomic. Use --match-head-commit to pin the reviewed head. See docs/reference/merge.md."
     )]
     Merge {
         /// PR number
@@ -160,7 +156,7 @@ pub enum PrCommand {
     },
     /// Checkout a pull request branch locally
     #[command(
-        after_help = "Checks out the saved PR head SHA, including for closed/merged PRs. Requires complete saved SHAs and a clean working tree/index, including untracked files. Creates pr-N or reuses it only for the recorded target at the same commit. Existing branches are never reset; rename legacy/conflicting branches yourself before retrying. Submodule changes must be committed or moved; submodules are not automatically fetched or checked out.\n\nHTTP(S) fetches reuse the configured user/token only within the selected GitBucket origin and base path. Authenticated transfers do not follow redirects; configure the direct clone URL."
+        after_long_help = "Requires a clean worktree and checks out the saved PR head. See docs/reference/pull-request-snapshots.md."
     )]
     Checkout {
         /// PR number
@@ -168,7 +164,7 @@ pub enum PrCommand {
     },
     /// View the diff of a pull request
     #[command(
-        after_help = "Requires a local Git repository. Compares the exact saved base/head SHAs, including for closed/merged PRs; current branch tips and text diff URLs cannot substitute for unavailable saved objects. A verified empty diff succeeds. Terminal output uses PAGER unless --no-pager is passed. Cancellation stops the pager and returns a cancelled error.\n\nHTTP(S) fetches reuse the configured user/token only within the selected GitBucket origin and base path. Authenticated transfers do not follow redirects; configure the direct clone URL."
+        after_long_help = "Requires a local Git repository. Compares the saved base and head. See docs/reference/pull-request-snapshots.md."
     )]
     Diff {
         /// PR number
@@ -185,7 +181,7 @@ pub enum PrCommand {
 #[command(
     args_conflicts_with_subcommands = true,
     subcommand_negates_reqs = true,
-    after_help = "Ordinary discussion writes use REST. --file/--line/--side select an inline Web write and require --web and a local Git repository. Rename paths use the destination; deleted files use the old path. Only UTF-8 text diff hunks with 3 context lines are supported. GIT_DIFF_OPTS and diff.suppressBlankEmpty do not change validation. Paths match exact case regardless of GIT_ICASE_PATHSPECS. Create/reply recheck that the PR is open and unmerged immediately before POST. The saved head is checked before/after, but the server has no atomic head guard.\n\nCreate/reply intents are reserved under GB_CONFIG_DIR/review-writes before POST. The same intent is only reconciled on retry; an uncertain result is never automatically resent. Keep this directory and use a stable --request-id for automation. A new key deliberately permits another identical submission. See docs/reference/review-writes.md."
+    after_long_help = "Inline writes require --web and local Git. For an uncertain create or reply, keep the original retry receipt, actor and --request-id. See docs/reference/review-writes.md."
 )]
 pub struct PrCommentArgs {
     #[command(subcommand)]
@@ -229,7 +225,7 @@ pub struct PrCommentArgs {
 
 #[derive(Subcommand)]
 pub enum PrCommentCommand {
-    /// Edit your own visible current inline comment (also changes other views of that record)
+    /// Edit your current inline comment
     Edit {
         #[command(flatten)]
         target: ReviewTargetArgs,
@@ -242,7 +238,7 @@ pub enum PrCommentCommand {
         #[arg(long, short = 'e', conflicts_with_all = ["body", "body_file"])]
         editor: bool,
     },
-    /// Add at the selected current position group; no persistent parent-ID relation
+    /// Reply in an inline position group
     Reply {
         #[command(flatten)]
         target: ReviewTargetArgs,
@@ -257,11 +253,11 @@ pub enum PrCommentCommand {
         #[arg(long)]
         request_id: Option<String>,
     },
-    /// Delete your own visible current inline comment (also removes it from other views)
+    /// Delete your current inline comment
     Delete(ReviewTargetArgs),
     /// List comments on a pull request
     #[command(
-        after_help = "The default shows discussion and visible reviews. With all, unavailable sources are reported alongside any results. Private reviews may need GB_PASSWORD."
+        after_long_help = "The default shows discussion and visible reviews. JSON reports coverage for both sources. Private reviews may need GB_PASSWORD."
     )]
     List {
         /// PR number

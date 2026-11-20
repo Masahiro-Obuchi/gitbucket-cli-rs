@@ -1,5 +1,7 @@
 # Input and terminal display
 
+Use `gb <command> -h` for a quick option list and `--help` for additional usage notes.
+
 ## Text input
 
 `issue create/edit/comment`, `pr create/edit/comment`, and inline PR create/edit/reply accept `--body-file FILE` or `--body-file -` for UTF-8 stdin. The option conflicts with `--body`, including an explicitly empty `--body`. Only the selected source is consumed. Stdin is never implicitly used as a body, and no command combines body input and token input from the same stream. Invalid UTF-8, unreadable files and input cancellation fail before mutation.
