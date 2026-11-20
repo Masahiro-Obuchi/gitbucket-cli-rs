@@ -225,7 +225,15 @@ fn pr_comment_list_json_prints_comments() {
 
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
-        .args(["pr", "comment", "list", "5", "--json"])
+        .args([
+            "pr",
+            "comment",
+            "list",
+            "5",
+            "--kind",
+            "discussion",
+            "--json",
+        ])
         .output()
         .unwrap();
 

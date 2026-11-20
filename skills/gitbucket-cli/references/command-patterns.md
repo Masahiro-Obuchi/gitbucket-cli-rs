@@ -38,11 +38,11 @@ gb -H "$host" -R "$repo" --profile "$profile" --json-errors pr create \
 
 ```sh
 gb -H "$host" -R "$repo" --profile "$profile" --json-errors pr comment list 42 \
-  --kind all --json --no-pager
+  --json --no-pager
 gb -H "$host" -R "$repo" --profile "$profile" --json-errors pr diff 42 --no-pager
 ```
 
-The comment list object has `comments` for ordinary discussion, `review_comments` for the visible Web conversation, and `comment_coverage` describing what was requested and read. In `pr view --comments --json`, fetched discussion appears in `comment_details`. The original API `comments` field retains its own value. A successful visible-conversation read can leave historical completeness, original positions, and original Markdown unknown. Explain these limits when they affect the requested review. If a private review cannot be read with the available authorized credentials, report the missing coverage.
+The comment list object has `comments` for ordinary discussion, `review_comments` for the visible Web conversation, and `comment_coverage` describing what was requested and read. In `pr view --comments --json`, fetched discussion appears in `comment_details`. The original API `comments` field retains its own value. A successful visible-conversation read can leave historical completeness, original positions, and original Markdown unknown. Explain these limits when they affect the requested review. An empty array represents zero results. If coverage is `unavailable`, report the missing source and its reason.
 
 `pr diff` prints a raw patch against the saved base and head commits. It requires a local Git repository and may fetch and retain Git objects. A private HTTP(S) Git fetch with `GB_TOKEN` also needs the matching `GB_USER`. SSH uses the local Git credentials. Capture large patches directly to a file. `pr checkout` changes local workspace state and belongs to an authorized checkout task.
 

@@ -99,9 +99,25 @@ fn pr_view_adds_comment_details_and_preserves_api_metadata() {
                 &details(),
             ),
         ],
-        &["pr", "view", "7", "--comments", "--json"],
+        &[
+            "pr",
+            "view",
+            "7",
+            "--comments",
+            "--kind",
+            "discussion",
+            "--json",
+        ],
     );
-    assert_eq!(value(&output), expected);
+    let mut viewed = value(&output);
+    let coverage = viewed
+        .as_object_mut()
+        .unwrap()
+        .remove("comment_coverage")
+        .unwrap();
+    assert_eq!(coverage["discussion"]["status"], "complete");
+    assert_eq!(coverage["review"]["status"], "not_requested");
+    assert_eq!(viewed, expected);
     assert_eq!(
         value(&run(
             vec![response(&format!("{REPO}/pulls/7"), &api)],
@@ -117,11 +133,19 @@ fn pr_view_adds_comment_details_and_preserves_api_metadata() {
                 &details(),
             ),
         ],
-        &["pr", "comment", "list", "7", "--json"],
+        &[
+            "pr",
+            "comment",
+            "list",
+            "7",
+            "--kind",
+            "discussion",
+            "--json",
+        ],
     );
     let listed = value(&output);
     assert_eq!(listed["comments"], details());
-    assert_eq!(listed["review_comments"], json!([]));
+    assert!(listed["review_comments"].is_null());
     assert_eq!(listed["comment_coverage"]["requested"], "discussion");
     assert_eq!(
         listed["comment_coverage"]["review"]["status"],

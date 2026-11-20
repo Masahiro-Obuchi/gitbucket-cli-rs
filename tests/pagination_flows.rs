@@ -97,7 +97,15 @@ fn comments_without_links_are_all_rows_even_when_count_matches_a_page_boundary()
         ]);
         let output = env
             .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
-            .args(["pr", "comment", "list", "7", "--json"])
+            .args([
+                "pr",
+                "comment",
+                "list",
+                "7",
+                "--kind",
+                "discussion",
+                "--json",
+            ])
             .output()
             .unwrap();
         assert_success(&output);
@@ -586,8 +594,24 @@ fn view_comment_list_and_edit_last_share_linked_comment_enumeration() {
         let (port, server) = spawn_scripted_server(responses);
         let mut command = env.repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project");
         match mode {
-            "view" => command.args(["pr", "view", "7", "--comments", "--json"]),
-            "list" => command.args(["pr", "comment", "list", "7", "--json"]),
+            "view" => command.args([
+                "pr",
+                "view",
+                "7",
+                "--comments",
+                "--kind",
+                "discussion",
+                "--json",
+            ]),
+            "list" => command.args([
+                "pr",
+                "comment",
+                "list",
+                "7",
+                "--kind",
+                "discussion",
+                "--json",
+            ]),
             _ => command.args(["pr", "comment", "7", "--edit-last", "--body", "changed"]),
         };
         let output = command.output().unwrap();

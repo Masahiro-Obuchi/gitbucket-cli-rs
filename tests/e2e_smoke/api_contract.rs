@@ -1358,24 +1358,40 @@ async fn contract_cli_json_preserves_api_fields_and_adds_comment_details() {
             .as_array_mut()
             .unwrap()
             .sort_by_key(|row| row["id"].as_u64().unwrap());
-        let combined = gb_output_with_env(
-            temp.path(),
-            temp.path(),
-            &[kind, "view", &number_arg, "--comments", "--json"],
-        );
+        let mut args = vec![kind, "view", &number_arg, "--comments", "--json"];
+        if kind == "pr" {
+            args.extend(["--kind", "discussion"]);
+        }
+        let combined = gb_output_with_env(temp.path(), temp.path(), &args);
+        let mut combined: Value = serde_json::from_str(&combined).unwrap();
         let mut expected = api.clone();
         expected["comment_details"] = comments.clone();
         if kind == "issue" {
             // 4.44.0 omits the count; the CLI must not invent one.
             assert!(api.get("comments").is_none());
         } else {
+            let coverage = combined
+                .as_object_mut()
+                .unwrap()
+                .remove("comment_coverage")
+                .unwrap();
+            assert_eq!(coverage["discussion"]["status"], "complete");
+            assert_eq!(coverage["review"]["status"], "not_requested");
             assert_eq!(api["draft"], true);
             assert!(api["labels"].is_array() && api["assignees"].is_array());
             assert!(api["mergeable"].is_null());
             let listed = gb_output_with_env(
                 temp.path(),
                 temp.path(),
-                &["pr", "comment", "list", &number_arg, "--json"],
+                &[
+                    "pr",
+                    "comment",
+                    "list",
+                    &number_arg,
+                    "--kind",
+                    "discussion",
+                    "--json",
+                ],
             );
             let listed: Value = serde_json::from_str(&listed).unwrap();
             assert_eq!(listed["comments"], comments);
@@ -1389,7 +1405,7 @@ async fn contract_cli_json_preserves_api_fields_and_adds_comment_details() {
                 assert!(view.contains(field), "{view}");
             }
         }
-        assert_eq!(serde_json::from_str::<Value>(&combined).unwrap(), expected);
+        assert_eq!(combined, expected);
     }
 }
 

@@ -5,6 +5,7 @@ use support::{
     mock_http::{spawn_scripted_server, with_verified_web_session, ScriptedResponse},
 };
 const PR: &str = "/bucket/api/v3/repos/alice/project/pulls/1";
+const DISCUSSION: &str = "/bucket/api/v3/repos/alice/project/issues/1/comments?per_page=100";
 const WEB: &str = "/bucket/alice/project/pull/1";
 const PAGE: &str = include_str!("fixtures/gitbucket-4.44-review-conversation.html");
 fn pr(sha: &str) -> Value {
@@ -15,6 +16,18 @@ fn get(path: &str, value: &Value) -> ScriptedResponse {
         &format!("GET {path} HTTP/1.1"),
         "200 OK",
         &value.to_string(),
+    )
+}
+fn review_only(mode: &str) -> bool {
+    matches!(
+        mode,
+        "review-only"
+            | "bad-layout"
+            | "expired"
+            | "redirect-login"
+            | "http"
+            | "public-http"
+            | "head-changed"
     )
 }
 fn script(mode: &str) -> Vec<ScriptedResponse> {
@@ -28,6 +41,12 @@ fn script(mode: &str) -> Vec<ScriptedResponse> {
         frames.push(get(
             "/bucket/api/v3/repos/alice/project/pulls?state=all",
             &json!([raw.clone()]),
+        ));
+    }
+    if !review_only(mode) {
+        frames.push(get(
+            DISCUSSION,
+            &json!([{"id":1,"body":"ordinary body","user":{"login":"alice"}}]),
         ));
     }
     if mode == "public-http" {
@@ -88,12 +107,6 @@ fn script(mode: &str) -> Vec<ScriptedResponse> {
         mode,
         "bad-layout" | "partial-layout" | "expired" | "http" | "redirect-login"
     ) {
-        if mode != "review-only" {
-            frames.push(get(
-                "/bucket/api/v3/repos/alice/project/issues/1/comments?per_page=100",
-                &json!([{"id":1,"body":"ordinary body","user":{"login":"alice"}}]),
-            ));
-        }
         if mode == "empty" {
             frames.push(get(PR, &Value::Null));
             frames.push(get(
@@ -136,15 +149,10 @@ fn run(
     if mode.starts_with("public") {
         command.env_remove("GB_USER").env_remove("GB_PASSWORD");
     }
-    command.args([
-        "--kind",
-        if mode == "review-only" {
-            "review"
-        } else {
-            "all"
-        },
-        "--json",
-    ]);
+    if review_only(mode) {
+        command.args(["--kind", "review"]);
+    }
+    command.arg("--json");
     let output = command.output().unwrap();
     (output, server.join().unwrap())
 }
@@ -225,7 +233,7 @@ fn explicit_review_filter_does_not_fetch_discussion_and_empty_fork_details_can_r
     let (output, requests) = run("review-only", false);
     assert_success(&output);
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["comments"], json!([]));
+    assert!(value["comments"].is_null());
     assert_eq!(
         value["comment_coverage"]["discussion"]["status"],
         "not_requested"
@@ -286,7 +294,7 @@ fn layout_auth_http_and_head_change_fail_without_partial_json_or_mutation() {
     }
 }
 #[test]
-fn default_discussion_reports_coverage_without_web_credentials() {
+fn discussion_filter_reports_coverage_without_web_credentials() {
     let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(vec![
         get(PR, &json!({"number":1,"title":"ordinary","state":"open"})),
@@ -297,20 +305,119 @@ fn default_discussion_reports_coverage_without_web_credentials() {
     ]);
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
-        .args(["pr", "comment", "list", "1", "--json"])
+        .args([
+            "pr",
+            "comment",
+            "list",
+            "1",
+            "--kind",
+            "discussion",
+            "--json",
+        ])
         .output()
         .unwrap();
     assert_success(&output);
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(value["comments"], json!([{"id":1,"body":"ordinary"}]));
-    assert_eq!(value["review_comments"], json!([]));
+    assert!(value["review_comments"].is_null());
     assert_eq!(
         value["comment_coverage"]["review"]["status"],
         "not_requested"
     );
-    assert!(String::from_utf8_lossy(&output.stderr).contains("ordinary discussion comments only"));
+    assert!(output.stderr.is_empty());
     assert!(server.join().unwrap().iter().all(|r| r.method == "GET"));
 }
+#[test]
+fn default_all_distinguishes_empty_discussion_from_missing_web_credentials() {
+    let env = GbTestEnv::new();
+    let (port, server) = spawn_scripted_server(vec![
+        get(PR, &pr(&"a".repeat(40))),
+        get(DISCUSSION, &json!([])),
+        ScriptedResponse::html(&format!("GET {WEB} HTTP/1.1"), "401 Unauthorized", ""),
+        get("/bucket/api/v3/user", &json!({"login":"alice"})),
+    ]);
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
+        .env_remove("GB_PASSWORD")
+        .args(["pr", "comment", "list", "1", "--json"])
+        .output()
+        .unwrap();
+    assert_success(&output);
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["comments"], json!([]));
+    assert_eq!(
+        value["comment_coverage"]["discussion"]["status"],
+        "complete"
+    );
+    assert!(value["review_comments"].is_null());
+    assert_eq!(value["comment_coverage"]["review"]["status"], "unavailable");
+    assert_eq!(
+        value["comment_coverage"]["review"]["reason"],
+        "web_password_required"
+    );
+    assert!(server
+        .join()
+        .unwrap()
+        .iter()
+        .all(|request| request.method == "GET"));
+}
+
+#[test]
+fn default_all_preserves_reviews_when_discussion_fails() {
+    let env = GbTestEnv::new();
+    let raw = pr(&"a".repeat(40));
+    let (port, server) = spawn_scripted_server(vec![
+        get(PR, &raw),
+        ScriptedResponse::json(&format!("GET {DISCUSSION} HTTP/1.1"), "403 Forbidden", "{}"),
+        ScriptedResponse::html(&format!("GET {WEB} HTTP/1.1"), "200 OK", PAGE),
+        get(PR, &raw),
+    ]);
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
+        .args(["pr", "view", "1", "--comments", "--json"])
+        .output()
+        .unwrap();
+    assert_success(&output);
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(value["comment_details"].is_null());
+    assert_eq!(
+        value["comment_coverage"]["discussion"]["status"],
+        "unavailable"
+    );
+    assert_eq!(
+        value["comment_coverage"]["discussion"]["reason"],
+        "access_denied"
+    );
+    assert_eq!(value["review_comments"].as_array().unwrap().len(), 5);
+    assert_eq!(
+        value["comment_coverage"]["review"]["status"],
+        "complete_for_scope"
+    );
+    assert_eq!(server.join().unwrap().len(), 4);
+}
+
+#[test]
+fn default_all_fails_if_neither_source_can_be_read() {
+    let env = GbTestEnv::new();
+    let (port, server) = spawn_scripted_server(vec![
+        get(PR, &pr(&"a".repeat(40))),
+        ScriptedResponse::json(&format!("GET {DISCUSSION} HTTP/1.1"), "403 Forbidden", "{}"),
+        ScriptedResponse::html(
+            &format!("GET {WEB} HTTP/1.1"),
+            "500 Internal Server Error",
+            "",
+        ),
+    ]);
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
+        .args(["pr", "comment", "list", "1", "--json"])
+        .output()
+        .unwrap();
+    assert_failure(&output);
+    assert!(output.stdout.is_empty());
+    assert_eq!(server.join().unwrap().len(), 3);
+}
+
 #[test]
 fn inline_kind_cannot_accidentally_select_a_mutation_or_be_used_without_comments() {
     for args in [
@@ -356,17 +463,19 @@ fn view_review_augmentation_does_not_overwrite_existing_server_metadata() {
 }
 
 #[test]
-fn a_partially_recognized_review_group_fails_view_and_list_without_partial_json() {
+fn unrecognized_review_group_preserves_only_the_verified_discussion() {
     for view in [false, true] {
-        let (output, requests) = run("partial-layout", view);
-        assert_failure(&output);
-        assert!(output.stdout.is_empty());
-        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-        assert_eq!(error["error"]["code"], "review_comments_unavailable");
-        assert_eq!(error["error"]["cause"], "unsupported_markup");
-        assert!(!requests
-            .iter()
-            .any(|r| r.target.contains("/issues/1/comments")));
+        let (output, _) = run("partial-layout", view);
+        assert_success(&output);
+        let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let field = if view { "comment_details" } else { "comments" };
+        assert_eq!(value[field][0]["body"], "ordinary body");
+        assert!(value["review_comments"].is_null());
+        assert_eq!(value["comment_coverage"]["review"]["status"], "unavailable");
+        assert_eq!(
+            value["comment_coverage"]["review"]["reason"],
+            "unsupported_markup"
+        );
     }
 }
 

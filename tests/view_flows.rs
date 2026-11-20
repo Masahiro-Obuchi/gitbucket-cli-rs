@@ -162,7 +162,7 @@ fn pr_view_with_comments_renders_details_and_comments() {
 
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
-        .args(["pr", "view", "5", "--comments"])
+        .args(["pr", "view", "5", "--comments", "--kind", "discussion"])
         .output()
         .unwrap();
 
@@ -188,7 +188,7 @@ fn pr_view_with_comments_renders_details_and_comments() {
     assert!(stdout.contains("Author: alice"));
     assert!(stdout.contains("Created: 2026-03-24T00:00:00Z"));
     assert!(stdout.contains("PR body"));
-    assert!(stdout.contains("--- Comments ---"));
+    assert!(stdout.contains("--- Comments (1) ---"));
     assert!(stdout.contains("carol (2026-03-25T00:00:00Z)"));
     assert!(stdout.contains("Please rebase"));
 }
@@ -240,7 +240,15 @@ fn pr_view_json_with_comments_includes_comment_details() {
 
     let output = env
         .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
-        .args(["pr", "view", "5", "--comments", "--json"])
+        .args([
+            "pr",
+            "view",
+            "5",
+            "--comments",
+            "--kind",
+            "discussion",
+            "--json",
+        ])
         .output()
         .unwrap();
 
