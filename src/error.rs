@@ -15,6 +15,8 @@ pub enum GbError {
     },
     #[error("Interactive input requires terminal stdin/stderr and is disabled with --json-errors. Supply all required options or explicit confirmation flags.")]
     InputRequired,
+    #[error("GitBucket Web sign-in requires a password. Set GB_PASSWORD for this operation.")]
+    WebPasswordRequired,
     #[error("Pager exited unsuccessfully (status {status:?})")]
     Pager { status: Option<i32> },
     #[error("Inline review write unavailable: {message}")]
@@ -124,6 +126,7 @@ impl GbError {
             GbError::Editor { .. } => "editor_failed",
             GbError::MergeCheck { .. } => "merge_check_failed",
             GbError::InputRequired => "input_required",
+            GbError::WebPasswordRequired => "web_password_required",
             GbError::Pager { .. } => "pager_failed",
             GbError::ReviewWrite { .. } => "review_write_unavailable",
             GbError::ReviewUnavailable { .. } => "review_comments_unavailable",
