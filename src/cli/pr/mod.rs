@@ -66,7 +66,7 @@ pub enum PrCommand {
     },
     /// Create a pull request
     #[command(
-        after_long_help = "Omitted --base uses the target default branch. An inferred head must be published. See docs/usage/pull-requests.md."
+        after_long_help = "Omitted --base uses the target default branch. An inferred head must match the published commit. See docs/usage/pull-requests.md."
     )]
     Create {
         /// PR title (prompts when omitted)
@@ -181,7 +181,7 @@ pub enum PrCommand {
 #[command(
     args_conflicts_with_subcommands = true,
     subcommand_negates_reqs = true,
-    after_long_help = "Inline writes require --web and local Git. Reuse --request-id when retrying create or reply. See docs/reference/review-writes.md."
+    after_long_help = "Inline writes require --web and local Git. For an uncertain create or reply, keep the original retry receipt, actor and --request-id. See docs/reference/review-writes.md."
 )]
 pub struct PrCommentArgs {
     #[command(subcommand)]

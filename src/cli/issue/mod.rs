@@ -78,7 +78,7 @@ pub enum IssueCommand {
     },
     /// Edit an issue
     #[command(
-        after_long_help = "Other metadata may require Web sign-in. Mixed updates can apply in phases."
+        after_long_help = "Label-only edits use REST. Other edits may need Web sign-in. See docs/usage/commands.md."
     )]
     Edit {
         /// Issue number

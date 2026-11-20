@@ -66,6 +66,7 @@ fn short_comment_help_keeps_options_and_long_help_points_to_inline_write_details
         let text = String::from_utf8_lossy(&output.stdout);
         assert!(text.contains("--request-id"));
         assert_eq!(text.contains("docs/reference/review-writes.md"), long);
+        assert_eq!(text.contains("original retry receipt"), long);
     }
 }
 

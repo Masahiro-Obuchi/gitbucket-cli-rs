@@ -64,7 +64,9 @@ gb auth status --global --json
 
 Status normally sends one `GET /api/v3/user` to the selected instance with the effective token. Use `gb config list` to inspect saved hosts and profiles. The selected profile can use global fallback, and an environment-only token and `GB_HOST` work without a saved login. A stale stored user or `GB_USER` cannot establish ownership of a token. Web operations with an environment token and no username hint use the verified REST login; explicit Web actor rules still apply. Git HTTP authentication with `GB_TOKEN` requires `GB_USER`; a saved user's name is no longer inherited as the username for an unrelated environment token.
 
-JSON contains `active_profile`, `offline` and `effective_actor`. The selected actor contains `host`, normalized `instance`, nullable `user`, nullable `stored_user`, `protocol`, `credential_source`, `verification` and nullable `error` (`code`, `status`, `cause`). `user` is populated only after verification; `stored_user` is an unverified saved hint and is null for an environment token.
+For scripts upgrading from 0.7.0, read saved `hosts` and `profiles` from `gb config list --json` and read the verified actor from `gb auth status --json`. The inventory includes saved usernames and default repositories.
+
+Status JSON contains `active_profile`, `offline` and `effective_actor`. The selected actor contains `host`, normalized `instance`, nullable `user`, nullable `stored_user`, `protocol`, `credential_source`, `verification` and nullable `error` (`code`, `status`, `cause`). `user` is populated only after verification; `stored_user` is an unverified saved hint and is null for an environment token.
 
 Verification is `verified`, `offline`, `rejected` (401/403), or `unverified` (transport, decoding or other server failures). Offline mode makes no request and leaves `user: null`. Online verification failure or missing effective credentials exits 1; `--json` still prints the status record before the error on stderr. Offline status exits 0 when the configuration is readable, even without credentials. Status omits tokens.
 
