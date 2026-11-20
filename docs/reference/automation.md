@@ -71,7 +71,7 @@ Ordinary numbered PR commands require a detail object. The saved-snapshot reader
 
 ### Discussion arrays
 
-Without `--comments`, view JSON is the selected API object without a comment fetch. With the flag, the command completes ordinary discussion retrieval before printing:
+Without `--comments`, view JSON is the selected API object without a comment fetch. With the flag, the command adds results from the requested sources.
 
 | Command | Array location | Existing response field |
 | --- | --- | --- |
@@ -82,7 +82,7 @@ Without `--comments`, view JSON is the selected API object without a comment fet
 
 The API count and fetched array are separate observations and can disagree if comments change between requests. Arrays are ordered by comment ID ascending, with pagination/deduplication from the shared reader. A failed later page prints no partial JSON. A collision with a field the CLI needs to add causes an explicit composition error and preserves the original server field. View without `--comments` or raw `gb api` remains available to inspect such a response.
 
-`tests/fixtures/json/issue-with-comments.json` and `pr-with-comments.json` pin the ordinary augmented object shapes. PR comment list always includes `review_comments` and `comment_coverage`. The PR view adds these fields when reviews are requested. See [review scope](review-comments.md). API fields such as review_comments_url are retained as data, not interpreted as proof that the advertised route works on the deployed server.
+`tests/fixtures/json/issue-with-comments.json` and `pr-with-comments.json` pin the ordinary augmented object shapes. PR comment list always includes `review_comments` and `comment_coverage`. PR view with `--comments` always adds coverage and includes the requested arrays. For PR reads, an unavailable source is null and has a separate coverage status and reason. Check coverage even when the command exits 0. See [review scope](review-comments.md). API fields such as review_comments_url are retained as data, not interpreted as proof that the advertised route works on the deployed server.
 
 Inline write commands produce a separate verified operation result rather than pretending the Web reply is an ordinary REST Comment. The result carries qualified identity, Web actor/route, saved comparison, verification type, optional review readback and explicit position-group reply semantics. The nested review remains the reader's rendered representation, including its unknown fields. Deletion returns review null, and a failed verification returns only an operation error. `tests/fixtures/json/review-write.json` pins the result envelope, combined with the existing review record fixture in the HTTP regression. See [write JSON and retry contracts](review-writes.md).
 

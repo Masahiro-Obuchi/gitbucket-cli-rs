@@ -19,7 +19,7 @@ Use `gb` for a confirmed GitBucket target. Use the installed binary's `gb <comma
 
 Use the dedicated `gb` command when it covers the requested operation. In automation, use `--json-errors` for failures and add `--json` and `--no-pager` where the subcommand supports them. Capture stdout and stderr separately. JSON-error mode disables interactive prompts and editor launch. Supply required inputs explicitly and leave optional fields unset when the task does not call for them. For multiline Markdown, prefer `--body-file` with a UTF-8 file or `--body-file -` with controlled stdin.
 
-For a PR discussion, read `gb pr comment list NUMBER --kind discussion --json`. For a review summary, use `--kind review` or `--kind all` and check `comment_coverage` before describing the result. Inline comments, discussion, and formal review decisions have distinct meanings. The verified GitBucket 4.44.0 adapter exposes the visible review conversation. Formal approval, request-changes, and dismissal need separate server support.
+For a PR discussion, read `gb pr comment list NUMBER --kind discussion --json`. For all visible comments, omit `--kind`. Check `comment_coverage` before summarizing, even on exit 0. A source marked `unavailable` has unknown results. Inline comments, discussion, and formal review decisions have distinct meanings. The verified GitBucket 4.44.0 adapter exposes the visible review conversation. Formal approval, request-changes, and dismissal need separate server support.
 
 Use `gb api` for a specific REST operation that the dedicated commands do not express. Set the HTTP method explicitly when sending JSON, since `--input` defaults to POST. Keep the endpoint within the selected instance's API base.
 

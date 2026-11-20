@@ -40,11 +40,11 @@ Title, body, and state use the PR REST endpoint. Assignee changes require explic
 ```sh
 gb pr comment 42 --body 'Please clarify the inputs.'
 gb pr comment 42 --edit-last --editor
-gb pr comment list 42 --kind all --json
+gb pr comment list 42 --json
 gb pr view 42 --comments --kind review
 ```
 
-Ordinary discussion is the default. `--edit-last` selects the authenticated user's latest ordinary comment. `--kind review` selects visible inline and commit comments, and `--kind all` selects both sources. See [review output and coverage](../reference/review-comments.md) and [inline create, edit, reply, and delete](../reference/review-writes.md).
+Comment lists and PR views with `--comments` show ordinary discussion and visible inline and commit comments by default. Use `--kind discussion` or `--kind review` to select one source. `--edit-last` selects the authenticated user's latest ordinary comment. See [review output and coverage](../reference/review-comments.md) and [inline create, edit, reply, and delete](../reference/review-writes.md).
 
 ## Check out and diff
 

@@ -21,18 +21,27 @@ pub(crate) fn add_discussion(value: &mut Value, comments: &[Comment]) -> Result<
     insert_details(object, "comment_details", serde_json::to_value(comments)?)
 }
 
-pub(crate) fn add_reviews(
+pub(crate) fn add_pr(
     value: &mut Value,
     comments: &crate::application::pr_comments::PrComments,
 ) -> Result<()> {
     let object = value
         .as_object_mut()
         .ok_or_else(|| GbError::Other("Expected PR JSON object".into()))?;
-    insert_details(
-        object,
-        "review_comments",
-        serde_json::to_value(&comments.review_comments)?,
-    )?;
+    if comments.comment_coverage.requested.discussion() {
+        insert_details(
+            object,
+            "comment_details",
+            serde_json::to_value(&comments.comments)?,
+        )?;
+    }
+    if comments.comment_coverage.requested.review() {
+        insert_details(
+            object,
+            "review_comments",
+            serde_json::to_value(&comments.review_comments)?,
+        )?;
+    }
     insert_details(
         object,
         "comment_coverage",

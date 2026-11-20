@@ -1,7 +1,8 @@
 use colored::Colorize;
 
 use crate::application::pr_comments::{self, PrComments};
-use crate::cli::common::{create_web_session, RepoContext};
+use crate::cli::common::{create_web_session_with_prompt, RepoContext};
+use crate::domain::pull_request::CommitId;
 use crate::domain::review_comment::{CommentIdentity, CommentKind, CommentSelection};
 use crate::error::Result;
 use crate::models::pull_request::PullRequest;
@@ -92,80 +93,138 @@ async fn load_comment_target(
     ctx: &RepoContext,
     number: u64,
     selection: CommentSelection,
-) -> Result<(PullRequest, Option<crate::domain::pull_request::CommitId>)> {
+) -> Result<(PullRequest, Option<CommitId>)> {
     if selection.review() {
-        let (pr, head) =
-            pr_comments::review_target(&ctx.client, &ctx.owner, &ctx.repo, number).await?;
-        Ok((pr, Some(head)))
-    } else {
-        Ok((
-            super::target::require_pull_request(ctx, number).await?,
-            None,
-        ))
+        return pr_comments::review_target(&ctx.client, &ctx.owner, &ctx.repo, number).await;
     }
+    let pr = super::target::require_pull_request(ctx, number).await?;
+    Ok((pr, None))
 }
+
 async fn load_comments(
     ctx: &RepoContext,
     profile: &Option<String>,
     number: u64,
     selection: CommentSelection,
-    head: Option<&crate::domain::pull_request::CommitId>,
+    head: Option<&CommitId>,
 ) -> Result<PrComments> {
-    let reviews = if selection.review() {
-        let head = head.ok_or_else(|| {
-            crate::api::web::review::unavailable(
-                "missing_head_identity",
-                "Review comments require the saved head identity.",
-            )
-        })?;
-        eprintln!("Notice: Reading inline/commit reviews from the GitBucket 4.44 Web conversation; public/token-readable pages need no Web password.");
-        let (comments, web_actor) = match ctx
-            .client
-            .token_review_comments(&ctx.owner, &ctx.repo, number, head)
-            .await
-        {
-            Ok(comments) => (comments, None),
-            Err(crate::error::GbError::Api {
-                status: 401 | 403, ..
-            }) => {
-                eprintln!("Notice: Web read was denied; cookie-authenticated sign-in is required for this review page.");
-                let session = create_web_session(&ctx.client, &ctx.hostname, profile).await?;
-                let comments = session
-                    .review_comments(&ctx.owner, &ctx.repo, number, head)
-                    .await?;
-                (comments, Some(session.principal().to_owned()))
-            }
-            Err(error) => return Err(error),
-        };
-        Some(pr_comments::ReviewRead {
-            comments,
-            web_actor,
-        })
+    let discussion = if selection.discussion() {
+        Some(
+            ctx.client
+                .list_pr_comments(&ctx.owner, &ctx.repo, number)
+                .await,
+        )
     } else {
-        eprintln!("Notice: Scope is ordinary discussion comments only; inline/commit reviews are not requested. Use --kind all for Web review reads.");
         None
     };
-    let comments = pr_comments::read(
+    if crate::cancel::requested() {
+        return Err(crate::error::GbError::Cancelled);
+    }
+    let review = if selection.review() {
+        Some(
+            load_reviews(
+                ctx,
+                profile,
+                number,
+                head,
+                selection == CommentSelection::Review,
+            )
+            .await,
+        )
+    } else {
+        None
+    };
+    pr_comments::combine(
         &ctx.client,
-        reviews,
         &ctx.owner,
         &ctx.repo,
-        number,
         selection,
-        head,
+        discussion,
+        review,
     )
-    .await?;
-    if selection.review() {
-        eprintln!("Notice: Review scope is the visible PR conversation. GitBucket may omit historical reviews; original commit/line and reply relationships can be unknown. Bodies are rendered HTML/plain text, not original Markdown.");
+}
+
+async fn load_reviews(
+    ctx: &RepoContext,
+    profile: &Option<String>,
+    number: u64,
+    head: Option<&CommitId>,
+    allow_prompt: bool,
+) -> Result<pr_comments::ReviewRead> {
+    use crate::api::web::review::unavailable;
+    use crate::error::GbError;
+
+    let head = head.ok_or_else(|| {
+        unavailable(
+            "missing_head_identity",
+            "A saved PR head SHA is required to verify Web comment positions.",
+        )
+    })?;
+    let (comments, web_actor) = match ctx
+        .client
+        .token_review_comments(&ctx.owner, &ctx.repo, number, head)
+        .await
+    {
+        Ok(comments) => (comments, None),
+        Err(GbError::Api {
+            status: 401 | 403, ..
+        }) => {
+            let session =
+                create_web_session_with_prompt(&ctx.client, &ctx.hostname, profile, allow_prompt)
+                    .await?;
+            let comments = session
+                .review_comments(&ctx.owner, &ctx.repo, number, head)
+                .await?;
+            (comments, Some(session.principal().to_owned()))
+        }
+        Err(error) => return Err(error),
+    };
+    let (_, after) = pr_comments::review_target(&ctx.client, &ctx.owner, &ctx.repo, number).await?;
+    if after.as_ref() != Some(head) {
+        return Err(unavailable(
+            "head_changed",
+            "The PR head changed while reading its Web conversation. Retry to obtain consistent comment positions.",
+        ));
     }
-    Ok(comments)
+    Ok(pr_comments::ReviewRead {
+        comments,
+        web_actor,
+        head_commit_id: head.as_str().to_owned(),
+    })
+}
+
+fn comment_section<T>(
+    text: &mut String,
+    label: &str,
+    comments: Option<&[T]>,
+    reason: Option<&str>,
+) {
+    use std::fmt::Write as _;
+    match comments {
+        Some(comments) => {
+            let _ = writeln!(text, "--- {label} ({}) ---", comments.len());
+        }
+        None => {
+            let reason = match reason {
+                Some("web_password_required") => "Set GB_PASSWORD",
+                Some(reason) => reason,
+                None => "unknown cause",
+            };
+            let _ = writeln!(text, "--- {label}: unavailable ({reason}) ---");
+        }
+    }
 }
 
 fn format_comments(comments: &PrComments, selection: CommentSelection) -> String {
     let mut text = String::new();
     if selection.discussion() {
-        text.push_str("--- Comments ---\nScope: ordinary discussion only\n");
-        for comment in &comments.comments {
+        comment_section(
+            &mut text,
+            "Comments",
+            comments.comments.as_deref(),
+            comments.comment_coverage.discussion.reason,
+        );
+        for comment in comments.comments.iter().flatten() {
             let id = CommentIdentity {
                 instance: comments.comment_coverage.instance.clone(),
                 kind: CommentKind::Discussion,
@@ -185,8 +244,16 @@ fn format_comments(comments: &PrComments, selection: CommentSelection) -> String
         }
     }
     if selection.review() {
-        text.push_str("\n--- Inline / commit review comments ---\nScope: visible PR conversation; historical completeness unknown\nBody: rendered text; original Markdown / original positions may be unknown\nPositions: GitBucket Web display; not validated against Git\n");
-        for comment in &comments.review_comments {
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        comment_section(
+            &mut text,
+            "Visible inline / commit review comments",
+            comments.review_comments.as_deref(),
+            comments.comment_coverage.review.reason,
+        );
+        for comment in comments.review_comments.iter().flatten() {
             let position = &comment.position;
             text.push_str(&format!(
                 "\n{} {} ({}, server local timezone unknown)\n",
@@ -228,7 +295,7 @@ pub(super) async fn view(
 ) -> Result<()> {
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
 
-    let selection = if options.web {
+    let selection = if options.web || !options.show_comments {
         CommentSelection::Discussion
     } else {
         options.selection
@@ -251,12 +318,7 @@ pub(super) async fn view(
     if options.json {
         let mut value = serde_json::to_value(&pr)?;
         if let Some(comments) = &comments {
-            if selection.discussion() {
-                output::comments::add_discussion(&mut value, &comments.comments)?;
-            }
-            if selection.review() {
-                output::comments::add_reviews(&mut value, comments)?;
-            }
+            output::comments::add_pr(&mut value, comments)?;
         }
         return output::page_json(&value, options.no_pager);
     }

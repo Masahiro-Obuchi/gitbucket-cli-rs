@@ -1,28 +1,30 @@
 # Reading PR discussion and review comments
 
 ```sh
-gb pr comment list 42 --kind all --json
-gb pr view 42 --comments --kind all --json
+gb pr comment list 42 --json
+gb pr view 42 --comments --json
 gb pr comment list 42 --kind review --no-pager
 gb pr comment list 42 --kind discussion --json
 ```
 
-`--kind` selects sources, with `discussion` as the default. `review` includes file/line CommitComments and whole-commit comments. `all` selects both kinds of source; its coverage describes the actual scope. `--edit-last` continues to edit only ordinary discussion comments. A comment mutation does not accept the read filter. [Inline writes](review-writes.md) use separate explicit position/ID arguments; the read filter does not authorize a mutation.
+`--kind all` is the default for comment lists and for PR view with `--comments`. `--kind discussion` selects ordinary discussion. `--kind review` selects visible file/line and whole-commit comments. `--edit-last` continues to edit only ordinary discussion comments. A comment mutation does not accept the read filter. [Inline writes](review-writes.md) use separate explicit position/ID arguments; the read filter does not authorize a mutation.
 
 | Source | Reader | Credentials |
 | --- | --- | --- |
 | Ordinary discussion | Complete Issue comments REST collection | Existing API token |
 | Visible PR review conversation | GitBucket 4.44 HTML contract | Try the existing token/public read first; only HTTP 401/403 starts cookie sign-in |
 
-Public reviews need no Web password, even when no `GB_USER`/`GB_PASSWORD` is set. Private 4.44 pages deny the token-only Web request with 401; the existing verified Web session then uses `GB_PASSWORD` or the password prompt. Existing Web actor checks and explicit `GB_WEB_USER` rules apply. No password is stored. Transport, decode, HTTP 5xx, redirects or unrecognized HTML do not trigger a sign-in retry. The Cookie reader also rejects an expired session/login redirect.
+Public reviews need no Web password, even when no `GB_USER`/`GB_PASSWORD` is set. Private 4.44 pages deny the token-only Web request with 401. The verified Web session can then use `GB_PASSWORD`. To enter a password at a terminal, select `--kind review` explicitly. Actor checks and explicit `GB_WEB_USER` rules apply. Transport, decode, HTTP 5xx, redirects or unrecognized HTML do not trigger a sign-in retry. The Cookie reader also rejects an expired session/login redirect.
 
 The verified server advertises review URLs but `/pulls/N/comments` returns 404; Issue comments omit CommitComments. This reader uses the proven Web representation without repeatedly probing that unsupported REST route. An advertised URL is not proof of a supported operation. [Upstream API requirements](gitbucket-compatibility.md#upstream-review-api) describe how a complete token-only reader could replace this adapter.
 
 ## Output contracts
 
-`pr comment list --json` always returns an object containing `comments`, `review_comments` and `comment_coverage`. An unrequested source has an empty array and coverage status `not_requested`. A notice on stderr identifies the default as ordinary discussion.
+`pr comment list --json` returns `comments`, `review_comments` and `comment_coverage`. `pr view --comments --json` adds coverage and the requested arrays `comment_details` and `review_comments`. It preserves all API fields, including any `comments` value. Field name collisions return an error.
 
-`pr view --comments --json` preserves the PR's API fields, including any `comments` value. It adds `comment_details` when discussion is requested and `review_comments` and `comment_coverage` when reviews are requested. Field name collisions return a composition error. See [the JSON contract](automation.md#api-json).
+An empty array means the source was read successfully and contained zero comments. A null value with coverage status `unavailable` means the read failed. Inspect `reason` for the cause, such as `web_password_required` or `unsupported_markup`. A filtered source has status `not_requested`, with a null value in list JSON and an omitted field in view JSON.
+
+With `--kind all`, a successful read of either source produces results with exit 0 and reports any unavailable source. If every requested source fails, the command exits 1 with an error. Invalid PR targets and cancellation fail the command.
 
 Both commands use the same application reader and ordering: ordinary comments by ID ascending, then reviews by CommitComment ID ascending. This groups sources rather than inferring chronology across different timestamp formats/timezones. Each source remains a separate array in JSON. Text output includes qualified IDs such as `inline:https://example.test/gitbucket/alice/project:123`.
 
@@ -34,7 +36,7 @@ Review `identity` contains kind (`inline` or `commit`), configured instance, rep
 
 ## Scope and position limits
 
-`comment_coverage.review.scope` is `visible_pr_conversation`, with status `complete_for_scope` after parsing the recognized page. The source contract is `gitbucket_4_44_conversation_html`. `review_access` distinguishes `token_or_public` from `cookie_session`; `web_actor` is known only for a verified Cookie session. `head_commit_id` records the saved head checked before and after the read. A head change fails with no partial output. Requests still do not form an atomic snapshot.
+`comment_coverage.review.scope` is `visible_pr_conversation`, with status `complete_for_scope` after parsing the recognized page. The source contract is `gitbucket_4_44_conversation_html`. `review_access` distinguishes `token_or_public` from `cookie_session`; `web_actor` is known only for a verified Cookie session. `head_commit_id` records the saved head checked before and after the read. If the head changes, the review source is unavailable with reason `head_changed`. Requests still do not form an atomic snapshot.
 
 The Web page can show commit comments without exposing their stored PR association. A review therefore reports `visible_on_pull_request` for the selected page, while its stored `pull_request` stays null. Visibility does not establish that the record was created specifically for that PR.
 
@@ -45,8 +47,8 @@ Positions report the displayed filename and optional old/new lines, including bo
 ## Validation
 
 - `domain/review_comment.rs`: source-specific identities and review data with explicit unknowns.
-- `application/pr_comments.rs`: source composition, coverage and saved-head check; null/fully read 200-empty deleted-fork metadata uses the existing PR collection compatibility contract while withholding unverified fork head ownership.
+- `application/pr_comments.rs`: source composition and coverage; null/fully read 200-empty deleted-fork metadata uses the existing PR collection compatibility contract while withholding unverified fork head ownership.
 - `api/web/review.rs`: token and Cookie Web adapters plus a DOM parser for the pinned 4.44 conversation layout. Exact PR route, trusted structural containers, identities, paths, author links, timestamps and group membership are checked. Every direct comment element in a group must be recognized; an unknown sibling fails the whole read rather than silently reducing the reported collection. User-body markup cannot add records. Zero reviews still require recognizable PR identity and conversation structure. The adapter does not infer a binary server version from asset filenames; other layouts/releases are unverified.
-- CLI/output: shared view/list records, kind filter, JSON records and explicit scope notices. Parsing/auth/read failures print no partial collection.
+- CLI/output: shared view/list records, kind filter, saved-head check, and separate source results.
 
 Unit and HTTP regressions cover old/new and nullable lines, same numeric IDs in different stores, groups, Unicode, body representation, unknown/mismatched markup, public password-free reads, private session expiry, HTTP failures, head changes, proxy deployment paths and null detail recovery. Live root and /gitbucket cases cover real rename/deleted files, multiple authors, outdated positions, branch replacement, unchanged discussion-only editing, and both public/private access.

@@ -12,6 +12,15 @@ pub async fn create_web_session(
     hostname: &str,
     cli_profile: &Option<String>,
 ) -> Result<GitBucketWebSession> {
+    create_web_session_with_prompt(client, hostname, cli_profile, true).await
+}
+
+pub(crate) async fn create_web_session_with_prompt(
+    client: &ApiClient,
+    hostname: &str,
+    cli_profile: &Option<String>,
+    allow_prompt: bool,
+) -> Result<GitBucketWebSession> {
     let credential = resolve_credential(hostname, cli_profile)?;
     let explicit_web_user = std::env::var("GB_WEB_USER").ok();
     let username = if let Some(user) = &explicit_web_user {
@@ -39,7 +48,7 @@ pub async fn create_web_session(
     }
     let password = match std::env::var("GB_PASSWORD").ok().filter(|s| !s.is_empty()) {
         Some(password) => password,
-        None => {
+        None if allow_prompt => {
             let prompt = format!("GitBucket password for {}", username);
             crate::cancel::prompt(move || Password::new().with_prompt(prompt).interact())
                 .await
@@ -48,6 +57,7 @@ pub async fn create_web_session(
                     error => error,
                 })?
         }
+        None => return Err(GbError::WebPasswordRequired),
     };
 
     let session = GitBucketWebSession::sign_in(

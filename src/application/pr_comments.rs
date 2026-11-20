@@ -12,7 +12,7 @@ pub(crate) async fn review_target(
     owner: &str,
     repo: &str,
     number: u64,
-) -> Result<(PullRequest, CommitId)> {
+) -> Result<(PullRequest, Option<CommitId>)> {
     // Same narrow 200/empty contract verified for deleted forks by PR-10.
     let (pr, canonical) = match client
         .pull_request_snapshot_details(owner, repo, number)
@@ -48,13 +48,7 @@ pub(crate) async fn review_target(
         .head
         .as_ref()
         .and_then(|head| head.sha.as_deref())
-        .and_then(|sha| CommitId::parse(sha).ok())
-        .ok_or_else(|| {
-            crate::api::web::review::unavailable(
-                "missing_head_identity",
-                "A saved PR head SHA is required to verify Web comment positions.",
-            )
-        })?;
+        .and_then(|sha| CommitId::parse(sha).ok());
     let pr = if canonical {
         pr
     } else {
@@ -86,52 +80,39 @@ pub(crate) struct CommentCoverage {
 }
 #[derive(Serialize)]
 pub(crate) struct PrComments {
-    pub comments: Vec<Comment>,
-    pub review_comments: Vec<ReviewComment>,
+    pub comments: Option<Vec<Comment>>,
+    pub review_comments: Option<Vec<ReviewComment>>,
     pub comment_coverage: CommentCoverage,
 }
 
 pub(crate) struct ReviewRead {
     pub comments: Vec<ReviewComment>,
     pub web_actor: Option<String>,
+    pub head_commit_id: String,
 }
 
-pub(crate) async fn read(
+pub(crate) fn combine(
     client: &ApiClient,
-    reviews: Option<ReviewRead>,
     owner: &str,
     repo: &str,
-    number: u64,
     selection: CommentSelection,
-    head: Option<&CommitId>,
+    discussion: Option<Result<Vec<Comment>>>,
+    review: Option<Result<ReviewRead>>,
 ) -> Result<PrComments> {
-    let comments = if selection.discussion() {
-        client.list_pr_comments(owner, repo, number).await?
-    } else {
-        Vec::new()
+    let partial_allowed = discussion.as_ref().is_some_and(Result::is_ok)
+        || review.as_ref().is_some_and(Result::is_ok);
+    let (comments, discussion_status, discussion_reason) =
+        source_result(discussion, partial_allowed, "complete")?;
+    let (review, review_status, review_reason) =
+        source_result(review, partial_allowed, "complete_for_scope")?;
+    let review_access = match &review {
+        Some(review) if review.web_actor.is_some() => "cookie_session",
+        Some(_) => "token_or_public",
+        None => review_status,
     };
-    let (review_comments, web_actor) = if selection.review() {
-        let (Some(reviews), Some(head)) = (reviews, head) else {
-            return Err(crate::api::web::review::unavailable(
-                "missing_review_source",
-                "Review comments require a readable Web source and saved PR identity.",
-            ));
-        };
-        let (_, after) = review_target(client, owner, repo, number).await?;
-        if after != *head {
-            return Err(crate::api::web::review::unavailable("head_changed","The PR head changed while reading its Web conversation. Retry to obtain consistent comment positions."));
-        }
-        (reviews.comments, reviews.web_actor)
-    } else {
-        (Vec::new(), None)
-    };
-    let review_access = if !selection.review() {
-        "not_requested"
-    } else if web_actor.is_some() {
-        "cookie_session"
-    } else {
-        "token_or_public"
-    };
+    let (review_comments, web_actor, head_commit_id) = review
+        .map(|r| (Some(r.comments), r.web_actor, Some(r.head_commit_id)))
+        .unwrap_or_default();
     Ok(PrComments {
         comments,
         review_comments,
@@ -141,23 +122,43 @@ pub(crate) async fn read(
             repository: format!("{owner}/{repo}"),
             discussion: SourceCoverage {
                 source_contract: "issue_discussion_rest",
-                status: if selection.discussion() { "complete" } else { "not_requested" },
+                status: discussion_status,
                 scope: "issue_discussion_api",
                 kind: "discussion",
-                reason: (!selection.discussion()).then_some("Filtered out by --kind review."),
+                reason: discussion_reason,
             },
             review: SourceCoverage {
                 source_contract: "gitbucket_4_44_conversation_html",
-                status: if selection.review() { "complete_for_scope" } else { "not_requested" },
+                status: review_status,
                 scope: "visible_pr_conversation",
                 kind: "inline_and_commit",
-                reason: (!selection.review()).then_some("Use --kind review or all; Web HTML access is required; cookie sign-in is only needed when the token/public read is denied."),
+                reason: review_reason,
             },
             historical_review_complete: None,
             historical_review_limit: "GitBucket's PR conversation can omit reviews on excluded commits, groups overlapping storage IDs, and can show commit comments without exposing their stored PR association. This reader proves visibility, not complete stored history or PR membership.",
             web_actor,
             review_access,
-            head_commit_id: head.map(|head|head.as_str().to_owned()),
+            head_commit_id,
         },
     })
+}
+
+fn source_result<T>(
+    result: Option<Result<T>>,
+    partial_allowed: bool,
+    complete: &'static str,
+) -> Result<(Option<T>, &'static str, Option<&'static str>)> {
+    match result {
+        None => Ok((None, "not_requested", None)),
+        Some(Ok(value)) => Ok((Some(value), complete, None)),
+        Some(Err(error)) if partial_allowed && error.code() != "cancelled" => Ok((
+            None,
+            "unavailable",
+            Some(match error.status() {
+                Some(401 | 403) => "access_denied",
+                _ => error.cause_code().unwrap_or_else(|| error.code()),
+            }),
+        )),
+        Some(Err(error)) => Err(error),
+    }
 }
