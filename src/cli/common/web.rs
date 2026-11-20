@@ -37,11 +37,16 @@ pub async fn create_web_session(
     if explicit_web_user.is_none() && !api_user.login.eq_ignore_ascii_case(&username) {
         return Err(GbError::Auth(format!("REST token belongs to {:?}, but Web username is {:?}. No Web changes were attempted. Set GB_WEB_USER explicitly to authorize a different Web actor.", api_user.login, username)));
     }
-    let password = match std::env::var("GB_PASSWORD") {
-        Ok(password) => password,
-        Err(_) => {
+    let password = match std::env::var("GB_PASSWORD").ok().filter(|s| !s.is_empty()) {
+        Some(password) => password,
+        None => {
             let prompt = format!("GitBucket password for {}", username);
-            crate::cancel::prompt(move || Password::new().with_prompt(prompt).interact()).await?
+            crate::cancel::prompt(move || Password::new().with_prompt(prompt).interact())
+                .await
+                .map_err(|error| match error {
+                    GbError::InputRequired => GbError::WebPasswordRequired,
+                    error => error,
+                })?
         }
     };
 

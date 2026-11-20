@@ -34,6 +34,31 @@ fn signin(prefix: &str) -> ScriptedResponse {
 }
 
 #[test]
+fn missing_web_password_names_environment_variable_before_signin() {
+    for json_errors in [false, true] {
+        let env = GbTestEnv::new();
+        let mut script = state_preflight("/bucket");
+        script.push(token_identity("/bucket"));
+        let (port, server) = spawn_scripted_server(script);
+        let mut command = env.repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project");
+        if json_errors {
+            command.env("GB_PASSWORD", "").arg("--json-errors");
+        } else {
+            command.env_remove("GB_PASSWORD");
+        }
+        let output = command.args(["issue", "close", "7"]).output().unwrap();
+        assert_failure(&output);
+        assert!(stderr(&output).contains("Set GB_PASSWORD"));
+        if json_errors {
+            let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert_eq!(error["error"]["code"], "web_password_required");
+            assert_eq!(error["error"]["operations"][0]["status"], "not_attempted");
+        }
+        assert_eq!(server.join().unwrap().len(), 3);
+    }
+}
+
+#[test]
 fn login_requires_cookie_principal_even_for_http_200_or_unknown_sso_forms() {
     for prefix in ["", "/bucket"] {
         for (status, value) in [
