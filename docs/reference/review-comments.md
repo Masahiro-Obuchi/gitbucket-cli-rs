@@ -22,7 +22,7 @@ The verified server advertises review URLs but `/pulls/N/comments` returns 404; 
 
 `pr comment list --json` returns `comments`, `review_comments` and `comment_coverage`. `pr view --comments --json` adds coverage and the requested arrays `comment_details` and `review_comments`. It preserves all API fields, including any `comments` value. Field name collisions return an error.
 
-An empty array means the source was read successfully and contained zero comments. A null value with coverage status `unavailable` means the read failed. Inspect `reason` for the cause, such as `web_password_required` or `unsupported_markup`. A filtered source has status `not_requested`, with a null value in list JSON and an omitted field in view JSON.
+An empty array means the source was read successfully and contained zero comments. A null value with coverage status `unavailable` means the read failed. Inspect `reason` for the cause, such as `web_password_required` or `unsupported_markup`. A filtered source has status `not_requested`, with a null value in list JSON and an omitted field in view JSON. Scripts that require ordinary discussion alone can pass `--kind discussion` and check `comment_coverage.discussion.status` before interpreting the array.
 
 With `--kind all`, a successful read of either source produces results with exit 0 and reports any unavailable source. If every requested source fails, the command exits 1 with an error. Invalid PR targets and cancellation fail the command.
 

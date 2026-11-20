@@ -99,6 +99,10 @@ pub(crate) fn combine(
     discussion: Option<Result<Vec<Comment>>>,
     review: Option<Result<ReviewRead>>,
 ) -> Result<PrComments> {
+    let review = match review {
+        Some(Err(error)) if error.code() == "cancelled" => return Err(error),
+        result => result,
+    };
     let partial_allowed = discussion.as_ref().is_some_and(Result::is_ok)
         || review.as_ref().is_some_and(Result::is_ok);
     let (comments, discussion_status, discussion_reason) =
@@ -160,5 +164,29 @@ fn source_result<T>(
             }),
         )),
         Some(Err(error)) => Err(error),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn review_cancellation_takes_precedence_over_a_failed_discussion_read() {
+        let client = ApiClient::new("https://bucket.example", "fixture-token", "https").unwrap();
+        let error = combine(
+            &client,
+            "alice",
+            "project",
+            CommentSelection::All,
+            Some(Err(GbError::Api {
+                status: 500,
+                message: "Discussion unavailable".into(),
+            })),
+            Some(Err(GbError::Cancelled)),
+        )
+        .err()
+        .expect("cancelled collection");
+        assert_eq!(error.code(), "cancelled");
     }
 }
