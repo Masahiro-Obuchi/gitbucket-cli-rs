@@ -180,7 +180,7 @@ user = "bob"
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Profile: work"));
-    assert!(stdout.contains("Default repo: alice/project"));
+    assert!(!stdout.contains("Default repo:"));
     assert!(stdout.contains("Actor: <unverified> @ https://gitbucket.example.com"));
     assert!(stdout.contains("profile credentials"));
     assert!(!stdout.contains("sandbox"));
@@ -231,10 +231,8 @@ user = "alice"
     assert_eq!(payload["effective_actor"]["stored_user"], "alice");
     assert_eq!(payload["effective_actor"]["protocol"], "https");
     assert_eq!(payload["effective_actor"]["credential_source"], "profile");
-    assert_eq!(
-        payload["profiles"]["work"]["effective_actor"]["stored_user"],
-        "alice"
-    );
+    assert!(payload.get("profiles").is_none());
+    assert!(payload.get("hosts").is_none());
 }
 
 #[test]

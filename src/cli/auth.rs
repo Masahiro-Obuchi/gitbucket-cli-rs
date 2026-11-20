@@ -5,9 +5,7 @@ use crate::config::auth::{instance_key, instance_protocol, AuthConfig, HostConfi
 use crate::error::{GbError, Result};
 
 #[derive(Args)]
-#[command(
-    after_help = "Storage scope follows --profile, GB_PROFILE, then default_profile. --global bypasses default_profile and conflicts with an explicit --profile/GB_PROFILE. Logout removes only the selected scope; environment tokens and global fallback may remain active. Logging out of the global default host clears that default."
-)]
+#[command(after_long_help = "--global selects the global scope. See docs/usage/authentication.md.")]
 pub struct AuthArgs {
     /// Use global credentials, bypassing the saved default profile
     #[arg(long, global = true)]
@@ -19,9 +17,6 @@ pub struct AuthArgs {
 #[derive(Subcommand)]
 pub enum AuthCommand {
     /// Authenticate with a GitBucket instance
-    #[command(
-        after_help = "Login tokens supplied by stdin or prompts are redacted from final runtime errors in both text and JSON modes."
-    )]
     Login {
         /// GitBucket host or base URL
         #[arg(long, short = 'H', value_name = "HOST_OR_URL")]
@@ -39,12 +34,12 @@ pub enum AuthCommand {
         #[arg(long, short = 'H', value_name = "HOST_OR_URL")]
         hostname: Option<String>,
     },
-    /// Verify the selected token and show saved credentials separately
+    /// Show the selected instance and token verification
     #[command(
-        after_help = "By default, verify the selected token with GET /user. Only a verified response supplies effective_actor.user. --offline makes no request and leaves the actor unknown. Rejected or unverifiable online credentials exit 1; JSON status is still printed without tokens. Other saved entries are inventory and are not probed."
+        after_long_help = "Verifies the selected token unless --offline is set. Use gb config list for saved entries."
     )]
     Status {
-        /// Show saved state without contacting the server; actor remains unverified
+        /// Show the selected credentials without verifying them
         #[arg(long)]
         offline: bool,
         /// Print status as JSON
@@ -86,15 +81,8 @@ pub async fn run(
             logout(hostname.as_ref().or(cli_hostname.as_ref()), &scope).await
         }
         AuthCommand::Status { json, offline } => {
-            crate::cli::auth_status::print_status(
-                &config,
-                cli_hostname,
-                &scope,
-                args.global || cli_profile.is_some() || std::env::var_os("GB_PROFILE").is_some(),
-                json,
-                offline,
-            )
-            .await
+            crate::cli::auth_status::print_status(&config, cli_hostname, &scope, json, offline)
+                .await
         }
         AuthCommand::Token { hostname } => {
             print_token(hostname.as_ref().or(cli_hostname.as_ref()), &scope).await

@@ -8,7 +8,7 @@ use crate::error::{GbError, Result};
 
 #[derive(Args)]
 #[command(
-    after_help = "Host/default-host operations use --profile, GB_PROFILE, then default_profile. --global explicitly selects global settings and conflicts with --profile/GB_PROFILE. Management never edits fallback credentials. Default-host updates store the full instance URL, including its scheme. config list shows the full saved inventory.\n\nUpdates atomically replace config.toml and wait up to 5 seconds for an OS lock. The empty config.toml.lock file remains after exit; do not delete it. Configuration and lock files must be regular files (no symlinks/reparse points)."
+    after_long_help = "Use gb config list for saved entries. See docs/usage/authentication.md for scope and storage."
 )]
 pub struct ConfigArgs {
     /// Address global settings instead of the selected/default profile

@@ -19,15 +19,15 @@ use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(
     name = "gb",
-    about = "GitBucket CLI - Work seamlessly with GitBucket from the command line",
-    after_help = "Run `gb <command> --help` for command-specific options. Deadlines in seconds: GB_HTTP_CONNECT_TIMEOUT (10), GB_HTTP_READ_TIMEOUT (30), GB_HTTP_TIMEOUT (120), GB_GIT_TIMEOUT (300). Ctrl+C also cancels interactive prompts, input reads and editors. Unix editor terminal modes are restored after exit. Human titles escape embedded newlines/tabs; JSON, completion and raw diffs retain original data.",
+    about = "GitBucket command-line client",
+    after_long_help = "Use gb <command> -h for options. See docs/reference/automation.md for deadlines and automation.",
     version
 )]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
 
-    /// GitBucket host or base URL
+    /// GitBucket base URL or hostname
     #[arg(
         long,
         short = 'H',
@@ -37,13 +37,13 @@ pub struct Cli {
     )]
     pub hostname: Option<String>,
 
-    /// Target repository in OWNER/REPO format
+    /// Target OWNER/REPO
     #[arg(
         long,
         short = 'R',
         global = true,
         env = "GB_REPO",
-        long_help = "Target repository in OWNER/REPO format. If no explicit/environment/profile repository is selected, origin must match the configured GitBucket host and deployment path; specify --repo to select a different target intentionally."
+        long_help = "Target OWNER/REPO. If no explicit/environment/profile repository is selected, origin must match the configured GitBucket host and deployment path; specify --repo to select a different target intentionally."
     )]
     pub repo: Option<String>,
 
@@ -51,7 +51,7 @@ pub struct Cli {
     #[arg(long, global = true, env = "GB_PROFILE", value_name = "NAME")]
     pub profile: Option<String>,
 
-    /// Print argument/runtime failures as JSON on stderr; disable interactive prompts
+    /// Report errors as JSON and disable prompts
     #[arg(long, global = true, env = "GB_JSON_ERRORS", value_parser = clap::builder::BoolishValueParser::new(),
         long_help = "Print one JSON error on stderr: argument errors exit 2 and runtime errors exit 1. Help/version remain normal successful output. Interactive prompts are disabled; supply options and confirmations explicitly. Explicit stdin input remains available. Command failures take precedence over later stdout errors. Successful output is unchanged; use --json where supported to select JSON data.")]
     pub json_errors: bool,

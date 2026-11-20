@@ -49,9 +49,7 @@ pub enum LabelCommand {
         description: Option<String>,
     },
     /// Edit a label
-    #[command(
-        after_help = "Rename uses REST and retains the stored color. Same-name color changes may require --web on GitBucket 4.44; the numeric label ID is preserved. Description writes are unsupported and rejected before changes."
-    )]
+    #[command(after_long_help = "Same-name color changes may need --web on GitBucket 4.44.")]
     Edit {
         /// Current label name
         name: String,

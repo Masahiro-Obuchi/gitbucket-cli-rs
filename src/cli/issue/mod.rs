@@ -15,7 +15,7 @@ pub struct IssueArgs {
 pub enum IssueCommand {
     /// List issues
     #[command(
-        after_help = "Fetches all Issue pages and sorts by number descending. Incomplete traversal fails without a partial list. GB_PAGINATION_MAX_PAGES sets the traversal safety cap (default 1000)."
+        after_long_help = "Reads the complete collection. See docs/reference/automation.md."
     )]
     List {
         /// Filter by state (open, closed, all)
@@ -35,9 +35,7 @@ pub enum IssueCommand {
         no_pager: bool,
     },
     /// View an issue (use --comments to include comments)
-    #[command(
-        after_help = "JSON preserves API fields. With --comments, ordinary discussion comments are added as comment_details; the API comments count remains unchanged or absent."
-    )]
+    #[command(after_long_help = "--comments adds comment_details to the API JSON object.")]
     View {
         /// Issue number
         number: u64,
@@ -56,7 +54,7 @@ pub enum IssueCommand {
     },
     /// Create a new issue
     #[command(
-        after_help = "Label names are used exactly as passed after comma splitting, including surrounding spaces. Non-terminal input requires --title; an omitted body is optional. --body-file - reads UTF-8 stdin and conflicts with --body. Empty descriptions are allowed."
+        after_long_help = "Noninteractive creation requires --title. See docs/usage/input-and-display.md."
     )]
     Create {
         /// Issue title (prompts when omitted)
@@ -80,7 +78,7 @@ pub enum IssueCommand {
     },
     /// Edit an issue
     #[command(
-        after_help = "Labels use dedicated REST add/remove endpoints and need no Web password when edited alone. Additions must already exist as repository labels. Label names are used exactly as passed after comma splitting, including surrounding spaces. Other metadata may require Web authentication; mixed edits are verified in phases and are not atomic."
+        after_long_help = "Other metadata may require Web sign-in. Mixed updates can apply in phases."
     )]
     Edit {
         /// Issue number

@@ -345,6 +345,9 @@ fn status_probes_the_token_instead_of_trusting_saved_or_environment_user_hints()
         }
         let value: Value = serde_json::from_slice(&out.stdout).unwrap();
         assert_eq!(value["effective_actor"]["verification"], expected);
+        assert_eq!(value.as_object().unwrap().len(), 3);
+        assert!(value.get("hosts").is_none());
+        assert!(value.get("profiles").is_none());
         if expected == "verified" {
             assert_eq!(value["effective_actor"]["user"], "server-user");
         } else {

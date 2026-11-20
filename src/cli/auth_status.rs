@@ -1,18 +1,15 @@
 //! Saved inventory is distinct from the actor verified for the selected token.
-use crate::config::auth::{instance_protocol, AuthConfig, CredentialSource, HostConfig, Scope};
+use crate::config::auth::{AuthConfig, CredentialSource, Scope};
 use crate::error::{GbError, Result};
 use serde::Serialize;
-use std::collections::BTreeMap;
 
 #[derive(Serialize)]
 struct AuthStatusOutput {
     active_profile: Option<String>,
     offline: bool,
     effective_actor: Option<Actor>,
-    hosts: BTreeMap<String, SavedHost>,
-    profiles: BTreeMap<String, SavedProfile>,
 }
-#[derive(Clone, Serialize)]
+#[derive(Serialize)]
 struct Actor {
     host: String,
     instance: String,
@@ -23,54 +20,16 @@ struct Actor {
     verification: &'static str,
     error: Option<VerificationError>,
 }
-#[derive(Clone, Serialize)]
+#[derive(Serialize)]
 struct VerificationError {
     code: &'static str,
     status: Option<u16>,
     cause: Option<&'static str>,
 }
-#[derive(Serialize)]
-struct SavedHost {
-    user: String,
-    protocol: String,
-    has_token: bool,
-    credential_source: CredentialSource,
-    verification: &'static str,
-}
-#[derive(Serialize)]
-struct SavedProfile {
-    default_host: Option<String>,
-    default_repo: Option<String>,
-    effective_actor: Option<Actor>,
-    hosts: BTreeMap<String, SavedHost>,
-}
-
-fn inventory(
-    hosts: &std::collections::HashMap<String, HostConfig>,
-    source: CredentialSource,
-) -> BTreeMap<String, SavedHost> {
-    hosts
-        .iter()
-        .map(|(key, host)| {
-            (
-                key.clone(),
-                SavedHost {
-                    user: host.user.clone(),
-                    protocol: instance_protocol(key).to_owned(),
-                    has_token: !host.token.is_empty(),
-                    credential_source: source,
-                    verification: "not_checked",
-                },
-            )
-        })
-        .collect()
-}
-
 pub(crate) async fn print_status(
     config: &AuthConfig,
     cli_hostname: &Option<String>,
     scope: &Scope,
-    filter_scope: bool,
     json: bool,
     offline: bool,
 ) -> Result<()> {
@@ -134,37 +93,10 @@ pub(crate) async fn print_status(
             Err(error) => return Err(error),
         }
     }
-    let mut profiles = BTreeMap::new();
-    if !filter_scope || scope.profile().is_some() {
-        for (name, profile) in &config.profiles {
-            if filter_scope && scope.profile() != Some(name.as_str()) {
-                continue;
-            }
-            profiles.insert(
-                name.clone(),
-                SavedProfile {
-                    default_host: profile.default_host.clone(),
-                    default_repo: profile.default_repo.clone(),
-                    effective_actor: if scope.profile() == Some(name.as_str()) {
-                        actor.clone()
-                    } else {
-                        None
-                    },
-                    hosts: inventory(&profile.hosts, CredentialSource::Profile),
-                },
-            );
-        }
-    }
     let output = AuthStatusOutput {
         active_profile: scope.profile().map(str::to_string),
         offline,
         effective_actor: actor,
-        hosts: if !filter_scope || scope.profile().is_none() {
-            inventory(&config.hosts, CredentialSource::Global)
-        } else {
-            BTreeMap::new()
-        },
-        profiles,
     };
     // Status data is also emitted after a failed probe. Preserve that earlier
     // authentication error if writing the status record fails as well.
@@ -201,22 +133,14 @@ fn print_text(output: &AuthStatusOutput) {
             CredentialSource::Global => "global credentials",
         };
         println!("Credential source: {source}");
-        if let Some(user) = &actor.stored_user {
+        if let Some(user) = actor
+            .stored_user
+            .as_ref()
+            .filter(|user| Some(*user) != actor.user.as_ref())
+        {
             println!("Saved user hint: {user} (not proof of current token ownership)");
         }
     } else {
         println!("No effective credentials for the selected target.");
-    }
-    for (key, host) in &output.hosts {
-        println!("{key}: saved user {} (unverified)", host.user);
-    }
-    for (name, profile) in &output.profiles {
-        println!("Saved profile: {name}");
-        if let Some(repo) = &profile.default_repo {
-            println!("  Default repo: {repo}");
-        }
-        for (key, host) in &profile.hosts {
-            println!("  {key}: saved user {} (unverified)", host.user);
-        }
     }
 }

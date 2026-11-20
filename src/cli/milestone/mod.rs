@@ -6,9 +6,7 @@ mod read;
 mod write;
 
 #[derive(Args)]
-#[command(
-    after_help = "Edits preserve unspecified fields. Use --description '' or --due-on '' to clear.\nREST is tried first; Web authentication is used only for known title validation limits, never for an arbitrary 404."
-)]
+#[command(after_long_help = "Use an empty --description or --due-on to clear it.")]
 pub struct MilestoneArgs {
     #[command(subcommand)]
     pub command: MilestoneCommand,
@@ -49,7 +47,7 @@ pub enum MilestoneCommand {
     },
     /// Edit a milestone
     #[command(
-        after_help = "Unspecified fields are preserved, including closed state and the exact existing due timestamp.\nJapanese/space-containing titles may require Web authentication. Its form cannot preserve an existing due timestamp during content edits: explicitly set/clear --due-on or use a REST-compatible title."
+        after_long_help = "When using a Web edit, explicitly set or clear an existing due date."
     )]
     Edit {
         /// Milestone number
