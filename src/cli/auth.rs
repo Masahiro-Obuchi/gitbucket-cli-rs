@@ -2,6 +2,7 @@ use clap::{Args, Subcommand};
 use dialoguer::{Input, Password};
 
 use crate::config::auth::{instance_key, instance_protocol, AuthConfig, HostConfig, Scope};
+use crate::config::web_password::Key;
 use crate::error::{GbError, Result};
 
 #[derive(Args)]
@@ -52,6 +53,14 @@ pub enum AuthCommand {
         #[arg(long, short = 'H', value_name = "HOST_OR_URL")]
         hostname: Option<String>,
     },
+    /// Verify and save a Web password in the OS credential store
+    WebLogin,
+    /// Remove a Web password from the OS credential store
+    WebLogout {
+        /// Web username of the credential to remove
+        #[arg(long)]
+        user: String,
+    },
 }
 
 pub async fn run(
@@ -87,7 +96,35 @@ pub async fn run(
         AuthCommand::Token { hostname } => {
             print_token(hostname.as_ref().or(cli_hostname.as_ref()), &scope).await
         }
+        AuthCommand::WebLogin => {
+            let hostname = web_hostname(&config, cli_hostname, &scope)?;
+            let credential = config.credential(&hostname, &scope)?;
+            super::common::save_web_password(&credential).await
+        }
+        AuthCommand::WebLogout { user } => {
+            let hostname = web_hostname(&config, cli_hostname, &scope)?;
+            if !hostname.contains("://") {
+                return Err(GbError::Config(
+                    "Use the full GitBucket base URL with --hostname to remove a Web password."
+                        .into(),
+                ));
+            }
+            let key = Key::new(&hostname, &user)?;
+            let instance = key.instance();
+            if key.delete().await? {
+                println!("Removed Web password for {user} @ {instance}");
+            } else {
+                println!("No Web password saved for {user} @ {instance}");
+            }
+            Ok(())
+        }
     }
+}
+
+fn web_hostname(config: &AuthConfig, hostname: &Option<String>, scope: &Scope) -> Result<String> {
+    config
+        .resolve_hostname_in(hostname.as_deref(), scope)?
+        .ok_or_else(|| GbError::Config("Specify the GitBucket base URL with --hostname.".into()))
 }
 
 async fn login(

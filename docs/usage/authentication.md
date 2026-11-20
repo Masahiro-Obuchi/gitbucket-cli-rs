@@ -88,6 +88,21 @@ For configurations with bare host keys or defaults, set `GB_CONFIG_DIR` to a fre
 
 When switching `GB_CONFIG_DIR`, pause inline PR comment writes and copy the private [retry records](../reference/review-writes.md#retry-records) to the new directory while preserving its existing records. If you cannot carry the records over, inspect unresolved submissions before retrying them.
 
+## Web passwords
+
+Some operations need a GitBucket Web session in addition to the REST token. Use `gb auth web-login` to verify the Web account and store its password in the OS credential store. The selected REST token determines the default account. Set `GB_WEB_USER` explicitly to use a different Web account.
+
+```sh
+gb auth web-login --hostname https://bucket.example/gitbucket
+gb auth web-logout --hostname https://bucket.example/gitbucket --user alice
+```
+
+`web-login` reads the password from a terminal or from `GB_PASSWORD` if supplied. It saves the password only after verifying the signed-in account. `web-logout` removes the local entry for the full instance URL and Web username and can run without a REST token. The two commands work independently of REST token login and logout. Profiles that resolve to the same instance and Web username share an entry.
+
+The store is Keychain on macOS, Credential Manager on Windows, and the default Secret Service collection on Linux. Open and unlock the store before registering a password. Linux requires a Secret Service provider in the current D-Bus session. A headless shell can supply `GB_PASSWORD` without a credential store.
+
+When a command needs Web sign-in, it tries `GB_PASSWORD` first, then a stored password, then terminal input if permitted. Automatic reads allow up to three seconds and avoid graphical unlock prompts. Cancelling the read stops Web sign-in. If the store is locked or unavailable, unlock it outside the command or supply `GB_PASSWORD`. With no usable password and no prompt, the command reports `web_password_required`.
+
 ## Git authentication
 
 `gb repo clone OWNER/REPO`, `gb pr checkout`, and `gb pr diff` reuse the selected GitBucket user/token for HTTP(S) Git URLs on the same scheme, host, port, and configured base path. With `GB_TOKEN` alone, also set `GB_USER` for private Git access. SSH and other clone origins use Git's own authentication.

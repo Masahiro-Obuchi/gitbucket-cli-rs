@@ -2,6 +2,7 @@ use dialoguer::Password;
 
 use crate::api::client::ApiClient;
 use crate::api::web::GitBucketWebSession;
+use crate::config::{auth::ResolvedCredential, web_password::Key};
 use crate::error::{GbError, Result};
 use crate::models::issue::Issue;
 
@@ -22,13 +23,69 @@ pub(crate) async fn create_web_session_with_prompt(
     allow_prompt: bool,
 ) -> Result<GitBucketWebSession> {
     let credential = resolve_credential(hostname, cli_profile)?;
+    let (username, api_user) = web_actor(client, &credential.host.user).await?;
+    let password = match password_from_env() {
+        Some(password) => password,
+        None => match Key::new(&credential.instance, &username)?.read().await {
+            Ok(Some(password)) if !password.is_empty() => password,
+            Err(error @ GbError::Cancelled) => return Err(error),
+            _ if allow_prompt => prompt_password(&username).await?,
+            _ => return Err(GbError::WebPasswordRequired),
+        },
+    };
+
+    let session = GitBucketWebSession::sign_in(
+        &credential.instance,
+        &username,
+        &password,
+        credential.protocol(),
+    )
+    .await?;
+    eprintln!(
+        "Notice: Web actor {}; REST actor {}.",
+        session.principal(),
+        api_user
+    );
+    Ok(session)
+}
+
+pub(crate) async fn save_web_password(credential: &ResolvedCredential) -> Result<()> {
+    let client = ApiClient::new(
+        &credential.instance,
+        &credential.host.token,
+        credential.protocol(),
+    )?;
+    let (username, _) = web_actor(&client, &credential.host.user).await?;
+    let password = match password_from_env() {
+        Some(password) => password,
+        None => prompt_password(&username).await?,
+    };
+    let session = GitBucketWebSession::sign_in(
+        &credential.instance,
+        &username,
+        &password,
+        credential.protocol(),
+    )
+    .await?;
+    Key::new(&credential.instance, session.principal())?
+        .save(&password)
+        .await?;
+    println!(
+        "Saved Web password for {} @ {}",
+        session.principal(),
+        credential.instance
+    );
+    Ok(())
+}
+
+async fn web_actor(client: &ApiClient, saved_user: &str) -> Result<(String, String)> {
     let explicit_web_user = std::env::var("GB_WEB_USER").ok();
     let username = if let Some(user) = &explicit_web_user {
         user.clone()
     } else if let Ok(user) = std::env::var("GB_USER") {
         user
-    } else if !credential.host.user.is_empty() {
-        credential.host.user.clone()
+    } else if !saved_user.is_empty() {
+        saved_user.to_owned()
     } else {
         String::new()
     };
@@ -46,33 +103,21 @@ pub(crate) async fn create_web_session_with_prompt(
     if explicit_web_user.is_none() && !api_user.login.eq_ignore_ascii_case(&username) {
         return Err(GbError::Auth(format!("REST token belongs to {:?}, but Web username is {:?}. No Web changes were attempted. Set GB_WEB_USER explicitly to authorize a different Web actor.", api_user.login, username)));
     }
-    let password = match std::env::var("GB_PASSWORD").ok().filter(|s| !s.is_empty()) {
-        Some(password) => password,
-        None if allow_prompt => {
-            let prompt = format!("GitBucket password for {}", username);
-            crate::cancel::prompt(move || Password::new().with_prompt(prompt).interact())
-                .await
-                .map_err(|error| match error {
-                    GbError::InputRequired => GbError::WebPasswordRequired,
-                    error => error,
-                })?
-        }
-        None => return Err(GbError::WebPasswordRequired),
-    };
+    Ok((username, api_user.login.clone()))
+}
 
-    let session = GitBucketWebSession::sign_in(
-        &credential.instance,
-        &username,
-        &password,
-        credential.protocol(),
-    )
-    .await?;
-    eprintln!(
-        "Notice: Web actor {}; REST actor {}.",
-        session.principal(),
-        api_user.login
-    );
-    Ok(session)
+fn password_from_env() -> Option<String> {
+    std::env::var("GB_PASSWORD").ok().filter(|s| !s.is_empty())
+}
+
+async fn prompt_password(username: &str) -> Result<String> {
+    let prompt = format!("GitBucket password for {username}");
+    crate::cancel::prompt(move || Password::new().with_prompt(prompt).interact())
+        .await
+        .map_err(|error| match error {
+            GbError::InputRequired => GbError::WebPasswordRequired,
+            error => error,
+        })
 }
 
 pub async fn update_issue_assignees_via_web(

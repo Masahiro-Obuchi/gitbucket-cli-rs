@@ -17,6 +17,11 @@ pub enum GbError {
     InputRequired,
     #[error("GitBucket Web sign-in requires a password. Set GB_PASSWORD for this operation.")]
     WebPasswordRequired,
+    #[error("OS credential store: {message}")]
+    CredentialStore {
+        cause: &'static str,
+        message: &'static str,
+    },
     #[error("Pager exited unsuccessfully (status {status:?})")]
     Pager { status: Option<i32> },
     #[error("Inline review write unavailable: {message}")]
@@ -127,6 +132,7 @@ impl GbError {
             GbError::MergeCheck { .. } => "merge_check_failed",
             GbError::InputRequired => "input_required",
             GbError::WebPasswordRequired => "web_password_required",
+            GbError::CredentialStore { .. } => "credential_store_error",
             GbError::Pager { .. } => "pager_failed",
             GbError::ReviewWrite { .. } => "review_write_unavailable",
             GbError::ReviewUnavailable { .. } => "review_comments_unavailable",
@@ -166,6 +172,7 @@ impl GbError {
             GbError::Editor { cause, .. } => Some(cause),
             GbError::MergeCheck { cause, .. } => Some(cause),
             GbError::InputRequired => Some("interactive_input_disabled"),
+            GbError::CredentialStore { cause, .. } => Some(cause),
             GbError::Pager { .. } => Some("nonzero_exit"),
             GbError::ReviewWrite { cause, .. } => Some(cause),
             GbError::ReviewUnavailable { cause, .. } => Some(cause),

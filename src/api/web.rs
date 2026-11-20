@@ -120,7 +120,10 @@ impl GitBucketWebSession {
         }
         let user: crate::models::user::User = serde_json::from_slice(&body).map_err(|_| GbError::Auth("GitBucket web sign-in failed: expected a cookie-authenticated user, but received an unrecognized response (possibly a login/SSO form).".into()))?;
         if user.login.is_empty() || !user.login.eq_ignore_ascii_case(username) {
-            return Err(GbError::Auth(format!("GitBucket web sign-in returned user {:?}, expected {:?}. No Web changes were attempted.", user.login, username)));
+            return Err(GbError::Auth(secrets.redact(&format!(
+                "GitBucket web sign-in returned user {:?}, expected {:?}. No Web changes were attempted.",
+                user.login, username
+            ))));
         }
         Ok(Self {
             client,

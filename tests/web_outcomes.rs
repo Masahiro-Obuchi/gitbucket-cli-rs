@@ -59,6 +59,29 @@ fn missing_web_password_names_environment_variable_before_signin() {
 }
 
 #[test]
+fn web_login_refuses_a_password_when_the_cookie_belongs_to_another_account() {
+    let env = GbTestEnv::new();
+    let (port, server) = spawn_scripted_server(vec![
+        token_identity("/bucket"),
+        signin("/bucket"),
+        api("/bucket", "GET", "user", "200 OK", json!({"login":"other"})),
+    ]);
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
+        .env("GB_USER", "alice")
+        .env("GB_PASSWORD", "fixture-must-not-be-printed")
+        .args(["--json-errors", "auth", "web-login"])
+        .output()
+        .unwrap();
+    assert_failure(&output);
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["code"], "auth_error");
+    assert!(!stderr(&output).contains("fixture-must-not-be-printed"));
+    assert_eq!(server.join().unwrap().len(), 3);
+}
+
+#[test]
 fn login_requires_cookie_principal_even_for_http_200_or_unknown_sso_forms() {
     for prefix in ["", "/bucket"] {
         for (status, value) in [
