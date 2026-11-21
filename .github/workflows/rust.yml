@@ -102,6 +102,9 @@ jobs:
         run: cargo test --locked --test package_contents
       - name: Test configuration storage unit cases
         run: 'cargo test --locked --bin gb config::'
+      - name: Test Windows Web password storage
+        if: runner.os == 'Windows'
+        run: cargo test --locked --bin gb windows_credential_manager_round_trip -- --ignored
       - name: Test safe PR checkout
         run: cargo test --locked --test pr_checkout
       - name: Test Git deadlines and input cancellation

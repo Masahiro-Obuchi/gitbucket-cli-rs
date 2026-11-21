@@ -1,19 +1,11 @@
-use std::fmt::Write as _;
-use std::ptr;
+use std::{collections::HashMap, fmt::Write as _};
 
-use windows_sys::Win32::Foundation::{GetLastError, ERROR_NOT_FOUND};
-use windows_sys::Win32::Security::Credentials::{
-    CredDeleteW, CredFree, CredReadW, CredWriteW, CREDENTIALW, CRED_MAX_CREDENTIAL_BLOB_SIZE,
-    CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC,
-};
+use keyring_core::{api::CredentialStoreApi, Entry, Error};
+use windows_native_keyring_store::Store;
 
 use super::{error, Key, Result};
 
-fn wide(text: &str) -> Vec<u16> {
-    text.encode_utf16().chain([0]).collect()
-}
-
-fn target(key: &Key) -> Vec<u16> {
+fn target(key: &Key) -> String {
     // Credential Manager target names are case-insensitive. Hash the key so
     // case-sensitive deployment paths still select different credentials.
     let input = format!("{}\0{}", key.instance, key.user);
@@ -22,7 +14,15 @@ fn target(key: &Key) -> Vec<u16> {
     for byte in digest.as_ref() {
         let _ = write!(name, "{byte:02x}");
     }
-    wide(&name)
+    name
+}
+
+fn entry(key: &Key) -> Result<Entry> {
+    let target = target(key);
+    let modifiers = HashMap::from([("target", target.as_str()), ("persistence", "Local")]);
+    Store::new()
+        .and_then(|store| store.build("gitbucket-cli", &key.user, Some(&modifiers)))
+        .map_err(|_| manager_error())
 }
 
 fn manager_error() -> crate::error::GbError {
@@ -33,64 +33,101 @@ fn manager_error() -> crate::error::GbError {
 }
 
 pub(super) fn read(key: &Key) -> Result<Option<Vec<u8>>> {
-    let target = target(key);
-    let mut value = ptr::null_mut();
-    // The target is NUL-terminated and CredReadW owns the returned allocation.
-    if unsafe { CredReadW(target.as_ptr(), CRED_TYPE_GENERIC, 0, &mut value) } == 0 {
-        return if unsafe { GetLastError() } == ERROR_NOT_FOUND {
-            Ok(None)
-        } else {
-            Err(manager_error())
-        };
+    // The stored blob contains the password's UTF-8 bytes.
+    match entry(key)?.get_secret() {
+        Ok(secret) => Ok(Some(secret)),
+        Err(Error::NoEntry) => Ok(None),
+        Err(_) => Err(manager_error()),
     }
-    // A successful CredReadW returns a credential and its blob in one buffer.
-    let bytes = unsafe {
-        let credential = &*value;
-        let size = credential.CredentialBlobSize as usize;
-        let bytes = if size == 0 {
-            Vec::new()
-        } else {
-            std::slice::from_raw_parts(credential.CredentialBlob, size).to_vec()
-        };
-        CredFree(value.cast());
-        bytes
-    };
-    Ok(Some(bytes))
 }
 
 pub(super) async fn save(key: &Key, password: &[u8]) -> Result<()> {
-    if password.len() > CRED_MAX_CREDENTIAL_BLOB_SIZE as usize {
-        return Err(error(
+    match entry(key)?.set_secret(password) {
+        Ok(()) => Ok(()),
+        Err(Error::TooLong(..)) => Err(error(
             "password_too_long",
             "The password is too long for Windows Credential Manager.",
-        ));
+        )),
+        Err(_) => Err(manager_error()),
     }
-    let mut target = target(key);
-    let mut user = wide(&key.user);
-    let data = CREDENTIALW {
-        Type: CRED_TYPE_GENERIC,
-        TargetName: target.as_mut_ptr(),
-        CredentialBlobSize: password.len() as u32,
-        CredentialBlob: password.as_ptr().cast_mut(),
-        Persist: CRED_PERSIST_LOCAL_MACHINE,
-        UserName: user.as_mut_ptr(),
-        ..Default::default()
-    };
-    // All pointed-to buffers remain valid for the duration of the call.
-    if unsafe { CredWriteW(&data, 0) } == 0 {
-        return Err(manager_error());
-    }
-    Ok(())
 }
 
 pub(super) async fn delete(key: &Key) -> Result<bool> {
-    let target = target(key);
-    // The target is NUL-terminated and remains valid during the call.
-    if unsafe { CredDeleteW(target.as_ptr(), CRED_TYPE_GENERIC, 0) } != 0 {
-        Ok(true)
-    } else if unsafe { GetLastError() } == ERROR_NOT_FOUND {
-        Ok(false)
-    } else {
-        Err(manager_error())
+    match entry(key)?.delete_credential() {
+        Ok(()) => Ok(true),
+        Err(Error::NoEntry) => Ok(false),
+        Err(_) => Err(manager_error()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn target_matches_the_v0_8_0_credential_name() {
+        let key = Key::new("https://example.test/Bucket", "Alice").unwrap();
+        assert_eq!(
+            target(&key),
+            "gitbucket-cli/web-password/ea1ca8a4ef69dba91b9401da56aa59176f1084c48a1c569bf82b931cdad004f5"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "uses a temporary Windows Credential Manager entry"]
+    async fn windows_credential_manager_round_trip() {
+        struct Cleanup(Entry);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = self.0.delete_credential();
+            }
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let nonce = temp.path().file_name().unwrap().to_str().unwrap();
+        let instance = format!("https://keyring-test.invalid/{nonce}");
+        let key = Key::new(&instance, "Alice").unwrap();
+        assert!(read(&key).unwrap().is_none());
+        let cleanup = Cleanup(entry(&key).unwrap());
+
+        let legacy = "旧テスト-password".as_bytes();
+        write_native_entry(&key, legacy);
+        assert_eq!(read(&key).unwrap().as_deref(), Some(legacy));
+
+        let replacement = "新-password".as_bytes();
+        save(&key, replacement).await.unwrap();
+        assert_eq!(read(&key).unwrap().as_deref(), Some(replacement));
+        let attributes = cleanup.0.get_attributes().unwrap();
+        assert_eq!(attributes["persistence"], "Local");
+        assert_eq!(attributes["username"], "alice");
+
+        assert!(delete(&key).await.unwrap());
+        assert!(read(&key).unwrap().is_none());
+        assert!(!delete(&key).await.unwrap());
+
+        save(&key, replacement).await.unwrap();
+        assert_eq!(read(&key).unwrap().as_deref(), Some(replacement));
+        assert_eq!(cleanup.0.get_attributes().unwrap()["persistence"], "Local");
+        assert!(delete(&key).await.unwrap());
+    }
+
+    fn write_native_entry(key: &Key, password: &[u8]) {
+        use windows_sys::Win32::Security::Credentials::{
+            CredWriteW, CREDENTIALW, CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC,
+        };
+
+        let mut target_name: Vec<u16> = target(key).encode_utf16().chain([0]).collect();
+        let mut user: Vec<u16> = key.user.encode_utf16().chain([0]).collect();
+        let credential = CREDENTIALW {
+            Type: CRED_TYPE_GENERIC,
+            TargetName: target_name.as_mut_ptr(),
+            UserName: user.as_mut_ptr(),
+            CredentialBlobSize: password.len() as u32,
+            CredentialBlob: password.as_ptr().cast_mut(),
+            Persist: CRED_PERSIST_LOCAL_MACHINE,
+            ..Default::default()
+        };
+        // Seed the fixture with the same native record layout as v0.8.0.
+        assert_ne!(unsafe { CredWriteW(&credential, 0) }, 0);
     }
 }
