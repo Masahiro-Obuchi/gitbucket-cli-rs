@@ -95,7 +95,7 @@ pub(super) async fn view(
                 .await?;
             let mut value = serde_json::to_value(&issue)?;
             output::comments::add_discussion(&mut value, &comments)?;
-            return options.json.page(&value, options.no_pager);
+            return options.json.page_value(value, options.no_pager);
         }
         return options.json.page(&issue, options.no_pager);
     }

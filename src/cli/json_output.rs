@@ -23,8 +23,14 @@ impl JsonOutput {
         if self.json_fields.is_empty() {
             return crate::output::page_json(value, no_pager);
         }
+        self.page_value(serde_json::to_value(value)?, no_pager)
+    }
+
+    pub(super) fn page_value(&self, mut value: Value, no_pager: bool) -> Result<()> {
+        if self.json_fields.is_empty() {
+            return crate::output::page_json(&value, no_pager);
+        }
         let paths: Vec<&str> = self.json_fields.iter().map(String::as_str).collect();
-        let mut value = serde_json::to_value(value)?;
         match &mut value {
             Value::Array(items) => {
                 for item in items {

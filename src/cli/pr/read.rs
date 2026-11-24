@@ -324,7 +324,7 @@ pub(super) async fn view(
         if let Some(comments) = &comments {
             output::comments::add_pr(&mut value, comments)?;
         }
-        return options.json.page(&value, options.no_pager);
+        return options.json.page_value(value, options.no_pager);
     }
     let mut text = format_pr_view(&pr);
     if let Some(comments) = comments {
