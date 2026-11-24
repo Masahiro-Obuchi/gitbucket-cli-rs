@@ -61,6 +61,18 @@ pub enum AuthCommand {
         #[arg(long)]
         user: String,
     },
+    /// Check for a saved Web password in the OS credential store
+    #[command(
+        after_long_help = "By default the selected REST token resolves the Web account as in web-login. With --user and a full base URL, the check is local and needs no token. An unreadable store is an error."
+    )]
+    WebStatus {
+        /// Web username to check locally
+        #[arg(long)]
+        user: Option<String>,
+        /// Output the instance, username and saved status as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 pub async fn run(
@@ -103,13 +115,7 @@ pub async fn run(
         }
         AuthCommand::WebLogout { user } => {
             let hostname = web_hostname(&config, cli_hostname, &scope)?;
-            if !hostname.contains("://") {
-                return Err(GbError::Config(
-                    "Use the full GitBucket base URL with --hostname to remove a Web password."
-                        .into(),
-                ));
-            }
-            let key = Key::new(&hostname, &user)?;
+            let key = local_web_key(&hostname, &user)?;
             let instance = key.instance();
             if key.delete().await? {
                 println!("Removed Web password for {user} @ {instance}");
@@ -118,7 +124,42 @@ pub async fn run(
             }
             Ok(())
         }
+        AuthCommand::WebStatus { user, json } => {
+            let hostname = web_hostname(&config, cli_hostname, &scope)?;
+            let key = match user {
+                Some(user) => local_web_key(&hostname, &user)?,
+                None => {
+                    let credential = config.credential(&hostname, &scope)?;
+                    let user = super::common::selected_web_user(&credential).await?;
+                    Key::new(&credential.instance, &user)?
+                }
+            };
+            let saved = key.read().await?.is_some();
+            let (instance, user) = (key.instance(), key.user());
+            if json {
+                return crate::output::print_json(&serde_json::json!({
+                    "instance": instance,
+                    "user": user,
+                    "saved": saved,
+                }));
+            }
+            if saved {
+                println!("Web password saved for {user} @ {instance}");
+            } else {
+                println!("No Web password saved for {user} @ {instance}");
+            }
+            Ok(())
+        }
     }
+}
+
+fn local_web_key(hostname: &str, user: &str) -> Result<Key> {
+    if !hostname.contains("://") {
+        return Err(GbError::Config(
+            "Specify the full GitBucket base URL with --hostname.".into(),
+        ));
+    }
+    Key::new(hostname, user)
 }
 
 fn web_hostname(config: &AuthConfig, hostname: &Option<String>, scope: &Scope) -> Result<String> {

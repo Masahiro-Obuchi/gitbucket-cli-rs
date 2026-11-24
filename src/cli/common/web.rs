@@ -50,12 +50,7 @@ pub(crate) async fn create_web_session_with_prompt(
 }
 
 pub(crate) async fn save_web_password(credential: &ResolvedCredential) -> Result<()> {
-    let client = ApiClient::new(
-        &credential.instance,
-        &credential.host.token,
-        credential.protocol(),
-    )?;
-    let (username, _) = web_actor(&client, &credential.host.user).await?;
+    let username = selected_web_user(credential).await?;
     let password = match password_from_env() {
         Some(password) => password,
         None => prompt_password(&username).await?,
@@ -76,6 +71,16 @@ pub(crate) async fn save_web_password(credential: &ResolvedCredential) -> Result
         credential.instance
     );
     Ok(())
+}
+
+pub(crate) async fn selected_web_user(credential: &ResolvedCredential) -> Result<String> {
+    let client = ApiClient::new(
+        &credential.instance,
+        &credential.host.token,
+        credential.protocol(),
+    )?;
+    let (username, _) = web_actor(&client, &credential.host.user).await?;
+    Ok(username)
 }
 
 async fn web_actor(client: &ApiClient, saved_user: &str) -> Result<(String, String)> {

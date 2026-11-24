@@ -330,36 +330,74 @@ fn discussion_filter_reports_coverage_without_web_credentials() {
 #[test]
 fn default_all_distinguishes_empty_discussion_from_missing_web_credentials() {
     let env = GbTestEnv::new();
-    let (port, server) = spawn_scripted_server(vec![
-        get(PR, &pr(&"a".repeat(40))),
-        get(DISCUSSION, &json!([])),
-        ScriptedResponse::html(&format!("GET {WEB} HTTP/1.1"), "401 Unauthorized", ""),
-        get("/bucket/api/v3/user", &json!({"login":"alice"})),
-    ]);
-    let output = env
-        .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
-        .env_remove("GB_PASSWORD")
-        .args(["pr", "comment", "list", "1", "--json"])
-        .output()
-        .unwrap();
-    assert_success(&output);
-    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["comments"], json!([]));
-    assert_eq!(
-        value["comment_coverage"]["discussion"]["status"],
-        "complete"
-    );
-    assert!(value["review_comments"].is_null());
-    assert_eq!(value["comment_coverage"]["review"]["status"], "unavailable");
-    assert_eq!(
-        value["comment_coverage"]["review"]["reason"],
-        "web_password_required"
-    );
-    assert!(server
-        .join()
-        .unwrap()
-        .iter()
-        .all(|request| request.method == "GET"));
+    for format in [
+        vec!["--json"],
+        vec!["--json-fields", "comments,comment_coverage.review.reason"],
+        vec![],
+    ] {
+        let (port, server) = spawn_scripted_server(vec![
+            get(PR, &pr(&"a".repeat(40))),
+            get(DISCUSSION, &json!([])),
+            ScriptedResponse::html(&format!("GET {WEB} HTTP/1.1"), "401 Unauthorized", ""),
+            get("/bucket/api/v3/user", &json!({"login":"alice"})),
+        ]);
+        let output = env
+            .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
+            .env_remove("GB_PASSWORD")
+            .args(["pr", "comment", "list", "1"])
+            .args(&format)
+            .output()
+            .unwrap();
+        assert_success(&output);
+        match format.as_slice() {
+            ["--json"] => {
+                let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+                assert_eq!(value["comments"], json!([]));
+                assert_eq!(
+                    value["comment_coverage"]["discussion"]["status"],
+                    "complete"
+                );
+                assert!(value["review_comments"].is_null());
+                assert_eq!(value["comment_coverage"]["review"]["status"], "unavailable");
+                assert_eq!(
+                    value["comment_coverage"]["review"]["reason"],
+                    "web_password_required"
+                );
+            }
+            ["--json-fields", _] => {
+                let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+                assert_eq!(
+                    value,
+                    json!({"comments": [], "comment_coverage":{"review":{"reason":"web_password_required"}}})
+                );
+            }
+            _ => {
+                let text = String::from_utf8_lossy(&output.stdout);
+                assert!(text.contains("gb auth web-login"));
+                assert!(text.contains("Set GB_PASSWORD"));
+            }
+        }
+        assert!(server
+            .join()
+            .unwrap()
+            .iter()
+            .all(|request| request.method == "GET"));
+    }
+}
+
+#[test]
+fn kind_help_advertises_all_as_the_default() {
+    let env = GbTestEnv::new();
+    for (args, default_help) in [
+        (vec!["pr", "view", "--help"], "default all"),
+        (vec!["pr", "comment", "list", "--help"], "[default: all]"),
+    ] {
+        let output = env.command().args(args).output().unwrap();
+        assert_success(&output);
+        let text = String::from_utf8_lossy(&output.stdout);
+        assert!(text.contains(default_help), "{text}");
+        assert!(!text.contains("discussion (default)"), "{text}");
+    }
 }
 
 #[test]

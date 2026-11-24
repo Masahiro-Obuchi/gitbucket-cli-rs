@@ -3,6 +3,8 @@ use clap::{Args, Subcommand};
 use crate::cli::common::normalize_str_vec;
 use crate::domain::review_comment::CommentSelection;
 
+use super::json_output::JsonOutput;
+
 mod checkout;
 mod git;
 mod read;
@@ -34,9 +36,8 @@ pub enum PrCommand {
             ignore_case = true
         )]
         state: String,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        json: JsonOutput,
         /// Do not use a pager
         #[arg(long)]
         no_pager: bool,
@@ -51,15 +52,14 @@ pub enum PrCommand {
         /// Show comments
         #[arg(long, short)]
         comments: bool,
-        /// Comment sources: discussion (default), review, all; review uses Web HTML with sign-in only if needed
+        /// Select discussion, review, or all comments (default all). Review uses Web HTML with sign-in only if needed
         #[arg(long = "kind", requires = "comments")]
         kind: Option<CommentSelection>,
         /// Open in browser
-        #[arg(long, short)]
+        #[arg(long, short, conflicts_with = "json_fields")]
         web: bool,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        json: JsonOutput,
         /// Do not use a pager
         #[arg(long)]
         no_pager: bool,
@@ -257,17 +257,16 @@ pub enum PrCommentCommand {
     Delete(ReviewTargetArgs),
     /// List comments on a pull request
     #[command(
-        after_long_help = "The default shows discussion and visible reviews. JSON reports coverage for both sources. Private reviews may need GB_PASSWORD."
+        after_long_help = "The default shows discussion and visible reviews. JSON reports coverage for both sources. For private reviews, use gb auth web-login or set GB_PASSWORD."
     )]
     List {
         /// PR number
         number: u64,
-        /// Comment sources: discussion (default), review, all; review uses Web HTML with sign-in only if needed
+        /// Select discussion, review, or all comments. Review uses Web HTML with sign-in only if needed
         #[arg(long, default_value = "all")]
         kind: CommentSelection,
-        /// Output comments as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        json: JsonOutput,
         /// Do not use a pager
         #[arg(long)]
         no_pager: bool,

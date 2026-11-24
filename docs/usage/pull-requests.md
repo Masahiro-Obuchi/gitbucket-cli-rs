@@ -7,11 +7,12 @@ Use `gb pr --help` and `gb pr <command> --help` for the options supported by the
 ```sh
 gb pr list --state open
 gb pr list --state all --json --no-pager
+gb pr view 42 --json-fields number,title,state,head.sha
 gb pr view 42 --comments
 gb pr view 42 --web
 ```
 
-Lists accept `open`, `closed`, or `all`. JSON lists fetch canonical details for each PR so the result identifies fork heads correctly. Numbered commands such as ordinary view, edit, and discussion require a detail object and check the returned PR number. See [pagination](../reference/automation.md#collection-pagination) and [JSON output](../reference/automation.md#api-json).
+Lists accept `open`, `closed`, or `all`. JSON lists fetch canonical details for each PR so the result identifies fork heads correctly. Numbered commands such as ordinary view, edit, and discussion require a detail object and check the returned PR number. Use `--json-fields` to select fields from the JSON output. See [pagination](../reference/automation.md#collection-pagination) and [field selection](../reference/automation.md#field-selection).
 
 ## Create
 

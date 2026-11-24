@@ -85,6 +85,43 @@ fn fixed_issue_and_pr_pages_are_complete_at_25_item_boundaries() {
 }
 
 #[test]
+fn list_json_fields_keeps_order_and_uses_canonical_pr_details() {
+    let env = GbTestEnv::new();
+    let summary = pr(7, "summary");
+    let mut detail = pr(7, "actual");
+    detail["head"]["repo"]["full_name"] = json!("bob/project");
+    let (port, server) = spawn_scripted_server(vec![
+        response(&format!("{PULLS}?state=open"), json!([summary])),
+        response(&format!("{PULLS}/7"), detail),
+        response(&format!("{ISSUES}?state=open"), json!([item(6), item(8)])),
+    ]);
+    for (command, fields, expected) in [
+        (
+            "pr",
+            "number,head.repo.full_name",
+            json!([{"number": 7, "head": {"repo": {"full_name": "bob/project"}}}]),
+        ),
+        (
+            "issue",
+            "number,title",
+            json!([{"number": 8, "title": "Item 8"}, {"number": 6, "title": "Item 6"}]),
+        ),
+    ] {
+        let output = env
+            .repo_api_command(format!("127.0.0.1:{port}/bucket"), "alice/project")
+            .args([command, "list", "--json-fields", fields])
+            .output()
+            .unwrap();
+        assert_success(&output);
+        assert_eq!(
+            serde_json::from_slice::<Value>(&output.stdout).unwrap(),
+            expected
+        );
+    }
+    assert_eq!(server.join().unwrap().len(), 3);
+}
+
+#[test]
 fn comments_without_links_are_all_rows_even_when_count_matches_a_page_boundary() {
     for count in [0, 1, 25, 26, 50, 51, 100, 101] {
         let env = GbTestEnv::new();

@@ -34,7 +34,7 @@ fn signin(prefix: &str) -> ScriptedResponse {
 }
 
 #[test]
-fn missing_web_password_names_environment_variable_before_signin() {
+fn missing_web_password_names_both_ways_to_supply_it_before_signin() {
     for json_errors in [false, true] {
         let env = GbTestEnv::new();
         let mut script = state_preflight("/bucket");
@@ -49,6 +49,7 @@ fn missing_web_password_names_environment_variable_before_signin() {
         let output = command.args(["issue", "close", "7"]).output().unwrap();
         assert_failure(&output);
         assert!(stderr(&output).contains("Set GB_PASSWORD"));
+        assert!(stderr(&output).contains("gb auth web-login"));
         if json_errors {
             let error: Value = serde_json::from_slice(&output.stderr).unwrap();
             assert_eq!(error["error"]["code"], "web_password_required");
@@ -56,6 +57,58 @@ fn missing_web_password_names_environment_variable_before_signin() {
         }
         assert_eq!(server.join().unwrap().len(), 3);
     }
+}
+
+#[test]
+fn web_status_verifies_the_selected_rest_actor_before_checking_the_store() {
+    let env = GbTestEnv::new();
+    let (port, server) = spawn_scripted_server(vec![token_identity("/bucket")]);
+    let output = env
+        .api_command(format!("127.0.0.1:{port}/bucket"))
+        .env("GB_USER", "other")
+        .args(["--json-errors", "auth", "web-status", "--json"])
+        .output()
+        .unwrap();
+
+    assert_failure(&output);
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["code"], "auth_error");
+    assert!(stderr(&output).contains("REST token belongs to"));
+    assert_eq!(server.join().unwrap().len(), 1);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn web_status_distinguishes_an_unavailable_store_from_a_missing_password() {
+    let env = GbTestEnv::new();
+    let output = env
+        .command()
+        .env_remove("GB_TOKEN")
+        .env_remove("GB_PROFILE")
+        .env("GB_PASSWORD", "not-a-saved-password")
+        .env(
+            "DBUS_SESSION_BUS_ADDRESS",
+            format!("unix:path={}/missing-bus", env.path().display()),
+        )
+        .args([
+            "--json-errors",
+            "auth",
+            "web-status",
+            "--hostname",
+            "https://bucket.example/Deployment",
+            "--user",
+            "Alice",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+
+    assert_failure(&output);
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["code"], "credential_store_error");
+    assert!(!stderr(&output).contains("not-a-saved-password"));
 }
 
 #[test]

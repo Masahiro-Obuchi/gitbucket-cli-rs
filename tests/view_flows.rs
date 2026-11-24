@@ -218,8 +218,66 @@ fn pr_view_json_prints_pull_request_payload() {
     );
     let stdout: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(stdout["number"], 5);
+    assert_eq!(stdout["body"], "PR body");
     assert_eq!(stdout["head"]["ref"], "feature/demo");
     assert_eq!(stdout["base"]["ref"], "main");
+}
+
+#[test]
+fn pr_view_json_fields_keeps_nested_shape_null_and_number_precision() {
+    let env = GbTestEnv::new();
+    let (port, server) = spawn_scripted_server(vec![ScriptedResponse::json(
+        "GET /api/v3/repos/alice/project/pulls/5 HTTP/1.1",
+        "200 OK",
+        r#"{"number":5,"title":"Add feature","body":"PR body","state":"open","head":{"ref":"feature/demo","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","repo":null},"head.sha":"literal-key","counter":18446744073709551616}"#,
+    )]);
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
+        .args([
+            "pr",
+            "view",
+            "5",
+            "--json-fields",
+            "number, head.sha,head.repo,head.missing,unknown",
+            "--json-fields",
+            "counter",
+        ])
+        .output()
+        .unwrap();
+
+    support::gb_cmd::assert_success(&output);
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let expected = serde_json::from_str::<serde_json::Value>(
+        r#"{"number":5,"head":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","repo":null},"counter":18446744073709551616}"#,
+    )
+    .unwrap();
+    assert_eq!(value, expected);
+    assert_eq!(server.join().unwrap().len(), 1);
+}
+
+#[test]
+fn view_json_fields_validates_arguments_before_accessing_the_api() {
+    let env = GbTestEnv::new();
+    for (args, cause) in [
+        (vec!["--json-fields", "head..sha"], "invalid_value"),
+        (
+            vec!["--json-fields", "number", "--web"],
+            "argument_conflict",
+        ),
+    ] {
+        for command in ["pr", "issue"] {
+            let output = env
+                .command()
+                .args(["--json-errors", command, "view", "5"])
+                .args(&args)
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(2));
+            assert!(output.stdout.is_empty());
+            let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+            assert_eq!(error["error"]["cause"], cause);
+        }
+    }
 }
 
 #[test]
@@ -399,4 +457,41 @@ fn issue_view_json_prints_issue_payload() {
     assert_eq!(stdout["number"], 7);
     assert_eq!(stdout["title"], "Bug report");
     assert_eq!(stdout["state"], "open");
+}
+
+#[test]
+fn issue_view_json_fields_can_select_added_comment_details() {
+    let env = GbTestEnv::new();
+    let (port, server) = spawn_scripted_server(vec![
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/issues/7 HTTP/1.1",
+            "200 OK",
+            r#"{"number":7,"title":"Bug report","state":"open","comments":1}"#,
+        ),
+        ScriptedResponse::json(
+            "GET /api/v3/repos/alice/project/issues/7/comments?per_page=100 HTTP/1.1",
+            "200 OK",
+            r#"[{"id":11,"body":"Reproduced"}]"#,
+        ),
+    ]);
+    let output = env
+        .repo_api_command(format!("127.0.0.1:{port}"), "alice/project")
+        .args([
+            "issue",
+            "view",
+            "7",
+            "--comments",
+            "--json",
+            "--json-fields",
+            "number,comment_details",
+        ])
+        .output()
+        .unwrap();
+
+    support::gb_cmd::assert_success(&output);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+        serde_json::json!({"number":7,"comment_details":[{"id":11,"body":"Reproduced"}]})
+    );
+    assert_eq!(server.join().unwrap().len(), 2);
 }
