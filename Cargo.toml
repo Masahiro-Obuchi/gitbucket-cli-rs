@@ -1,6 +1,6 @@
 [package]
 name = "gitbucket-cli"
-version = "0.8.1"
+version = "0.9.0"
 edition = "2021"
 rust-version = "1.88.0"
 description = "A command-line tool for GitBucket, inspired by GitHub CLI"
