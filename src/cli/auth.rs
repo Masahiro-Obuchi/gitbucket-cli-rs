@@ -63,7 +63,7 @@ pub enum AuthCommand {
     },
     /// Check for a saved Web password in the OS credential store
     #[command(
-        after_long_help = "By default the selected REST token resolves the Web account as in web-login. With --user and a full base URL, the check is local and needs no token. An unreadable store is an error."
+        after_long_help = "By default the selected REST token resolves the Web account as in web-login. With --user and a full base URL from --hostname or GB_HOST, the check uses only the local credential store. An unreadable store is an error."
     )]
     WebStatus {
         /// Web username to check locally
@@ -81,6 +81,20 @@ pub async fn run(
     cli_profile: &Option<String>,
     diagnostic_token: &mut Option<String>,
 ) -> Result<()> {
+    if let (
+        AuthCommand::WebStatus {
+            user: Some(user),
+            json,
+        },
+        Some(hostname),
+    ) = (&args.command, cli_hostname.as_deref())
+    {
+        if args.global {
+            AuthConfig::default().scope(cli_profile.as_deref(), true)?;
+        }
+        return local_web_status(hostname, user, *json).await;
+    }
+
     let config = AuthConfig::load()?;
     let scope = config.scope(cli_profile.as_deref(), args.global)?;
     match args.command {
@@ -115,7 +129,7 @@ pub async fn run(
         }
         AuthCommand::WebLogout { user } => {
             let hostname = web_hostname(&config, cli_hostname, &scope)?;
-            let key = local_web_key(&hostname, &user)?;
+            let key = local_web_key(&hostname, &user, "remove a Web password")?;
             let instance = key.instance();
             if key.delete().await? {
                 println!("Removed Web password for {user} @ {instance}");
@@ -126,38 +140,44 @@ pub async fn run(
         }
         AuthCommand::WebStatus { user, json } => {
             let hostname = web_hostname(&config, cli_hostname, &scope)?;
-            let key = match user {
-                Some(user) => local_web_key(&hostname, &user)?,
-                None => {
-                    let credential = config.credential(&hostname, &scope)?;
-                    let user = super::common::selected_web_user(&credential).await?;
-                    Key::new(&credential.instance, &user)?
-                }
-            };
-            let saved = key.read().await?.is_some();
-            let (instance, user) = (key.instance(), key.user());
-            if json {
-                return crate::output::print_json(&serde_json::json!({
-                    "instance": instance,
-                    "user": user,
-                    "saved": saved,
-                }));
+            if let Some(user) = user {
+                return local_web_status(&hostname, &user, json).await;
             }
-            if saved {
-                println!("Web password saved for {user} @ {instance}");
-            } else {
-                println!("No Web password saved for {user} @ {instance}");
-            }
-            Ok(())
+            let credential = config.credential(&hostname, &scope)?;
+            let user = super::common::selected_web_user(&credential).await?;
+            print_web_status(Key::new(&credential.instance, &user)?, json).await
         }
     }
 }
 
-fn local_web_key(hostname: &str, user: &str) -> Result<Key> {
+async fn local_web_status(hostname: &str, user: &str, json: bool) -> Result<()> {
+    let key = local_web_key(hostname, user, "check for a saved Web password")?;
+    print_web_status(key, json).await
+}
+
+async fn print_web_status(key: Key, json: bool) -> Result<()> {
+    let saved = key.read().await?.is_some();
+    let (instance, user) = (key.instance(), key.user());
+    if json {
+        return crate::output::print_json(&serde_json::json!({
+            "instance": instance,
+            "user": user,
+            "saved": saved,
+        }));
+    }
+    if saved {
+        println!("Web password saved for {user} @ {instance}");
+    } else {
+        println!("No Web password saved for {user} @ {instance}");
+    }
+    Ok(())
+}
+
+fn local_web_key(hostname: &str, user: &str, action: &str) -> Result<Key> {
     if !hostname.contains("://") {
-        return Err(GbError::Config(
-            "Specify the full GitBucket base URL with --hostname.".into(),
-        ));
+        return Err(GbError::Config(format!(
+            "Use the full GitBucket base URL with --hostname to {action}."
+        )));
     }
     Key::new(hostname, user)
 }
