@@ -34,7 +34,7 @@ fn signin(prefix: &str) -> ScriptedResponse {
 }
 
 #[test]
-fn missing_web_password_names_environment_variable_before_signin() {
+fn missing_web_password_names_both_ways_to_supply_it_before_signin() {
     for json_errors in [false, true] {
         let env = GbTestEnv::new();
         let mut script = state_preflight("/bucket");
@@ -49,6 +49,7 @@ fn missing_web_password_names_environment_variable_before_signin() {
         let output = command.args(["issue", "close", "7"]).output().unwrap();
         assert_failure(&output);
         assert!(stderr(&output).contains("Set GB_PASSWORD"));
+        assert!(stderr(&output).contains("gb auth web-login"));
         if json_errors {
             let error: Value = serde_json::from_slice(&output.stderr).unwrap();
             assert_eq!(error["error"]["code"], "web_password_required");
@@ -56,6 +57,154 @@ fn missing_web_password_names_environment_variable_before_signin() {
         }
         assert_eq!(server.join().unwrap().len(), 3);
     }
+}
+
+#[test]
+fn web_status_verifies_the_selected_rest_actor_before_checking_the_store() {
+    let env = GbTestEnv::new();
+    let (port, server) = spawn_scripted_server(vec![token_identity("/bucket")]);
+    let output = env
+        .api_command(format!("127.0.0.1:{port}/bucket"))
+        .env("GB_USER", "other")
+        .args(["--json-errors", "auth", "web-status", "--json"])
+        .output()
+        .unwrap();
+
+    assert_failure(&output);
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["code"], "auth_error");
+    assert!(stderr(&output).contains("REST token belongs to"));
+    assert_eq!(server.join().unwrap().len(), 1);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn web_status_distinguishes_an_unavailable_store_from_a_missing_password() {
+    let env = GbTestEnv::new();
+    let output = env
+        .command()
+        .env_remove("GB_TOKEN")
+        .env_remove("GB_PROFILE")
+        .env("GB_PASSWORD", "not-a-saved-password")
+        .env(
+            "DBUS_SESSION_BUS_ADDRESS",
+            format!("unix:path={}/missing-bus", env.path().display()),
+        )
+        .args([
+            "--json-errors",
+            "auth",
+            "web-status",
+            "--hostname",
+            "https://bucket.example/Deployment",
+            "--user",
+            "Alice",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+
+    assert_failure(&output);
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["error"]["code"], "credential_store_error");
+    assert!(!stderr(&output).contains("not-a-saved-password"));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn web_status_with_an_explicit_instance_and_user_ignores_rest_config() {
+    let env = GbTestEnv::new();
+    std::fs::write(env.path().join("config.toml"), "[broken").unwrap();
+
+    for from_env in [false, true] {
+        let mut command = env.command();
+        command
+            .env_remove("GB_TOKEN")
+            .env("GB_PROFILE", " invalid profile")
+            .env(
+                "DBUS_SESSION_BUS_ADDRESS",
+                format!("unix:path={}/missing-bus", env.path().display()),
+            )
+            .args(["--json-errors", "auth", "web-status", "--user", "Alice"]);
+        if from_env {
+            command.env("GB_HOST", "https://bucket.example/Deployment");
+        } else {
+            command.args(["--hostname", "https://bucket.example/Deployment"]);
+        }
+
+        let output = command.output().unwrap();
+        assert_failure(&output);
+        assert!(output.stdout.is_empty());
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"]["code"], "credential_store_error");
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires an isolated, unlocked Secret Service collection"]
+fn web_status_round_trips_saved_passwords_by_instance() {
+    let env = GbTestEnv::new();
+    let nonce = env.path().file_name().unwrap().to_str().unwrap();
+    let prefix = format!("/Bucket-{nonce}");
+    let (port, server) = spawn_scripted_server(vec![
+        token_identity(&prefix),
+        signin(&prefix),
+        api(&prefix, "GET", "user", "200 OK", json!({"login":"alice"})),
+        token_identity(&prefix),
+    ]);
+    let instance = format!("http://127.0.0.1:{port}{prefix}");
+    let password = "fixture-must-not-be-printed";
+    let command = |target: &str| {
+        let mut command = env.command();
+        command
+            .env_remove("GB_TOKEN")
+            .env_remove("GB_PROFILE")
+            .env_remove("GB_USER")
+            .env("GB_PASSWORD", password)
+            .args(["--json-errors", "--hostname", target, "auth"]);
+        command
+    };
+    let status = |target: &str, user: Option<&str>, saved| {
+        let mut command = command(target);
+        command.args(["web-status", "--json"]);
+        if let Some(user) = user {
+            command.args(["--user", user]);
+        } else {
+            command.env("GB_TOKEN", "test-token");
+        }
+        let output = command.output().unwrap();
+        assert_success(&output);
+        assert!(!stderr(&output).contains(password));
+        assert_eq!(
+            serde_json::from_slice::<Value>(&output.stdout).unwrap(),
+            json!({"instance": target, "user": "alice", "saved": saved})
+        );
+    };
+    status(&instance, Some("Alice"), false);
+
+    let output = command(&instance)
+        .env("GB_TOKEN", "test-token")
+        .arg("web-login")
+        .output()
+        .unwrap();
+    assert_success(&output);
+    status(&instance, Some("ALICE"), true);
+    status(
+        &instance.replace("/Bucket-", "/bucket-"),
+        Some("Alice"),
+        false,
+    );
+    status(&instance, None, true);
+
+    let output = command(&instance)
+        .args(["web-logout", "--user", "Alice"])
+        .output()
+        .unwrap();
+    assert_success(&output);
+    status(&instance, Some("Alice"), false);
+    assert_eq!(server.join().unwrap().len(), 4);
 }
 
 #[test]

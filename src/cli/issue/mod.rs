@@ -2,6 +2,8 @@ use clap::{Args, Subcommand};
 
 use crate::cli::common::normalize_str_vec;
 
+use super::json_output::JsonOutput;
+
 mod read;
 mod write;
 
@@ -27,9 +29,8 @@ pub enum IssueCommand {
             ignore_case = true
         )]
         state: String,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        json: JsonOutput,
         /// Do not use a pager
         #[arg(long)]
         no_pager: bool,
@@ -43,11 +44,10 @@ pub enum IssueCommand {
         #[arg(long, short)]
         comments: bool,
         /// Open in browser
-        #[arg(long, short)]
+        #[arg(long, short, conflicts_with = "json_fields")]
         web: bool,
-        /// Print raw JSON response
-        #[arg(long)]
-        json: bool,
+        #[command(flatten)]
+        json: JsonOutput,
         /// Do not use a pager
         #[arg(long)]
         no_pager: bool,

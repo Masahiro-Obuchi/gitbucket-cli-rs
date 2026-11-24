@@ -15,7 +15,7 @@ pub enum GbError {
     },
     #[error("Interactive input requires terminal stdin/stderr and is disabled with --json-errors. Supply all required options or explicit confirmation flags.")]
     InputRequired,
-    #[error("GitBucket Web sign-in requires a password. Set GB_PASSWORD for this operation.")]
+    #[error("GitBucket Web sign-in requires a password. Set GB_PASSWORD for this operation or run `gb auth web-login` in a terminal to save a password.")]
     WebPasswordRequired,
     #[error("OS credential store: {message}")]
     CredentialStore {

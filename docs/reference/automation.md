@@ -61,6 +61,18 @@ API-backed JSON output preserves the selected response object as JSON values, in
 
 The projection may contain defaults used by existing command logic; these do not create JSON facts. In particular, a missing repository private/fork flag is not printed as false merely because the typed projection has a default. Consumers that relied on formerly synthesized null/false/empty keys should check presence explicitly rather than assuming that the API returned those values.
 
+### Field selection
+
+`pr view`, `pr list`, `pr comment list`, `issue view`, and `issue list` accept `--json-fields` with comma-separated, case-sensitive field names. Dot-separated paths select nested object fields and keep their nesting. Selecting a whole field includes its full value, including any array. Missing fields are omitted and explicitly selected null values are preserved. List arrays keep their order and apply the selection to each object. Use plain `--json` for the full output.
+
+```sh
+gb pr view 42 --json-fields number,title,state,head.sha
+gb issue list --state open --json-fields number,title,user.login
+gb pr comment list 42 --json-fields comments,comment_coverage
+```
+
+Field selection only changes the rendered output. PR lists still hydrate canonical details, and view commands need `--comments` to add comment data. When selecting PR comments, include `comment_coverage` to identify unavailable sources.
+
 ### Selected sources and explicit transformations
 
 PR list JSON continues to use canonical details because the 4.44.0 collection can misidentify fork ownership. Known top-level fields belong to canonical details, including when those fields are absent/null. Unknown top-level collection fields are retained if canonical details do not supply the same key; canonical values win conflicts. Nested head/base/repository data comes from canonical details; unverified summary objects are not merged back into it. Collection ordering, deduplication and complete-traversal guarantees remain unchanged.
@@ -117,7 +129,7 @@ Runtime errors retain their existing `code`, optional `cause`, HTTP `status`, mu
 
 ### Prompts, subprocesses and exit status
 
-With JSON errors enabled, interactive input returns `input_required` with `cause: interactive_input_disabled`, exit 1, before invoking a prompt. Supply the required options and explicit confirmations (`--yes` where supported). A Web sign-in returns `web_password_required` when it has neither `GB_PASSWORD` nor a readable stored password and cannot prompt. Supply `GB_PASSWORD` for the authorized operation. Explicit `gb api --input -` stdin reading remains available and cancellable.
+With JSON errors enabled, interactive input returns `input_required` with `cause: interactive_input_disabled`, exit 1, before invoking a prompt. Supply the required options and explicit confirmations (`--yes` where supported). A Web sign-in returns `web_password_required` when it has neither `GB_PASSWORD` nor a readable stored password and cannot prompt. Supply `GB_PASSWORD` for the authorized operation or save a password using `gb auth web-login` in a terminal. Explicit `gb api --input -` stdin reading remains available and cancellable.
 
 The existing Git adapter captures subprocess stdout/stderr. JSON-error mode suppresses notices and raw Git/pager stderr, leaving one error record. A pager failure returns `pager_failed`, `cause: nonzero_exit`, exit 1, and `child_exit_code` when the OS supplies a numeric status. A signal termination can omit that child code. Other subprocess failures keep their existing error codes.
 

@@ -2,9 +2,10 @@ use colored::Colorize;
 
 use crate::application::pr_comments::{self, PrComments};
 use crate::cli::common::{create_web_session_with_prompt, RepoContext};
+use crate::cli::json_output::JsonOutput;
 use crate::domain::pull_request::CommitId;
 use crate::domain::review_comment::{CommentIdentity, CommentKind, CommentSelection};
-use crate::error::Result;
+use crate::error::{GbError, Result};
 use crate::models::pull_request::PullRequest;
 use crate::output;
 use crate::output::table::format_table;
@@ -15,7 +16,7 @@ pub(super) struct ViewOptions {
     pub show_comments: bool,
     pub selection: CommentSelection,
     pub web: bool,
-    pub json: bool,
+    pub json: JsonOutput,
     pub no_pager: bool,
 }
 
@@ -24,7 +25,7 @@ pub(super) async fn list(
     cli_repo: &Option<String>,
     cli_profile: &Option<String>,
     state: &str,
-    json: bool,
+    json: JsonOutput,
     no_pager: bool,
 ) -> Result<()> {
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
@@ -32,11 +33,11 @@ pub(super) async fn list(
 
     let prs = ctx
         .client
-        .list_repository_pull_requests(&ctx.owner, &ctx.repo, &state, json)
+        .list_repository_pull_requests(&ctx.owner, &ctx.repo, &state, json.enabled())
         .await?;
 
-    if json {
-        return output::page_json(&prs, no_pager);
+    if json.enabled() {
+        return json.page(&prs, no_pager);
     }
 
     let rows: Vec<Vec<String>> = prs
@@ -76,14 +77,14 @@ pub(super) async fn list_comments(
     cli_profile: &Option<String>,
     number: u64,
     selection: CommentSelection,
-    json: bool,
+    json: JsonOutput,
     no_pager: bool,
 ) -> Result<()> {
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
     let (_, head) = load_comment_target(&ctx, number, selection).await?;
     let comments = load_comments(&ctx, cli_profile, number, selection, head.as_ref()).await?;
-    if json {
-        return output::page_json(&comments, no_pager);
+    if json.enabled() {
+        return json.page(&comments, no_pager);
     }
     page_or_print(&format_comments(&comments, selection), no_pager)?;
     Ok(())
@@ -118,7 +119,7 @@ async fn load_comments(
         None
     };
     if crate::cancel::requested() {
-        return Err(crate::error::GbError::Cancelled);
+        return Err(GbError::Cancelled);
     }
     let review = if selection.review() {
         Some(
@@ -152,7 +153,6 @@ async fn load_reviews(
     allow_prompt: bool,
 ) -> Result<pr_comments::ReviewRead> {
     use crate::api::web::review::unavailable;
-    use crate::error::GbError;
 
     let head = head.ok_or_else(|| {
         unavailable(
@@ -205,12 +205,16 @@ fn comment_section<T>(
             let _ = writeln!(text, "--- {label} ({}) ---", comments.len());
         }
         None => {
-            let reason = match reason {
-                Some("web_password_required") => "Set GB_PASSWORD",
-                Some(reason) => reason,
-                None => "unknown cause",
-            };
-            let _ = writeln!(text, "--- {label}: unavailable ({reason}) ---");
+            let reason = reason.unwrap_or("unknown cause");
+            if reason == GbError::WebPasswordRequired.code() {
+                let _ = writeln!(
+                    text,
+                    "--- {label}: unavailable ({}) ---",
+                    GbError::WebPasswordRequired
+                );
+            } else {
+                let _ = writeln!(text, "--- {label}: unavailable ({reason}) ---");
+            }
         }
     }
 }
@@ -315,12 +319,12 @@ pub(super) async fn view(
     } else {
         None
     };
-    if options.json {
+    if options.json.enabled() {
         let mut value = serde_json::to_value(&pr)?;
         if let Some(comments) = &comments {
             output::comments::add_pr(&mut value, comments)?;
         }
-        return output::page_json(&value, options.no_pager);
+        return options.json.page_value(value, options.no_pager);
     }
     let mut text = format_pr_view(&pr);
     if let Some(comments) = comments {

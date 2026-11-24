@@ -30,6 +30,10 @@ impl Key {
         &self.instance
     }
 
+    pub(crate) fn user(&self) -> &str {
+        &self.user
+    }
+
     pub(crate) async fn read(&self) -> Result<Option<String>> {
         let read = tokio::time::timeout(std::time::Duration::from_secs(3), self.read_bytes());
         let value = tokio::select! {
@@ -93,7 +97,10 @@ mod platform {
     use super::{error, Key, Result};
 
     pub async fn read(_: &Key) -> Result<Option<Vec<u8>>> {
-        Ok(None)
+        Err(error(
+            "unsupported",
+            "This platform has no supported credential store.",
+        ))
     }
 
     pub async fn save(_: &Key, _: &[u8]) -> Result<()> {

@@ -57,6 +57,7 @@ Repository deletion requires an explicit target and confirmation. Use `--yes` fo
 ```sh
 gb issue list --state all
 gb issue view 7 --comments --no-pager
+gb issue view 7 --json-fields number,title,state,user.login
 gb issue create --title 'Bug report' --body-file report.md --label bug
 gb issue edit 7 --title 'Updated bug report' --add-label urgent
 gb issue comment 7 --body 'Reproduced'

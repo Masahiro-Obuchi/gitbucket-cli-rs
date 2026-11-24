@@ -8,6 +8,7 @@ pub mod config_output;
 mod editor;
 pub mod issue;
 pub mod issue_like;
+mod json_output;
 pub mod label;
 pub mod milestone;
 pub(crate) mod parse;

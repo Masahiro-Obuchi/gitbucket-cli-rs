@@ -1,6 +1,7 @@
 use colored::Colorize;
 
 use crate::cli::common::RepoContext;
+use crate::cli::json_output::JsonOutput;
 use crate::error::Result;
 use crate::models::issue::Issue;
 use crate::output;
@@ -11,7 +12,7 @@ pub(super) struct ViewOptions {
     pub number: u64,
     pub show_comments: bool,
     pub web: bool,
-    pub json: bool,
+    pub json: JsonOutput,
     pub no_pager: bool,
 }
 
@@ -20,7 +21,7 @@ pub(super) async fn list(
     cli_repo: &Option<String>,
     cli_profile: &Option<String>,
     state: &str,
-    json: bool,
+    json: JsonOutput,
     no_pager: bool,
 ) -> Result<()> {
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
@@ -31,8 +32,8 @@ pub(super) async fn list(
         .list_issues(&ctx.owner, &ctx.repo, &state)
         .await?;
 
-    if json {
-        return output::page_json(&issues, no_pager);
+    if json.enabled() {
+        return json.page(&issues, no_pager);
     }
 
     let rows: Vec<Vec<String>> = issues
@@ -86,7 +87,7 @@ pub(super) async fn view(
         .get_issue(&ctx.owner, &ctx.repo, options.number)
         .await?;
 
-    if options.json {
+    if options.json.enabled() {
         if options.show_comments {
             let comments = ctx
                 .client
@@ -94,9 +95,9 @@ pub(super) async fn view(
                 .await?;
             let mut value = serde_json::to_value(&issue)?;
             output::comments::add_discussion(&mut value, &comments)?;
-            return output::page_json(&value, options.no_pager);
+            return options.json.page_value(value, options.no_pager);
         }
-        return output::page_json(&issue, options.no_pager);
+        return options.json.page(&issue, options.no_pager);
     }
 
     let mut output = format_issue_view(&issue);

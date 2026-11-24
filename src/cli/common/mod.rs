@@ -11,4 +11,4 @@ pub use edit_values::{
 };
 pub use repo_resolution::parse_owner_repo;
 pub use web::{create_web_session, preflight_assignees, update_issue_assignees_via_web};
-pub(crate) use web::{create_web_session_with_prompt, save_web_password};
+pub(crate) use web::{create_web_session_with_prompt, save_web_password, selected_web_user};
