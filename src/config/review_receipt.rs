@@ -108,6 +108,7 @@ pub(crate) fn reserve(
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn reservation_keeps_the_first_baseline_and_refuses_corruption_or_changed_intent() {
         let env = crate::test_support::TestEnv::new();
@@ -127,6 +128,7 @@ mod tests {
         .unwrap();
         assert!(reserve(&key, "fingerprint".into(), Vec::new()).is_err());
     }
+
     #[cfg(unix)]
     #[test]
     fn reservation_refuses_symlink_directories() {

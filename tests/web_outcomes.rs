@@ -13,6 +13,7 @@ fn api(prefix: &str, method: &str, path: &str, status: &str, value: Value) -> Sc
 }
 
 const ISSUE: &str = "repos/alice/project/issues/7";
+
 fn issue(state: &str) -> Value {
     json!({"number":7,"title":"Old","body":"old body","state":state})
 }

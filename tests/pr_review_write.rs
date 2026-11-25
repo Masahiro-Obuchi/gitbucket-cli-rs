@@ -7,9 +7,11 @@ use support::{
         spawn_scripted_server, with_verified_web_session, CapturedRequest, ScriptedResponse,
     },
 };
+
 const PR: &str = "/bucket/api/v3/repos/alice/project/pulls/1";
 const WEB: &str = "/bucket/alice/project/pull/1";
 const EDIT: &str = "/bucket/alice/project/commit_comments/_data/1?dataType=html";
+
 #[cfg(unix)]
 #[test]
 fn editor_fixture() {

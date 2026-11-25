@@ -4,10 +4,12 @@ use support::{
     gb_cmd::{assert_failure, assert_success, GbTestEnv},
     mock_http::{spawn_scripted_server, with_verified_web_session, ScriptedResponse},
 };
+
 const PR: &str = "/bucket/api/v3/repos/alice/project/pulls/1";
 const DISCUSSION: &str = "/bucket/api/v3/repos/alice/project/issues/1/comments?per_page=100";
 const WEB: &str = "/bucket/alice/project/pull/1";
 const PAGE: &str = include_str!("fixtures/gitbucket-4.44-review-conversation.html");
+
 fn pr(sha: &str) -> Value {
     json!({"number":1,"title":"PR","state":"open","head":{"ref":"topic","sha":sha},"base":{"ref":"main"}})
 }

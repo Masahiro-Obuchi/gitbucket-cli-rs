@@ -65,6 +65,7 @@ pub(crate) async fn save_web_password(credential: &ResolvedCredential) -> Result
         credential.protocol(),
     )
     .await?;
+
     Key::new(&credential.instance, session.principal())?
         .save(&password)
         .await?;

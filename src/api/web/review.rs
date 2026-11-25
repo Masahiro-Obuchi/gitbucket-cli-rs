@@ -384,8 +384,10 @@ pub(crate) fn parse_conversation(
 #[cfg(test)]
 mod tests {
     use super::*;
+
     const PAGE: &str =
         include_str!("../../../tests/fixtures/gitbucket-4.44-review-conversation.html");
+
     fn parse(page: &str, base: &str) -> Result<Vec<ReviewComment>> {
         parse_conversation(
             page,
@@ -396,6 +398,7 @@ mod tests {
             &CommitId::parse(&"a".repeat(40)).unwrap(),
         )
     }
+
     #[test]
     fn reads_captured_inline_old_new_group_and_whole_commit_without_inventing_originals() {
         for base in [
@@ -441,6 +444,7 @@ mod tests {
                 && row.updated_at.is_none()));
         }
     }
+
     #[test]
     fn outdated_commit_is_unknown_and_rendered_content_cannot_spoof_another_record() {
         let page = PAGE.replacen("commit-comment-box inline-comment", "commit-comment-box", 1);
@@ -453,6 +457,7 @@ mod tests {
         );
         assert_eq!(parse(&page, "https://example.test").unwrap().len(), 5);
     }
+
     #[test]
     fn review_paths_keep_significant_whitespace_and_decoded_entities() {
         for path in [
@@ -475,6 +480,7 @@ mod tests {
             assert_eq!(rows.len(), 5);
         }
     }
+
     #[test]
     fn unrecognized_sibling_review_cannot_be_silently_omitted() {
         let page = PAGE.replace(
@@ -489,6 +495,7 @@ mod tests {
             })
         ));
     }
+
     #[test]
     fn rejects_unknown_or_ambiguous_layouts_and_invalid_positions_without_partial_records() {
         for page in [
@@ -512,6 +519,7 @@ mod tests {
             assert!(parse(&page, "https://example.test").is_err());
         }
     }
+
     #[test]
     fn zero_reviews_requires_the_conversation_identity_and_body() {
         let doc = Html::parse_document(PAGE);
@@ -534,6 +542,7 @@ mod tests {
 #[cfg(test)]
 mod optional_position_tests {
     use super::*;
+
     #[test]
     fn file_level_and_two_sided_display_values_are_kept_without_inventing_validation() {
         let page = include_str!("../../../tests/fixtures/gitbucket-4.44-review-conversation.html");

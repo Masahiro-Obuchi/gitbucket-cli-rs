@@ -7,6 +7,7 @@ use support::mock_http::{spawn_scripted_server, ScriptedResponse};
 const HEAD: &str = "1111111111111111111111111111111111111111";
 const OTHER: &str = "2222222222222222222222222222222222222222";
 const MERGE: &str = "3333333333333333333333333333333333333333";
+
 fn pr() -> Value {
     json!({"number":5,"title":"PR","state":"open","merged":false,"draft":false,"mergeable":null,"head":{"ref":"topic","sha":HEAD},"base":{"ref":"main","repo":{"name":"project","full_name":"alice/project"}}})
 }

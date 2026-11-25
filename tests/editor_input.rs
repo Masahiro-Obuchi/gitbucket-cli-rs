@@ -54,6 +54,7 @@ mod terminal {
         gb_cmd::{assert_failure, assert_success},
         mock_http::{spawn_scripted_server, ScriptedResponse},
     };
+
     fn response(method: &str, path: &str, body: Value) -> ScriptedResponse {
         ScriptedResponse::json(
             &format!("{method} /api/v3/{path} HTTP/1.1"),

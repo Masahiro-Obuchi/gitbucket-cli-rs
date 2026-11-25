@@ -196,6 +196,7 @@ pub(super) async fn run(
             crate::cli::input::comment_seed(crate::cli::input::BodyInput::Editor, &seed).await?;
         body = Some(normalized_body(&text)?);
     }
+
     let result = match request.action {
         Action::Create | Action::Reply => {
             writer
@@ -220,6 +221,7 @@ pub(super) async fn run(
                 .await?
         }
     };
+
     if request.json {
         crate::output::print_json(&result)?;
     } else {

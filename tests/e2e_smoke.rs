@@ -7,6 +7,7 @@ mod support;
 #[cfg(unix)]
 #[path = "support/editor.rs"]
 mod editor;
+
 #[cfg(unix)]
 #[test]
 fn editor_fixture() {

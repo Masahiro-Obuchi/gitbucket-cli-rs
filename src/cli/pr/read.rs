@@ -82,6 +82,7 @@ pub(super) async fn list_comments(
 ) -> Result<()> {
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
     let (_, head) = load_comment_target(&ctx, number, selection).await?;
+
     let comments = load_comments(&ctx, cli_profile, number, selection, head.as_ref()).await?;
 
     if json.enabled() {

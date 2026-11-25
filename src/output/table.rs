@@ -63,6 +63,7 @@ pub fn format_table(headers: &[&str], rows: &[Vec<String>]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn unicode_cells_align_and_do_not_inject_rows_or_terminal_commands() {
         let result = format_table(

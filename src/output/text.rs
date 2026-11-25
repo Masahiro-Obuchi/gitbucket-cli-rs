@@ -91,6 +91,7 @@ pub(super) fn truncate(s: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn escapes_terminal_commands_but_keeps_limited_decoration_and_body_lines() {
         assert_eq!(
@@ -101,6 +102,7 @@ mod tests {
         assert!(!human("\x1b[8mhidden\x1b[?25l").contains('\x1b'));
         assert_eq!(cell("a\n\tb\rc"), "a\\n\\tb\\rc");
     }
+
     #[test]
     fn unicode_width_and_truncation_keep_graphemes_whole() {
         assert_eq!(width("日本e\u{301}👩‍💻"), 7);
