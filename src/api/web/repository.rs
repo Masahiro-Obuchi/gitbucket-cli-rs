@@ -74,13 +74,16 @@ pub(crate) fn verify_parent_html(page: &str, base: &str, target: &str, source: &
 #[cfg(test)]
 mod tests {
     use super::*;
+
     const PAGE: &str = include_str!("../../../tests/fixtures/gitbucket-4.44-fork-header.html");
+
     #[test]
     fn verifies_immediate_parent_with_root_relative_proxy_links() {
         for base in ["https://example.test", "https://example.test/gitbucket"] {
             verify_parent_html(PAGE, base, "alice/project", "bob/project").unwrap();
         }
     }
+
     #[test]
     fn verifies_links_when_owner_matches_the_deployment_prefix() {
         for base in ["https://example.test/alice", "https://example.test/bob"] {
@@ -92,6 +95,7 @@ mod tests {
             verify_parent_html(&page, base, "alice/project", "bob/project").unwrap();
         }
     }
+
     #[test]
     fn compares_encoded_urls_for_unicode_repository_names() {
         let page = PAGE
@@ -106,6 +110,7 @@ mod tests {
         )
         .unwrap();
     }
+
     #[test]
     fn rejects_foreign_links_changed_parent_and_ambiguous_or_missing_headers() {
         for base in [

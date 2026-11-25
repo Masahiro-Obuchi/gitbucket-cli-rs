@@ -14,6 +14,7 @@ fn response(path: &str, value: &Value) -> ScriptedResponse {
         &value.to_string(),
     )
 }
+
 fn run(script: Vec<ScriptedResponse>, args: &[&str]) -> std::process::Output {
     let env = GbTestEnv::new();
     let (port, server) = spawn_scripted_server(script);
@@ -25,16 +26,20 @@ fn run(script: Vec<ScriptedResponse>, args: &[&str]) -> std::process::Output {
     server.join().unwrap();
     output
 }
+
 fn value(output: &std::process::Output) -> Value {
     assert_success(output);
     serde_json::from_slice(&output.stdout).unwrap()
 }
+
 fn issue() -> Value {
     json!({"number":7,"title":"日本語 Issue","state":"open"})
 }
+
 fn pr() -> Value {
     json!({"number":7,"title":"Draft PR","state":"open"})
 }
+
 fn details() -> Value {
     json!([{"id":51,"body":"本文","future_comment":true}])
 }

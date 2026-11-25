@@ -10,6 +10,7 @@ pub(crate) enum CommentSelection {
     #[default]
     All,
 }
+
 impl std::str::FromStr for CommentSelection {
     type Err = GbError;
     fn from_str(value: &str) -> Result<Self> {
@@ -23,6 +24,7 @@ impl std::str::FromStr for CommentSelection {
         }
     }
 }
+
 impl CommentSelection {
     pub fn discussion(self) -> bool {
         self != Self::Review
@@ -39,6 +41,7 @@ pub(crate) enum CommentKind {
     Inline,
     Commit,
 }
+
 impl std::fmt::Display for CommentKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
@@ -48,6 +51,7 @@ impl std::fmt::Display for CommentKind {
         })
     }
 }
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub(crate) struct CommentIdentity {
     pub instance: String,
@@ -55,6 +59,7 @@ pub(crate) struct CommentIdentity {
     pub repository: String,
     pub id: u64,
 }
+
 impl std::fmt::Display for CommentIdentity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -64,6 +69,7 @@ impl std::fmt::Display for CommentIdentity {
         )
     }
 }
+
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct RenderedBody {
     pub format: &'static str,
@@ -71,6 +77,7 @@ pub(crate) struct RenderedBody {
     pub text: String,
     pub markdown: Option<String>,
 }
+
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct ReviewPosition {
     pub source: &'static str,
@@ -84,12 +91,14 @@ pub(crate) struct ReviewPosition {
     pub original_new_line: Option<u64>,
     pub outdated: Option<bool>,
 }
+
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct ReviewThread {
     pub id: String,
     pub relation: &'static str,
     pub in_reply_to: Option<CommentIdentity>,
 }
+
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct ReviewComment {
     pub identity: CommentIdentity,

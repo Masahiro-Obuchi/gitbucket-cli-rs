@@ -92,6 +92,7 @@ pub async fn run(
         if args.global {
             AuthConfig::default().scope(cli_profile.as_deref(), true)?;
         }
+
         return local_web_status(hostname, user, *json).await;
     }
 
@@ -131,6 +132,7 @@ pub async fn run(
             let hostname = web_hostname(&config, cli_hostname, &scope)?;
             let key = local_web_key(&hostname, &user, "remove a Web password")?;
             let instance = key.instance();
+
             if key.delete().await? {
                 println!("Removed Web password for {user} @ {instance}");
             } else {
@@ -140,9 +142,11 @@ pub async fn run(
         }
         AuthCommand::WebStatus { user, json } => {
             let hostname = web_hostname(&config, cli_hostname, &scope)?;
+
             if let Some(user) = user {
                 return local_web_status(&hostname, &user, json).await;
             }
+
             let credential = config.credential(&hostname, &scope)?;
             let user = super::common::selected_web_user(&credential).await?;
             print_web_status(Key::new(&credential.instance, &user)?, json).await
@@ -158,6 +162,7 @@ async fn local_web_status(hostname: &str, user: &str, json: bool) -> Result<()> 
 async fn print_web_status(key: Key, json: bool) -> Result<()> {
     let saved = key.read().await?.is_some();
     let (instance, user) = (key.instance(), key.user());
+
     if json {
         return crate::output::print_json(&serde_json::json!({
             "instance": instance,
@@ -165,6 +170,7 @@ async fn print_web_status(key: Key, json: bool) -> Result<()> {
             "saved": saved,
         }));
     }
+
     if saved {
         println!("Web password saved for {user} @ {instance}");
     } else {

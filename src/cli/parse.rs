@@ -35,6 +35,7 @@ pub(crate) fn cause(kind: ErrorKind) -> &'static str {
 #[cfg(test)]
 mod tests {
     use clap::CommandFactory;
+
     #[test]
     fn cli_values_do_not_consume_option_like_tokens_without_an_equals_or_terminator() {
         // If a command begins accepting arbitrary hyphenated/trailing values,

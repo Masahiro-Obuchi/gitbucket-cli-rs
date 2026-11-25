@@ -26,6 +26,7 @@ const ISSUE: &str = "repos/alice/project/issues/5";
 fn current() -> Value {
     json!({"number":5,"title":"Old title","body":"keep original body","state":"open","merged":false})
 }
+
 fn issue(names: &[&str]) -> Value {
     json!({"number":5,"title":"Old title","body":"keep original body","state":"open","pull_request":{},"assignees":names.iter().map(|name|json!({"login":name})).collect::<Vec<_>>()})
 }

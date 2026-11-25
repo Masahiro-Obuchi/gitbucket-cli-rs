@@ -22,11 +22,13 @@ impl Item for crate::models::issue::Issue {
         self.number
     }
 }
+
 impl Item for crate::models::pull_request::PullRequest {
     fn id(&self) -> u64 {
         self.number
     }
 }
+
 impl Item for crate::models::comment::Comment {
     fn id(&self) -> u64 {
         self.id

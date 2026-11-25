@@ -65,6 +65,7 @@ pub(crate) struct SourceCoverage {
     pub kind: &'static str,
     pub reason: Option<&'static str>,
 }
+
 #[derive(Serialize)]
 pub(crate) struct CommentCoverage {
     pub instance: String,
@@ -78,6 +79,7 @@ pub(crate) struct CommentCoverage {
     pub review_access: &'static str,
     pub head_commit_id: Option<String>,
 }
+
 #[derive(Serialize)]
 pub(crate) struct PrComments {
     pub comments: Option<Vec<Comment>>,

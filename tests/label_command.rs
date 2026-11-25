@@ -170,6 +170,7 @@ fn label_delete_sends_delete_request_when_yes_is_used() {
 fn label(name: &str, color: &str) -> Value {
     json!({"name":name,"color":color})
 }
+
 fn response(method: &str, path: &str, status: &str, body: &Value) -> ScriptedResponse {
     ScriptedResponse::json(
         &format!("{method} /bucket/api/v3/repos/alice/project/labels{path} HTTP/1.1"),
@@ -177,16 +178,19 @@ fn response(method: &str, path: &str, status: &str, body: &Value) -> ScriptedRes
         &body.to_string(),
     )
 }
+
 fn page(name: &str, id: u64) -> String {
     let query = url::form_urlencoded::Serializer::new(String::new())
         .append_pair("labels", name)
         .finish();
     format!("<table><tr id='label-row-{id}'><td><a id='label-row-content-{id}' href='/bucket/alice/project/issues?{query}'>label</a></td></tr></table>")
 }
+
 fn edit_form(name: &str, color: &str, id: u64) -> String {
     let name = name.replace('&', "&amp;").replace('"', "&quot;");
     format!("<div id='edit-label-area-{id}'><input id='labelName-{id}' value=\"{name}\"><input id='labelColor-{id}' value='#{color}'></div>")
 }
+
 fn signin() -> ScriptedResponse {
     ScriptedResponse::html("POST /bucket/signin HTTP/1.1", "200 OK", "signed in")
         .with_header("set-cookie", "JSESSIONID=labels; Path=/; HttpOnly")

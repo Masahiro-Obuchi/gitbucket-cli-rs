@@ -93,6 +93,7 @@ impl Drop for TerminalState {
 }
 
 struct Child(Box<dyn ChildWrapper>, bool);
+
 impl Drop for Child {
     fn drop(&mut self) {
         // Do not signal a reaped Unix PID: it can already have been reused.

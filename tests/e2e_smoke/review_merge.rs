@@ -9,6 +9,7 @@ fn client() -> Client {
         .build()
         .unwrap()
 }
+
 async fn request(
     client: &Client,
     method: Method,
@@ -29,11 +30,13 @@ async fn request(
     }
     request.send().await.unwrap()
 }
+
 async fn stored(client: &Client, path: &str) -> Value {
     let response = request(client, Method::GET, path, None).await;
     assert_eq!(response.status(), StatusCode::OK);
     response.json().await.unwrap()
 }
+
 fn cli(temp: &std::path::Path, args: &[&str]) -> std::process::Command {
     let mut command = gb_command();
     command.current_dir(temp).args(args);
@@ -42,6 +45,7 @@ fn cli(temp: &std::path::Path, args: &[&str]) -> std::process::Command {
     }
     command
 }
+
 async fn fixture(temp: &std::path::Path, client: &Client, prefix: &str, draft: bool) -> String {
     let (_, branch, _) = create_live_pr_fixture(temp, prefix);
     let work = temp.join(format!("work-{branch}"));

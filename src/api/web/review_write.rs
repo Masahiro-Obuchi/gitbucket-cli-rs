@@ -179,6 +179,7 @@ fn submission_id(page: &str) -> Result<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn reads_escaped_original_markdown_only_from_the_identified_edit_form() {
         let form = "<textarea name=content>&lt;raw&gt; **本文**\nnext</textarea><input class=update-comment-7 value='Update comment'>";

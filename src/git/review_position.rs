@@ -239,12 +239,14 @@ fn line_in_patch(patch: &str, path: &str, wanted: u64, side: Side) -> Result<Ver
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn oversized_patch_is_rejected_from_metadata_before_loading_it_into_memory() {
         let mut file = tempfile::tempfile().unwrap();
         file.set_len(MAX_INLINE_PATCH_BYTES + 1).unwrap();
         assert!(read_patch(&mut file).is_err());
     }
+
     #[test]
     fn maps_insert_delete_and_context_without_treating_patch_offsets_as_line_numbers() {
         let patch = "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -8,2 +8,2 @@\n same\n-old\n+new\n";

@@ -15,15 +15,19 @@ fn response(path: &str, value: Value) -> ScriptedResponse {
         &value.to_string(),
     )
 }
+
 fn item(id: u64) -> Value {
     json!({"number":id,"title":format!("Item {id}"),"state":"open"})
 }
+
 fn pr(id: u64, branch: &str) -> Value {
     json!({"number":id,"title":format!("PR {id}"),"state":"open","head":{"ref":branch,"repo":{"name":"project","full_name":"alice/project"}},"base":{"ref":"main","repo":{"name":"project","full_name":"alice/project"}}})
 }
+
 fn comment(id: u64) -> Value {
     json!({"id":id,"body":format!("comment-{id}"),"user":{"login":"alice"}})
 }
+
 fn error(output: &std::process::Output) -> Value {
     assert_failure(output);
     assert!(output.stdout.is_empty());

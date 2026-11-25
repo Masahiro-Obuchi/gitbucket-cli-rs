@@ -339,6 +339,7 @@ fn issue_edit_rejects_invalid_state() {
 fn initial_issue() -> Value {
     json!({"number":7,"title":"Bug report","body":"Body text","state":"open","labels":[{"name":"bug"}],"assignees":[{"login":"alice"}],"milestone":null})
 }
+
 fn item(method: &str, prefix: &str, value: &Value) -> ScriptedResponse {
     ScriptedResponse::json(
         &format!("{method} {prefix}/api/v3/repos/alice/project/issues/7 HTTP/1.1"),
@@ -346,6 +347,7 @@ fn item(method: &str, prefix: &str, value: &Value) -> ScriptedResponse {
         &value.to_string(),
     )
 }
+
 fn labels_response(method: &str, prefix: &str, suffix: &str, value: &Value) -> ScriptedResponse {
     ScriptedResponse::json(
         &format!("{method} {prefix}/api/v3/repos/alice/project/issues/7/labels{suffix} HTTP/1.1"),
@@ -353,9 +355,11 @@ fn labels_response(method: &str, prefix: &str, suffix: &str, value: &Value) -> S
         &value.to_string(),
     )
 }
+
 fn repo_label(name: &str) -> ScriptedResponse {
     repo_label_at("", name)
 }
+
 fn repo_label_at(prefix: &str, name: &str) -> ScriptedResponse {
     ScriptedResponse::json(
         &format!("GET {prefix}/api/v3/repos/alice/project/labels/{name} HTTP/1.1"),

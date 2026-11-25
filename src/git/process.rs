@@ -31,6 +31,7 @@ impl GitCommandExt for Command {
 }
 
 struct Guard(Box<dyn ChildWrapper>, bool);
+
 impl Guard {
     fn terminate(&mut self) -> io::Result<()> {
         let killed = self.0.start_kill();
@@ -47,6 +48,7 @@ impl Guard {
         Ok(())
     }
 }
+
 impl Drop for Guard {
     fn drop(&mut self) {
         if self.1 {

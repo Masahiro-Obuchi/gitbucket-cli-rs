@@ -24,6 +24,7 @@ pub(crate) async fn create_web_session_with_prompt(
 ) -> Result<GitBucketWebSession> {
     let credential = resolve_credential(hostname, cli_profile)?;
     let (username, api_user) = web_actor(client, &credential.host.user).await?;
+
     let password = match password_from_env() {
         Some(password) => password,
         None => match Key::new(&credential.instance, &username)?.read().await {
@@ -41,6 +42,7 @@ pub(crate) async fn create_web_session_with_prompt(
         credential.protocol(),
     )
     .await?;
+
     eprintln!(
         "Notice: Web actor {}; REST actor {}.",
         session.principal(),
@@ -55,6 +57,7 @@ pub(crate) async fn save_web_password(credential: &ResolvedCredential) -> Result
         Some(password) => password,
         None => prompt_password(&username).await?,
     };
+
     let session = GitBucketWebSession::sign_in(
         &credential.instance,
         &username,
@@ -62,9 +65,11 @@ pub(crate) async fn save_web_password(credential: &ResolvedCredential) -> Result
         credential.protocol(),
     )
     .await?;
+
     Key::new(&credential.instance, session.principal())?
         .save(&password)
         .await?;
+
     println!(
         "Saved Web password for {} @ {}",
         session.principal(),
@@ -98,6 +103,7 @@ async fn web_actor(client: &ApiClient, saved_user: &str) -> Result<(String, Stri
     if !username.is_empty() {
         crate::target::validate_component(&username)?;
     }
+
     let api_user = client.current_user().await?;
     let username = if username.is_empty() {
         api_user.login.clone()
