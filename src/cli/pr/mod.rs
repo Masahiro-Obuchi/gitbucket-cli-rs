@@ -257,6 +257,9 @@ pub enum PrCommentCommand {
     Delete(ReviewTargetArgs),
     /// List comments on a pull request
     #[command(
+        mut_arg("json_fields", |arg| arg.help(
+            "Output only these JSON fields (comma-separated, e.g. comments,comment_coverage)"
+        )),
         after_long_help = "The default shows discussion and visible reviews. JSON reports coverage for both sources. For private reviews, use gb auth web-login or set GB_PASSWORD."
     )]
     List {

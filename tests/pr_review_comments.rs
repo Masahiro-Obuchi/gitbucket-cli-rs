@@ -401,6 +401,25 @@ fn kind_help_advertises_all_as_the_default() {
 }
 
 #[test]
+fn comment_list_help_uses_comment_json_fields() {
+    let env = GbTestEnv::new();
+
+    for help in ["-h", "--help"] {
+        let output = env
+            .command()
+            .args(["pr", "comment", "list", help])
+            .output()
+            .unwrap();
+        assert_success(&output);
+
+        let text = String::from_utf8_lossy(&output.stdout);
+        assert!(text.contains("--json-fields"), "{text}");
+        assert!(text.contains("comments,comment_coverage"), "{text}");
+        assert!(!text.contains("title,user.login"), "{text}");
+    }
+}
+
+#[test]
 fn default_all_preserves_reviews_when_discussion_fails() {
     let env = GbTestEnv::new();
     let raw = pr(&"a".repeat(40));
