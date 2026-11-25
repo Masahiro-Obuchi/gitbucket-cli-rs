@@ -20,6 +20,23 @@ If the requested profile is unclear, `gb config list --json` can show saved defa
 
 For an issue change, read the issue and any referenced labels, assignees, or milestone first. A non-null `pull_request` field in the Issue API response identifies a PR. If the resource type is unclear, verify it before changing it. Once the requested effect is authorized, use the narrow operation. For example, `issue edit 7 --add-label triage` adds one existing label while leaving unrelated labels in place. The readback is `issue view 7 --json --no-pager` on the same target.
 
+## Check a saved Web password
+
+For a confirmed Web username and full instance URL, check the local store independently of the REST configuration.
+
+```sh
+web_user='alice'
+gb -H "$host" --json-errors auth web-status --user "$web_user" --json
+```
+
+Read `instance`, `user`, and `saved` on success. A successful `saved: false` means the entry is absent. A `credential_store_error` leaves its presence unknown. The check reports local storage and ignores `GB_PASSWORD`.
+
+To resolve the Web username through REST, use the same instance, profile, and credential environment as the online status check. Check the returned `user` against the intended Web account. Use `GB_WEB_USER` for a different Web account only when the user has authorized it.
+
+```sh
+gb -H "$host" --profile "$profile" --json-errors auth web-status --json
+```
+
 ## Create a PR from a published branch
 
 Verify the base repository and the published head selected by the user. An explicit `--head BRANCH` selects a published branch in the base repository. `--head OWNER:BRANCH` selects a published branch in the named owner's repository of the same name, which can be a fork. To use the current local branch, omit `--head` and let `gb` verify that the local commit matches the published ref. Omit `--base` to use the target repository's default branch. Keep any Git push within the authorized task.
@@ -43,6 +60,15 @@ gb -H "$host" -R "$repo" --profile "$profile" --json-errors pr diff 42 --no-page
 ```
 
 The comment list object has `comments` for ordinary discussion, `review_comments` for the visible Web conversation, and `comment_coverage` describing what was requested and read. In `pr view --comments --json`, fetched discussion appears in `comment_details`. The original API `comments` field retains its own value. A successful visible-conversation read can leave historical completeness, original positions, and original Markdown unknown. Explain these limits when they affect the requested review. An empty array represents zero results. If coverage is `unavailable`, report the missing source and its reason.
+
+Use `--json-fields` to select what the CLI prints. Nested paths keep their object structure, and missing fields are omitted. When selecting comment arrays, include `comment_coverage`. Use `--kind discussion` to fetch only discussion.
+
+```sh
+gb -H "$host" -R "$repo" --profile "$profile" --json-errors pr view 42 \
+  --json-fields number,base.sha,head.sha --no-pager
+gb -H "$host" -R "$repo" --profile "$profile" --json-errors pr comment list 42 \
+  --kind discussion --json-fields comments,comment_coverage --no-pager
+```
 
 `pr diff` prints a raw patch against the saved base and head commits. It requires a local Git repository and may fetch and retain Git objects. A private HTTP(S) Git fetch with `GB_TOKEN` also needs the matching `GB_USER`. SSH uses the local Git credentials. Capture large patches directly to a file. `pr checkout` changes local workspace state and belongs to an authorized checkout task.
 
