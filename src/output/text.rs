@@ -46,6 +46,7 @@ fn sanitize(s: &str, multiline: bool) -> String {
 pub(super) fn human(s: &str) -> String {
     sanitize(s, true)
 }
+
 pub(super) fn cell(s: &str) -> String {
     sanitize(s, false)
 }

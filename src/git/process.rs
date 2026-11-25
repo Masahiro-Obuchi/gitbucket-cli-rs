@@ -47,6 +47,7 @@ impl Guard {
         Ok(())
     }
 }
+
 impl Drop for Guard {
     fn drop(&mut self) {
         if self.1 {

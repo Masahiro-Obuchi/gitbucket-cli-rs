@@ -9,6 +9,7 @@ struct AuthStatusOutput {
     offline: bool,
     effective_actor: Option<Actor>,
 }
+
 #[derive(Serialize)]
 struct Actor {
     host: String,
@@ -20,12 +21,14 @@ struct Actor {
     verification: &'static str,
     error: Option<VerificationError>,
 }
+
 #[derive(Serialize)]
 struct VerificationError {
     code: &'static str,
     status: Option<u16>,
     cause: Option<&'static str>,
 }
+
 pub(crate) async fn print_status(
     config: &AuthConfig,
     cli_hostname: &Option<String>,
@@ -51,6 +54,7 @@ pub(crate) async fn print_status(
                     verification: "offline",
                     error: None,
                 };
+
                 if !offline {
                     let probe = async {
                         let client = crate::api::client::ApiClient::new(
@@ -67,6 +71,7 @@ pub(crate) async fn print_status(
                         Ok(user.login.clone())
                     }
                     .await;
+
                     match probe {
                         Ok(user) => {
                             selected.user = Some(user);
@@ -93,11 +98,13 @@ pub(crate) async fn print_status(
             Err(error) => return Err(error),
         }
     }
+
     let output = AuthStatusOutput {
         active_profile: scope.profile().map(str::to_string),
         offline,
         effective_actor: actor,
     };
+
     // Status data is also emitted after a failed probe. Preserve that earlier
     // authentication error if writing the status record fails as well.
     let written = if json {
@@ -106,6 +113,7 @@ pub(crate) async fn print_status(
         print_text(&output);
         Ok(())
     };
+
     if let Some(error) = failure {
         return Err(error);
     }

@@ -102,9 +102,11 @@ fn inline_editor_creates_and_edits_using_verified_raw_seed_without_changing_rout
         );
     }
 }
+
 fn html(method: &str, path: &str, status: &str, body: &str) -> ScriptedResponse {
     ScriptedResponse::html(&format!("{method} {path} HTTP/1.1"), status, body)
 }
+
 fn get_pr(base: &str, head: &str) -> ScriptedResponse {
     let value = json!({
         "number": 1,
@@ -115,9 +117,11 @@ fn get_pr(base: &str, head: &str) -> ScriptedResponse {
     });
     ScriptedResponse::json(&format!("GET {PR} HTTP/1.1"), "200 OK", &value.to_string())
 }
+
 fn edit_form(id: u64, body: &str) -> String {
     format!("<textarea name=content>{body}</textarea><input class=update-comment-{id} value='Update comment'>")
 }
+
 fn page(with_review: bool, author: &str) -> String {
     let fragment = fragment()
         .replace("/alice\"", "/AUTHOR\"")
@@ -130,6 +134,7 @@ fn page(with_review: bool, author: &str) -> String {
     };
     format!("<ul id=pullreq-tab><li class=active><a href='/alice/project/pull/1'>Conversation</a></li></ul><div id=comment-list><div class='panel issue-comment-box'><div id=issueContent>PR</div></div>{reviews}</div>")
 }
+
 fn fragment() -> String {
     use scraper::{Html, Selector};
     Html::parse_document(include_str!(
@@ -140,6 +145,7 @@ fn fragment() -> String {
     .unwrap()
     .html()
 }
+
 fn fixture() -> (GbTestEnv, String, String) {
     let env = GbTestEnv::new();
     init_work_repo(env.path());
@@ -153,6 +159,7 @@ fn fixture() -> (GbTestEnv, String, String) {
     let head = git_output(env.path(), &["rev-parse", "HEAD"]);
     (env, base, head)
 }
+
 fn script(base: &str, head: &str, mode: &str) -> Vec<ScriptedResponse> {
     let pr = || get_pr(base, head);
     let mut frames = vec![
@@ -224,9 +231,11 @@ fn script(base: &str, head: &str, mode: &str) -> Vec<ScriptedResponse> {
     }
     with_verified_web_session(frames)
 }
+
 fn invoke(env: &GbTestEnv, port: u16, extra: &[&str]) -> std::process::Output {
     invoke_at(env, port, extra, env.path())
 }
+
 fn invoke_at(
     env: &GbTestEnv,
     port: u16,
@@ -237,6 +246,7 @@ fn invoke_at(
         .output()
         .unwrap()
 }
+
 fn inline_command(
     env: &GbTestEnv,
     port: u16,
@@ -301,6 +311,7 @@ fn root_relative_literal_path_is_verified_from_a_subdirectory() {
     assert_success(&output);
     assert_eq!(posts(&server.join().unwrap()), 1);
 }
+
 fn posts(requests: &[CapturedRequest]) -> usize {
     requests
         .iter()
@@ -564,6 +575,7 @@ fn closing_or_merging_the_pr_before_submission_prevents_a_new_inline_write() {
         assert_eq!(posts(&server.join().unwrap()), 0);
     }
 }
+
 #[test]
 fn ambiguous_response_is_reconciled_once_without_reposting() {
     let (env, base, head) = fixture();
@@ -572,6 +584,7 @@ fn ambiguous_response_is_reconciled_once_without_reposting() {
     assert_success(&output);
     assert_eq!(posts(&server.join().unwrap()), 1);
 }
+
 #[test]
 fn rejection_or_failed_verification_never_reports_success_and_retains_transport_failure() {
     for mode in [
@@ -609,6 +622,7 @@ fn rejection_or_failed_verification_never_reports_success_and_retains_transport_
         );
     }
 }
+
 #[test]
 fn pending_intent_is_only_reconciled_on_retry_and_never_resubmitted() {
     let (env, base, head) = fixture();
@@ -634,6 +648,7 @@ fn pending_intent_is_only_reconciled_on_retry_and_never_resubmitted() {
     );
     assert_eq!(posts(&server.join().unwrap()), 1);
 }
+
 #[test]
 fn invalid_line_path_or_expected_commit_fails_before_web_authentication() {
     for extra in [
@@ -695,6 +710,7 @@ fn binary_non_utf8_symlink_and_submodule_targets_fail_before_web_authentication(
         assert_eq!(posts(&server.join().unwrap()), 0);
     }
 }
+
 #[test]
 fn inline_operations_require_explicit_kind_id_and_web_without_touching_the_network() {
     for args in [
@@ -750,6 +766,7 @@ fn identified(env: &GbTestEnv, port: u16, action: &str) -> std::process::Output 
     }
     command.output().unwrap()
 }
+
 #[test]
 fn explicit_id_never_edits_another_author_outdated_or_nonexistent_review() {
     for mode in [
@@ -791,6 +808,7 @@ fn explicit_id_never_edits_another_author_outdated_or_nonexistent_review() {
         assert_eq!(posts(&server.join().unwrap()), 0);
     }
 }
+
 #[test]
 fn edit_confirms_raw_markdown_and_delete_requires_both_absence_and_404() {
     for mode in [
@@ -883,6 +901,7 @@ fn editing_an_already_matching_body_is_read_only() {
     assert_eq!(result["reused"], true);
     assert_eq!(posts(&server.join().unwrap()), 0);
 }
+
 #[test]
 fn reply_to_another_author_adds_at_the_validated_group_and_does_not_edit_the_parent() {
     let (env, base, head) = fixture();

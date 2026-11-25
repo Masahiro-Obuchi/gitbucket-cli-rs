@@ -11,6 +11,7 @@ const PAGE: &str = include_str!("fixtures/gitbucket-4.44-review-conversation.htm
 fn pr(sha: &str) -> Value {
     json!({"number":1,"title":"PR","state":"open","head":{"ref":"topic","sha":sha},"base":{"ref":"main"}})
 }
+
 fn get(path: &str, value: &Value) -> ScriptedResponse {
     ScriptedResponse::json(
         &format!("GET {path} HTTP/1.1"),
@@ -18,6 +19,7 @@ fn get(path: &str, value: &Value) -> ScriptedResponse {
         &value.to_string(),
     )
 }
+
 fn review_only(mode: &str) -> bool {
     matches!(
         mode,
@@ -30,6 +32,7 @@ fn review_only(mode: &str) -> bool {
             | "head-changed"
     )
 }
+
 fn script(mode: &str) -> Vec<ScriptedResponse> {
     let mut raw = pr(&"a".repeat(40));
     if mode == "collision" {
@@ -156,6 +159,7 @@ fn run(
     let output = command.output().unwrap();
     (output, server.join().unwrap())
 }
+
 fn normalize_target(value: &mut Value) {
     match value {
         Value::Object(object) => {
@@ -228,6 +232,7 @@ fn view_and_list_share_review_collection_with_typed_ids_and_explicit_limits() {
         .unwrap()
         .contains("session=fixture"));
 }
+
 #[test]
 fn explicit_review_filter_does_not_fetch_discussion_and_empty_fork_details_can_recover() {
     let (output, requests) = run("review-only", false);
@@ -258,6 +263,7 @@ fn explicit_review_filter_does_not_fetch_discussion_and_empty_fork_details_can_r
         .iter()
         .any(|r| r.target.contains("/issues/1/comments")));
 }
+
 #[test]
 fn layout_auth_http_and_head_change_fail_without_partial_json_or_mutation() {
     for (mode, code, cause) in [
@@ -293,6 +299,7 @@ fn layout_auth_http_and_head_change_fail_without_partial_json_or_mutation() {
         );
     }
 }
+
 #[test]
 fn discussion_filter_reports_coverage_without_web_credentials() {
     let env = GbTestEnv::new();
@@ -327,6 +334,7 @@ fn discussion_filter_reports_coverage_without_web_credentials() {
     assert!(output.stderr.is_empty());
     assert!(server.join().unwrap().iter().all(|r| r.method == "GET"));
 }
+
 #[test]
 fn default_all_distinguishes_empty_discussion_from_missing_web_credentials() {
     let env = GbTestEnv::new();

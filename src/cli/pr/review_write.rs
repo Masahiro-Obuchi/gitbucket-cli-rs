@@ -14,6 +14,7 @@ pub(super) enum Action {
     Reply,
     Delete,
 }
+
 pub(super) struct Request {
     number: u64,
     action: Action,
@@ -26,6 +27,7 @@ pub(super) struct Request {
     request_id: Option<String>,
     json: bool,
 }
+
 impl Request {
     pub fn identified(
         target: ReviewTargetArgs,
@@ -71,6 +73,7 @@ impl Request {
         })
     }
 }
+
 pub(super) async fn run(
     host: &Option<String>,
     repo: &Option<String>,
@@ -85,6 +88,7 @@ pub(super) async fn run(
         let text = crate::cli::input::comment(input).await?;
         Some(normalized_body(&text)?)
     };
+
     let ctx = RepoContext::resolve(host, repo, profile)?;
     let pr = super::target::require_pull_request(&ctx, request.number).await?;
     if matches!(request.action, Action::Create | Action::Reply)
@@ -102,6 +106,7 @@ pub(super) async fn run(
             ));
         }
     }
+
     let namespace = super::git::fetch_namespace(&super::git::target_identity(&ctx, request.number));
     snapshot::ensure_commits(
         &ctx.git_auth,
@@ -112,6 +117,7 @@ pub(super) async fn run(
         &namespace,
         true,
     )?;
+
     // Validate explicit file coordinates before asking for Web credentials.
     let line = if let Some((path, line, side)) = &request.position {
         Some(review_position::verify(
@@ -123,6 +129,7 @@ pub(super) async fn run(
     } else {
         None
     };
+
     eprintln!("Notice: Inline writes use the verified Cookie Web actor and saved PR diff. CommitComment records can also be visible outside this PR. Replies add at a position group; no parent ID is stored.");
     let session = create_web_session(&ctx.client, &ctx.hostname, profile).await?;
     let writer = Writer {
@@ -132,6 +139,7 @@ pub(super) async fn run(
         repo: &ctx.repo,
         snapshot: &saved.snapshot,
     };
+
     let before = writer.rows().await?;
     let target = request
         .id
@@ -170,6 +178,7 @@ pub(super) async fn run(
         position = Some(actual);
         diff = Some(verified.diff);
     }
+
     let position = position.ok_or_else(|| invalid("Missing verified inline position."))?;
     if editor {
         let seed = if request.action == Action::Edit {

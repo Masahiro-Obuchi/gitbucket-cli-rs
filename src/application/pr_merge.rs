@@ -23,6 +23,7 @@ fn check(cause: &'static str, message: impl Into<String>) -> GbError {
         message: message.into(),
     }
 }
+
 fn target(pr: &PullRequest, owner: &str, repo: &str, number: u64) -> Result<CommitId> {
     if pr.number != number
         || pr
@@ -47,6 +48,7 @@ fn target(pr: &PullRequest, owner: &str, repo: &str, number: u64) -> Result<Comm
             )
         })
 }
+
 fn ready(pr: &PullRequest) -> Result<()> {
     if pr.state != "open" || pr.merged == Some(true) {
         return Err(check(
@@ -96,6 +98,7 @@ pub(crate) async fn merge(
     if head != expected {
         return Err(progress.error(check("head_mismatch", "The PR head differs from --match-head-commit. Review the new head before merging; no merge was attempted.")));
     }
+
     // Re-read immediately before PUT. This narrows a race; it does not close it.
     let fresh = client
         .pull_request_details(owner, repo, number)
@@ -112,6 +115,7 @@ pub(crate) async fn merge(
     if fresh_head != expected {
         return Err(progress.error(check("head_mismatch", "The PR head changed during merge preparation; no merge was attempted. Review the new head.")));
     }
+
     // 4.44.0 ignores sha; sending it would imply a server guard we do not have.
     let body = MergePullRequest {
         commit_message: message,
@@ -148,6 +152,7 @@ async fn verify(
             "The merge response did not confirm a merge with a result identity.",
         ));
     }
+
     let stored = client
         .pull_request_details(owner, repo, number)
         .await?

@@ -17,6 +17,7 @@ pub(crate) enum BodyInput {
     Text(Option<String>),
     Editor,
 }
+
 impl BodyInput {
     pub fn is_none(&self) -> bool {
         matches!(self, Self::Text(None))
@@ -38,6 +39,7 @@ impl BodyInput {
         }
     }
 }
+
 impl From<Option<String>> for BodyInput {
     fn from(text: Option<String>) -> Self {
         Self::Text(text)

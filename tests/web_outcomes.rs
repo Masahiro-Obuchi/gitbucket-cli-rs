@@ -11,19 +11,23 @@ fn api(prefix: &str, method: &str, path: &str, status: &str, value: Value) -> Sc
         &value.to_string(),
     )
 }
+
 const ISSUE: &str = "repos/alice/project/issues/7";
 fn issue(state: &str) -> Value {
     json!({"number":7,"title":"Old","body":"old body","state":state})
 }
+
 fn state_preflight(prefix: &str) -> Vec<ScriptedResponse> {
     vec![
         api(prefix, "GET", ISSUE, "200 OK", issue("open")),
         api(prefix, "PATCH", ISSUE, "404 Not Found", json!({})),
     ]
 }
+
 fn token_identity(prefix: &str) -> ScriptedResponse {
     api(prefix, "GET", "user", "200 OK", json!({"login":"alice"}))
 }
+
 fn signin(prefix: &str) -> ScriptedResponse {
     ScriptedResponse::html(
         &format!("POST {prefix}/signin HTTP/1.1"),

@@ -10,6 +10,7 @@ const MERGE: &str = "3333333333333333333333333333333333333333";
 fn pr() -> Value {
     json!({"number":5,"title":"PR","state":"open","merged":false,"draft":false,"mergeable":null,"head":{"ref":"topic","sha":HEAD},"base":{"ref":"main","repo":{"name":"project","full_name":"alice/project"}}})
 }
+
 fn get(pr: &Value) -> ScriptedResponse {
     ScriptedResponse::json(
         "GET /bucket/api/v3/repos/alice/project/pulls/5 HTTP/1.1",
@@ -17,6 +18,7 @@ fn get(pr: &Value) -> ScriptedResponse {
         &pr.to_string(),
     )
 }
+
 fn put(status: &str, value: Value) -> ScriptedResponse {
     ScriptedResponse::json(
         "PUT /bucket/api/v3/repos/alice/project/pulls/5/merge HTTP/1.1",
@@ -24,6 +26,7 @@ fn put(status: &str, value: Value) -> ScriptedResponse {
         &value.to_string(),
     )
 }
+
 fn run(
     responses: Vec<ScriptedResponse>,
     args: &[&str],
@@ -42,6 +45,7 @@ fn run(
     // Assert before joining so an input-validation regression does not wait on an unused script.
     (output, server.join().unwrap())
 }
+
 fn error(output: &std::process::Output) -> Value {
     assert_failure(output);
     assert!(output.stdout.is_empty());

@@ -12,12 +12,15 @@ pub(crate) fn unavailable(cause: &'static str, message: &str) -> GbError {
         message: message.into(),
     }
 }
+
 fn markup() -> GbError {
     unavailable("unsupported_markup", "Expected the verified GitBucket 4.44 PR conversation layout. No partial review list was returned.")
 }
+
 fn selector(value: &str) -> Selector {
     Selector::parse(value).expect("internal CSS selector")
 }
+
 fn one<'a>(root: ElementRef<'a>, query: &str) -> Result<ElementRef<'a>> {
     let found: Vec<_> = root.select(&selector(query)).collect();
     match found.as_slice() {
@@ -25,6 +28,7 @@ fn one<'a>(root: ElementRef<'a>, query: &str) -> Result<ElementRef<'a>> {
         _ => Err(markup()),
     }
 }
+
 fn text(element: ElementRef<'_>) -> String {
     element
         .text()
@@ -33,6 +37,7 @@ fn text(element: ElementRef<'_>) -> String {
         .collect::<Vec<_>>()
         .join(" ")
 }
+
 fn positive(value: &str) -> Result<u64> {
     value
         .parse::<u64>()
@@ -40,6 +45,7 @@ fn positive(value: &str) -> Result<u64> {
         .filter(|id| *id > 0)
         .ok_or_else(markup)
 }
+
 fn optional_line(element: ElementRef<'_>, name: &str) -> Result<Option<u64>> {
     element.value().attr(name).map(positive).transpose()
 }

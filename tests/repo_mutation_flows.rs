@@ -11,9 +11,11 @@ fn api(method: &str, path: &str, status: &str, value: Value) -> ScriptedResponse
         &value.to_string(),
     )
 }
+
 fn repo(name: &str, parent: Option<&str>) -> Value {
     json!({"name":"project","full_name":name,"fork":parent.is_some(),"parent":parent.map(|name|json!({"full_name":name}))})
 }
+
 fn preflight(target: &str) -> Vec<ScriptedResponse> {
     vec![
         api("GET", "user", "200 OK", json!({"login":"alice"})),
