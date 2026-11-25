@@ -29,7 +29,13 @@ web_user='alice'
 gb -H "$host" --json-errors auth web-status --user "$web_user" --json
 ```
 
-Read `instance`, `user`, and `saved` on success. A successful `saved: false` means the entry is absent. A `credential_store_error` leaves its presence unknown. The check reports local storage and ignores `GB_PASSWORD`. When the requested check should use the Web account resolved from the selected REST credentials, omit `--user` and apply the REST credential and target checks above.
+Read `instance`, `user`, and `saved` on success. A successful `saved: false` means the entry is absent. A `credential_store_error` leaves its presence unknown. The check reports local storage and ignores `GB_PASSWORD`.
+
+To resolve the Web username through REST, use the same instance, profile, and credential environment as the online status check. Check the returned `user` against the intended Web account. Use `GB_WEB_USER` for a different Web account only when the user has authorized it.
+
+```sh
+gb -H "$host" --profile "$profile" --json-errors auth web-status --json
+```
 
 ## Create a PR from a published branch
 
@@ -55,7 +61,7 @@ gb -H "$host" -R "$repo" --profile "$profile" --json-errors pr diff 42 --no-page
 
 The comment list object has `comments` for ordinary discussion, `review_comments` for the visible Web conversation, and `comment_coverage` describing what was requested and read. In `pr view --comments --json`, fetched discussion appears in `comment_details`. The original API `comments` field retains its own value. A successful visible-conversation read can leave historical completeness, original positions, and original Markdown unknown. Explain these limits when they affect the requested review. An empty array represents zero results. If coverage is `unavailable`, report the missing source and its reason.
 
-Use `--json-fields` to keep only the fields needed for a read. Nested paths keep their object structure. When selecting comment arrays, include `comment_coverage`. Select `--kind discussion` when only discussion is needed.
+Use `--json-fields` to select what the CLI prints. Nested paths keep their object structure, and missing fields are omitted. When selecting comment arrays, include `comment_coverage`. Use `--kind discussion` to fetch only discussion.
 
 ```sh
 gb -H "$host" -R "$repo" --profile "$profile" --json-errors pr view 42 \
