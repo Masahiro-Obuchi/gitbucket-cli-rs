@@ -42,6 +42,7 @@ Title, body, and state use the PR REST endpoint. Assignee changes require explic
 gb pr comment 42 --body 'Please clarify the inputs.'
 gb pr comment 42 --edit-last --editor
 gb pr comment list 42 --json
+gb pr comment list 42 --kind discussion --json-fields comments,comment_coverage
 gb pr view 42 --comments --kind review
 ```
 
