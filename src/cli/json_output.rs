@@ -23,6 +23,7 @@ impl JsonOutput {
         if self.json_fields.is_empty() {
             return crate::output::page_json(value, no_pager);
         }
+
         self.page_value(serde_json::to_value(value)?, no_pager)
     }
 
@@ -30,6 +31,7 @@ impl JsonOutput {
         if self.json_fields.is_empty() {
             return crate::output::page_json(&value, no_pager);
         }
+
         let paths: Vec<&str> = self.json_fields.iter().map(String::as_str).collect();
         match &mut value {
             Value::Array(items) => {
@@ -39,17 +41,20 @@ impl JsonOutput {
             }
             _ => project(&mut value, &paths),
         }
+
         crate::output::page_json(&value, no_pager)
     }
 }
 
 fn field_path(input: &str) -> std::result::Result<String, &'static str> {
     let path = input.trim();
+
     if path.split('.').any(str::is_empty)
         || path.chars().any(|ch| ch.is_whitespace() || ch.is_control())
     {
         return Err("Expected a JSON field name or a dot-separated field path");
     }
+
     Ok(path.to_owned())
 }
 
@@ -67,6 +72,7 @@ fn retain_fields(object: &mut Map<String, Value>, paths: &[&str]) {
         if paths.contains(&key.as_str()) {
             return true;
         }
+
         let Value::Object(nested) = value else {
             return false;
         };
@@ -80,6 +86,7 @@ fn retain_fields(object: &mut Map<String, Value>, paths: &[&str]) {
         if children.is_empty() {
             return false;
         }
+
         retain_fields(nested, &children);
         !nested.is_empty()
     });

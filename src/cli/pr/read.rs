@@ -83,9 +83,11 @@ pub(super) async fn list_comments(
     let ctx = RepoContext::resolve(hostname, cli_repo, cli_profile)?;
     let (_, head) = load_comment_target(&ctx, number, selection).await?;
     let comments = load_comments(&ctx, cli_profile, number, selection, head.as_ref()).await?;
+
     if json.enabled() {
         return json.page(&comments, no_pager);
     }
+
     page_or_print(&format_comments(&comments, selection), no_pager)?;
     Ok(())
 }
@@ -98,6 +100,7 @@ async fn load_comment_target(
     if selection.review() {
         return pr_comments::review_target(&ctx.client, &ctx.owner, &ctx.repo, number).await;
     }
+
     let pr = super::target::require_pull_request(ctx, number).await?;
     Ok((pr, None))
 }
@@ -118,9 +121,11 @@ async fn load_comments(
     } else {
         None
     };
+
     if crate::cancel::requested() {
         return Err(GbError::Cancelled);
     }
+
     let review = if selection.review() {
         Some(
             load_reviews(
@@ -135,6 +140,7 @@ async fn load_comments(
     } else {
         None
     };
+
     pr_comments::combine(
         &ctx.client,
         &ctx.owner,
@@ -319,6 +325,7 @@ pub(super) async fn view(
     } else {
         None
     };
+
     if options.json.enabled() {
         let mut value = serde_json::to_value(&pr)?;
         if let Some(comments) = &comments {
@@ -326,6 +333,7 @@ pub(super) async fn view(
         }
         return options.json.page_value(value, options.no_pager);
     }
+
     let mut text = format_pr_view(&pr);
     if let Some(comments) = comments {
         text.push_str(&format!("\n{}", format_comments(&comments, selection)));

@@ -42,6 +42,7 @@ impl Key {
             result = read => result
                 .map_err(|_| error("timeout", "Reading the Web password timed out."))??,
         };
+
         value
             .map(|bytes| {
                 String::from_utf8(bytes).map_err(|_| {
